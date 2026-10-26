@@ -1,11 +1,14 @@
 {
   "name": "hedra",
-  "module": "src/index.ts",
+  "module": "src/hedra.ts",
   "type": "module",
   "private": true,
+  "imports": {
+    "#*": "./src/*"
+  },
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts",
+    "dev": "bun --watch src/hedra.ts",
+    "start": "bun src/hedra.ts",
     "test": "bun test",
     "fmt": "biome check --write .",
     "check": "tsc --noEmit && biome check . && bun test"

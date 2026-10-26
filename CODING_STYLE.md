@@ -44,8 +44,9 @@ tests/          mirrors src/
 ```
 
 - Routes parse requests and shape responses, controllers decide, datastores persist. Controllers work without HTTP.
-- Expose the public interface through deliberate exports from the package entry point; everything else is internal.
-- Import shared modules through their public exports, and nearby modules by relative path.
+- Name every file for what it holds, never `index.ts`, so open tabs stay distinguishable. A module that grows into its own directory names its main file after the directory, as in `tenancy/tenancy.ts`.
+- Expose the public interface through deliberate exports from `src/hedra.ts`, the package entry point; everything else is internal. Write no barrel files that only re-export.
+- Import across areas through the `#` alias, which maps to `src/` (`#models/widget.ts`), and within an area by relative path.
 - Keep files cohesive, around 100–300 lines. Extend an established area before adding a new one.
 
 ## Readability
