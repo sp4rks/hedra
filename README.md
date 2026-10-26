@@ -1,91 +1,35 @@
 # Hedra
 
-Hedra derives a tenant-aware backend from consumer-defined Zod models. It runs on Bun, Hono, SQLite and Pino,
-with shared controllers for generated JSON:API routes and direct programmatic operations.
+Hedra is a framework for building multi-tenant applications: one deployment serves many tenants, each with its own data and configuration. It is written in TypeScript, runs on Bun, and ships as a single process that runs anywhere a container does.
 
-Phase 1 is a **development milestone without authentication or access control**. Hostnames select data scope;
-they do not authenticate callers. Authski remains a future consumer, with no built-in Application entity in Hedra.
+## Design goals
 
-## Run the examples
+### Cloud agnostic
 
-Use Bun 1.4.3:
+Cloud-native services set like concrete: once you are deployed on them at scale, you are not moving on any meaningful timescale. Hedra deliberately avoids cloud-native services so you can deploy it:
 
-```sh
-bun install --frozen-lockfile
-bun run check
-bun test
-bun run examples/01-helloworld.ts
-```
+- wherever you want,
+- however you want,
+- whenever you want.
 
-Each example runs independently and adds a concept:
+### Modern
 
-| Example | Demonstrates |
-| --- | --- |
-| [01-helloworld.ts](examples/01-helloworld.ts) | Native Hono route and Bun default-export startup |
-| [02-model-crud.ts](examples/02-model-crud.ts) | One model, parsed values, SQLite CRUD and documentation |
-| [03-tenancy.ts](examples/03-tenancy.ts) | Two tenants, sibling environments and scoped uniqueness |
-| [04-related-resources.ts](examples/04-related-resources.ts) | Owned children, sensitive fields and explicit cascade |
-| [05-custom-controller.ts](examples/05-custom-controller.ts) | Shared overrides, subclassing and native scoped routes |
+Hedra uses newer tools and approaches that speed up development and resonate with emerging developers. It is designed from the ground up to run as a containerised SaaS, without compromises or accommodations for legacy approaches.
 
-Every example exports its app as the default. Running the file lets Bun start the listener on all interfaces at port 3000;
-`PORT` selects another port. For example:
+Hedra is also built to be agent friendly, so coding agents can work on it as readily as people. Consistent patterns, schema-derived types and fast tests give an agent clear signals about what to write and whether it worked, and `AGENTS.md` tells agents how to work in this repo.
 
-```sh
-PORT=3001 bun run examples/02-model-crud.ts
-curl --fail http://localhost:3001/hello
-```
+### Fast
 
-Example 01 opens no database. Examples 02–05 explicitly initialise Hedra and seed disposable in-memory databases before
-exporting their apps. Importing those examples runs their setup, with no listener started by the import. They require fresh
-storage when selecting a file through `HEDRA_DATABASE`. Each adds its own concept to the same `/hello` baseline.
+Not because it's cool, but because speed cuts run costs and carbon emissions. Public cloud has become the default deployment model and its margins are bloating, so many companies will move to a more measured, hybrid mix of SaaS, public cloud and private cloud. Low run costs are key to that business case.
 
-Bun owns the listener and process termination. For explicit listener configuration and graceful shutdown, see
-[lifecycle configuration](docs/configuration.md#lifecycle).
+### Simple
 
-With example 05 running:
+As companies move back towards private cloud, simplicity becomes a deciding factor. Hedra stays simple through:
 
-```sh
-curl --fail http://127.0.0.1:3000/health
-curl --fail -H 'Host: docs.hedra.local:3000' http://127.0.0.1:3000/openapi.json
-curl --fail -H 'Host: dev.acme.hedra.local:3000' http://127.0.0.1:3000/applications
-```
+- extensive, sensible defaults;
+- simple, reusable design patterns, both under the hood and in the driver's seat;
+- a monolithic architecture whose complexity scales with your requirements: one process per instance, with modules calling each other in-process rather than over the network.
 
-The on-demand [Docker/Caddy preview](docs/preview.md) serves the browser reference without editing local hostname mappings.
-Its Smoke containers are removed; the definition and recovery packages are retained.
-The generated reference uses Scalar's CDN; the OpenAPI JSON works without it.
+### Secure
 
-## Use Hedra in another Bun project
-
-Consume the sibling repository through `"hedra": "file:../hedra"` and run `bun install`. Consumers import the public
-package entry point; private package aliases resolve without copying Hedra's TypeScript configuration.
-The dependency versions in [package.json](package.json) and [bun.lock](bun.lock) define the tested integrated stack.
-
-```ts
-import { Collection, Hedra, Resource, z } from 'hedra'
-
-const Widget = Resource.extend({ name: z.string().trim().min(1) })
-const app = new Hedra()
-const widgets = app.register(new Collection({ collectionName: 'widgets', schema: Widget }))
-
-app.get('/health', context => context.json({ status: 'ok' }))
-await app.initialize()
-
-export default app
-```
-
-Provision tenants/environments through their built-in collections before operating on consumer records.
-[Framework contracts](docs/contracts.md) describe scope, controller replacement, supported schemas and output types.
-[Configuration](docs/configuration.md) lists the environment variables and defaults.
-[Errors](docs/contracts.md#errors) documents the named error classes and automatic JSON:API error responses.
-
-## Verification and limits
-
-`bun run check` typechecks the package, examples and tests, and checks formatting/import order. `bun test` includes real
-SQLite integration, separate-consumer typechecking, independent examples and CLI startup/shutdown on ephemeral
-ports. `bun run test:coverage` reports coverage; subprocess entrypoint execution is verified separately from its counters.
-
-Automatic migrations, pattern matching, advanced JSON:API features, actual Authski migration, package publication,
-Cloudflare integration and public production deployment are deferred. Sensitive metadata controls public exposure;
-applications still own hashing/encryption and the safety of arbitrary native handlers.
-
-The agreed scope is recorded in [phase 1](docs/phase-1.md).
+Hedra is written exclusively in TypeScript, whose static types catch whole classes of error before they ship. Zod schemas are the single source of truth for both types and validation: every type is inferred from a schema, so what the compiler checks and what runtime validation enforces cannot drift apart. Simplicity is its own kind of security. Untrusted code runs in gVisor, a user-space kernel that sandboxes it from the host.
