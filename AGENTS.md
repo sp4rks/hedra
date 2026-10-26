@@ -1,99 +1,26 @@
-# Hedra
+# AGENTS.md
 
-This repository implements Hedra's phase 1 development milestone. Production readiness and access control remain later
-work. Follow global guidance for coding conventions and the development and release workflow.
+[README.md](README.md) defines Hedra. Its design goals settle trade-offs.
 
-Before changing public interfaces, models, controllers or isolation, read [framework contracts](docs/contracts.md).
-For runtime settings read [configuration](docs/configuration.md); for integration or deployment read [preview operation](docs/preview.md).
-[The milestone agreement](docs/phase-1.md) records the accepted scope and exclusions.
+Hedra runs as a Bun process in a container wherever it is deployed. Use no Cloudflare Workers or other cloud-specific runtime APIs, whatever the house defaults say.
 
-## Purpose
+## Feature workflow
 
-Hedra is an opinionated framework for multi-tenant backends. Its intended users are external developers, including those
-building with coding agents. Authski is its first proving ground.
+Two roles take part: the **lead agent**, which designs, documents and reviews with the user in chat on Claude Opus 5.5 at high effort, and the **coding agent**, the `coder` subagent (`.cursor/agents/coder.md`, on Grok 4.7 at high effort), which the lead hands implementation to. Each stage finishes before the next starts, except implementation and docs, which run in parallel.
 
-Provide dependable, reusable foundations so developers can focus on application behaviour. Aim to save time, effort and
-tokens by integrating established solutions to recurring infrastructure problems.
+1. **Request.** The user describes the feature.
+2. **Grill.** The lead runs the `grilling` skill until the user confirms a shared understanding.
+3. **Design.** The lead proposes a design: the behaviour, the public interface (Zod schemas, routes, exports), where the code lives, and how it serves the design goals. Work through it with the user, then write it to `plans/<feature>.md`, committed with the feature as the record of what was agreed. Done when the user approves the design.
+4. **Test design.** The lead proposes the tests, following the `tdd` skill: each behaviour and failure path, named as a test and placed at a public seam. Add them to the plan. Done when the user approves the tests.
+5. **Implement and document.** The lead commits the plan to `feature/<feature>`, creates a worktree for that branch, and starts the coding agent in it. While it works, the lead writes the user docs with the `user-docs` skill on `feature/<feature>-docs`, in a separate worktree, touching only `docs/` and `examples/`.
+   - The coding agent writes the agreed tests first and sees them fail, then implements until they pass and runs the checks in `package.json`. It reports the commit range and check results.
+   - The docs' examples fail until the code lands. The docs are done when the `user-docs` newcomer review is clean.
+6. **Review.** The lead merges the docs branch into `feature/<feature>` and runs the checks, docs' examples included. Where an example fails, the lead fixes the docs if they stray from the plan, and otherwise sends the failure to the coding agent. The lead reviews the commit range with the `reviewer` skill, against the plan and docs. It sends confirmed findings back to the same coding agent to fix, then re-reviews. Done when the review has no actionable findings and every check passes. The lead then reports the result to the user and merges to `main` only after the user approves.
 
-Design for:
+A decision that outlives the feature becomes an ADR during design.
 
-- A clear developer experience, predictable contracts and useful documentation for humans and coding agents.
-- Security considered throughout the framework's design.
-- Sensible defaults, minimal configuration and a small resource footprint.
-- Container-first hosting and portability between providers, keeping proprietary cloud dependencies optional.
+## Decisions
 
-Agent support means helping agents build applications with Hedra. Runtime agent integrations are outside the initial
-milestone.
+Architecture decision records (ADRs) live in `docs/adr/` as `NNNN-<slug>.md`, numbered from `0001`. Each covers one decision: its context, the decision, and its consequences.
 
-## Stack and extensibility
-
-Use Bun, Hono, Zod, SQLite, Pino and `bun:test`, with Docker and Caddy for local hosting. Keep the initial stack
-opinionated and integrated. Consider interchangeable foundational components in a later version when concrete
-requirements justify them.
-
-Consumers must be able to extend or replace default controller behaviour and use native Hono routes and middleware
-alongside generated functionality.
-
-## Phase 1: development milestone
-
-The first milestone enables Authski and Hedra to be developed together. Production readiness is a later milestone.
-
-Register consumer-defined Zod models once and derive:
-
-- TypeScript types, input normalisation and validation.
-- Database schema and basic CRUD operations.
-- HTTP routes and OpenAPI documentation.
-
-Derive behaviour at runtime; consumers supply model definitions and custom logic rather than owning generated
-infrastructure source files.
-
-Provide default, replaceable controllers. HTTP requests and direct programmatic calls must invoke the same controller
-behaviour, including consumer overrides.
-
-## Tenancy and data scope
-
-Hedra's hierarchy ends at tenant → environment. Each tenant can have multiple environments.
-Hedra has no Application entity.
-
-Consumer-defined records belong to an environment. The datastore requires explicit tenant and environment context and
-enforces both isolation boundaries independently of replaceable controllers.
-
-## Framework responsibilities
-
-Keep reusable framework contracts and implementations in Hedra. Consuming applications own their domain models, business
-rules, interfaces and identity-provider protocols.
-
-Keep HTTP handling, controller behaviour and datastore access distinct. Controllers remain usable without HTTP. Expose
-the framework through deliberate public package exports.
-
-Agree detailed public contracts feature by feature. Validate framework defaults and consumer customisation through both
-HTTP and programmatic use. Historical implementations are reference material; bring their behaviour into scope by
-agreement.
-
-## Security and later milestones
-
-Security is a design constraint from phase 1: validate input at trust boundaries, use safe datastore operations, enforce
-tenant/environment isolation and handle outputs, errors and logs without exposing private data.
-
-Access control belongs to phase 2 and should deny access by default when introduced. Phase 1 is a development milestone
-without access control.
-
-Cookies, sessions, CSRF protection, authentication and caching remain roadmap topics whose detailed scopes require
-agreement.
-
-## Agent skills
-
-The plan file is [PLAN.md](PLAN.md) at the repo root. Design and acceptance use that file.
-
-### Issue tracker
-
-Issues live as markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default triage roles, each label string equal to its name: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
-
+Before changing an area, read the ADRs that touch it. When work would contradict an ADR, say so and propose a new ADR that supersedes it.
