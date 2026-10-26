@@ -29,7 +29,7 @@ If `docs/index.md` is missing, create the set above with only the pages the curr
 
 ## Layering rules
 
-- **One running example.** The tutorial builds a single small app. Each chapter starts from the previous chapter's code, adds one concept, and ends with the app working. Its code lives in `examples/tutorial/NN-<slug>.ts`, which runs under `bun test`; the chapter's code blocks match that file exactly.
+- **One running example.** The tutorial builds a single small app. Each chapter starts from the previous chapter's code, adds one concept, and ends with the app working. Its code lives in `examples/tutorial/NN-<slug>.ts`, and the chapter's code blocks match that file exactly.
 - **No term before its chapter.** A Hedra term first appears in the tutorial chapter that introduces it, and `reference/glossary.md` links the term to that chapter. Any later page uses the term without redefining it and links to the glossary on first use.
 - **Guides and concepts stand on the tutorial.** Each opens with the chapter it assumes ("Assumes you've finished [Tutorial 3: Tenants](...)") and introduces nothing a beginner needs before that point.
 - **The journey reads in order.** `index.md` lists the tutorial first, then topics from most to least commonly needed. Each page ends with a link to the natural next page.
@@ -39,7 +39,7 @@ If `docs/index.md` is missing, create the set above with only the pages the curr
 1. **Place the change.** Read `docs/index.md`. For each user-visible change, decide which pages it touches: a tutorial chapter if a beginner needs it, a guide if it enables a task, a concept if it changes how Hedra should be understood, and reference for every new or changed option, route, error or export. Done when every user-visible change maps to a page, or is recorded as having no doc impact.
 2. **Write the pages.** Follow [PAGES.md](PAGES.md) for the page's type. When a new concept belongs early in the tutorial, extend the chapter where the reader first needs it rather than appending a chapter at the end; renumber and fix links if you insert one.
 3. **Update the neighbours.** Revisit the page before and after each changed page, `index.md` and `reference/glossary.md`, so the journey still reads in order and every term still has its introducing chapter.
-4. **Run the examples.** Every tutorial code block matches its example file, and `bun test` passes. When the docs are written alongside the code, the new examples may fail until the feature lands; they fail only because it isn't built yet.
+4. **Run the examples.** Every tutorial code block matches its example file, and each example runs with `bun run` and behaves as its chapter says. When the docs are written alongside the code, the new examples may fail until the feature lands; they fail only because it isn't built yet.
 5. **Review as a newcomer.** Launch a subagent with no prior context and the prompt below. Fix every finding, then review again. Done when a review returns no findings.
 
 ```text
