@@ -4,6 +4,9 @@
   "type": "module",
   "private": true,
   "imports": {
+    "#config": "./src/server/config/config.ts",
+    "#config/*": "./src/server/config/*",
+    "#errors": "./src/server/errors/errors.ts",
     "#*": "./src/*"
   },
   "scripts": {
