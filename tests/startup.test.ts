@@ -42,7 +42,7 @@ async function waitForHealth(port: number): Promise<Response> {
 
 test('the process entrypoint serves GET /health', async () => {
   const port = await freePort()
-  const proc = Bun.spawn(['bun', 'src/hedra.ts'], {
+  const proc = Bun.spawn(['bun', 'examples/01-helloworld.ts'], {
     cwd: projectRoot,
     env: {
       ...process.env,
@@ -65,7 +65,7 @@ test('the process entrypoint serves GET /health', async () => {
 })
 
 test('the process entrypoint exits when configuration is invalid', async () => {
-  const proc = Bun.spawn(['bun', 'src/hedra.ts'], {
+  const proc = Bun.spawn(['bun', 'examples/01-helloworld.ts'], {
     cwd: projectRoot,
     env: {
       ...process.env,
