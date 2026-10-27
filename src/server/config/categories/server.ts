@@ -77,6 +77,19 @@ export const serverVariables: Config = {
       }
     },
   },
+  HEDRA_SERVER_PORT: {
+    name: 'serverPort',
+    default: 3000,
+    options: 'Integer value from 1 to 65535',
+    description: 'The port the server listens on',
+    validate: (value: string | number | boolean) => {
+      try {
+        z.coerce.number().int().min(1).max(65535).parse(value)
+      } catch (_error) {
+        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_PORT has invalid value: ${value}`)
+      }
+    },
+  },
   HEDRA_SERVER_REQUEST_TIMEOUT: {
     name: 'serverRequestTimeout',
     default: 30000,

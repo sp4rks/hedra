@@ -1,5 +1,5 @@
-import { parseEnv } from 'node:util'
-
+import { existsSync, readFileSync } from 'node:fs'
+import { parseEnv, styleText } from 'node:util'
 import pino from 'pino'
 
 import { deploymentVariables } from '#config/categories/deployment.ts'
@@ -22,12 +22,31 @@ const defaults: Config = {
   ...serverVariables,
 }
 
-/** Reads an env file and fills keys the caller has not already set. */
-async function overlayEnvFile(env: NodeJS.ProcessEnv, path: string): Promise<boolean> {
-  const file = Bun.file(path)
-  if (!(await file.exists())) return false
+const columnWidth = 50
 
-  const parsed = parseEnv(await file.text())
+/** Prints the startup configuration table heading. */
+function printConfigHeader(): void {
+  console.log(
+    `\n${styleText('white', 'Environment Variable'.padEnd(columnWidth))} ${styleText('white', 'Value'.padEnd(columnWidth))} ${styleText('white', 'Source')}`,
+  )
+}
+
+/** Prints one setting and whether its value came from the environment or the built-in default. */
+function printConfigRow(variable: string, value: string, source: 'environ' | 'default'): void {
+  const sourceLabel = source === 'environ' ? styleText('blueBright', 'environ') : styleText('greenBright', 'default')
+  console.log(`${styleText('magenta', variable.padEnd(columnWidth))} ${value.padEnd(columnWidth)} ${sourceLabel}`)
+}
+
+/** Prints where a reader can find the built-in defaults and their descriptions. */
+function printConfigFooter(): void {
+  console.log('\nSee src/server/config/categories/ for defaults and descriptions.\n')
+}
+
+/** Reads an env file and fills keys the caller has not already set. */
+function overlayEnvFile(env: typeof Bun.env, path: string): boolean {
+  if (!existsSync(path)) return false
+
+  const parsed = parseEnv(readFileSync(path, 'utf8'))
   for (const [key, value] of Object.entries(parsed)) {
     if (env[key] === undefined) env[key] = value
   }
@@ -39,15 +58,15 @@ async function overlayEnvFile(env: NodeJS.ProcessEnv, path: string): Promise<boo
  * An explicit value wins over `HEDRA_ENV_FILE`, which wins over the built-in default.
  * The result is keyed by each setting's config name and includes a new `instanceId`.
  */
-export async function loadServerConfig(env: NodeJS.ProcessEnv = process.env): Promise<Record<string, string>> {
-  const resolved: NodeJS.ProcessEnv = { ...env }
+export function loadServerConfig(env: typeof Bun.env = process.env): Record<string, string> {
+  const resolved: typeof Bun.env = { ...env }
   const envFile = resolved.HEDRA_ENV_FILE?.trim()
 
   if (envFile) {
-    const loaded = await overlayEnvFile(resolved, envFile)
-    if (!loaded && env === process.env) await overlayEnvFile(resolved, '.env')
+    const loaded = overlayEnvFile(resolved, envFile)
+    if (!loaded && env === process.env) overlayEnvFile(resolved, '.env')
   } else if (env === process.env) {
-    await overlayEnvFile(resolved, '.env')
+    overlayEnvFile(resolved, '.env')
   }
 
   const serverConfig: Record<string, string> = {
@@ -55,7 +74,8 @@ export async function loadServerConfig(env: NodeJS.ProcessEnv = process.env): Pr
   }
   const silentStartup = resolved.HEDRA_SERVER_SILENT_STARTUP === 'true'
 
-  if (!silentStartup) logger.info('configuration')
+  // A person reads this table in the terminal during startup.
+  if (!silentStartup) printConfigHeader()
 
   for (const configKey of Object.keys(defaults)) {
     const defaultConfig = defaults[configKey]
@@ -75,12 +95,11 @@ export async function loadServerConfig(env: NodeJS.ProcessEnv = process.env): Pr
     serverConfig[defaultConfig.name] = String(finalValue)
 
     if (!silentStartup) {
-      logger.info(
-        { variable: configKey, value: String(finalValue), source: fromEnvironment ? 'environ' : 'default' },
-        'configuration value',
-      )
+      printConfigRow(configKey, String(finalValue), fromEnvironment ? 'environ' : 'default')
     }
   }
+
+  if (!silentStartup) printConfigFooter()
 
   return serverConfig
 }

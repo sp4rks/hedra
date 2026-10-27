@@ -26,8 +26,8 @@
           "level": "on",
           "options": {
             "groups": [
-              { "type": true, "source": [":BUN:", ":NODE:", "hono", "hono/**", "zod", "zod/**"] },
-              { "type": false, "source": [":BUN:", ":NODE:", "hono", "hono/**", "zod", "zod/**"] },
+              { "type": true, "source": [":BUN:", ":NODE:", "hono", "hono/**", "zod", "zod/**", "pino", "pino/**"] },
+              { "type": false, "source": [":BUN:", ":NODE:", "hono", "hono/**", "zod", "zod/**", "pino", "pino/**"] },
               ":BLANK_LINE:",
               { "type": true, "source": [":PACKAGE:", "!hono", "!hono/**", "!zod", "!zod/**"] },
               { "type": false, "source": [":PACKAGE:", "!hono", "!hono/**", "!zod", "!zod/**"] },
