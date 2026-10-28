@@ -13,9 +13,9 @@ HEDRA_DEPLOYMENT_API_DOMAIN                        deployment.hedra.local       
 HEDRA_DEPLOYMENT_DOCS_DOMAIN                       docs.hedra.local                                   default
 ```
 
-`hedra.local` is the root that everything else sits under. `deployment.hedra.local` is the host for the app's own API, and `docs.hedra.local` is the host for its docs.
+`hedra.local` is the root that everything else sits under. The app keeps the other two hosts for itself, one for its own API and one for its docs. It doesn't serve anything on them yet, but no customer can have them.
 
-A domain is made of labels, the parts between the dots. `acme.hedra.local` has three: `acme`, `hedra` and `local`. Each customer gets a domain exactly one label under the root, such as `acme.hedra.local`. The app already uses its API and docs hosts, so no customer can have them.
+A domain is made of labels, the parts between the dots. `acme.hedra.local` has three: `acme`, `hedra` and `local`. Hedra calls each customer a tenant. Each tenant gets a domain exactly one label under the root, such as `acme.hedra.local`.
 
 ## Read the tenant routes
 
@@ -43,7 +43,7 @@ hedra.post('/tenants', async (context) => {
 
   const { tenantDomain } = input.data
   if (!tenantDomainValidator(tenantDomain, deploymentDomain, reservedDomains)) {
-    return context.json({ errors: ['Invalid tenant domain'] }, 400)
+    return context.json({ errors: ['Tenant domain is not available in this deployment'] }, 400)
   }
   if (tenants.has(tenantDomain)) {
     return context.json({ errors: ['Tenant domain already exists'] }, 409)
@@ -63,10 +63,10 @@ What the new code does:
 
 - `hedra.config` holds the settings from the table. `hedra.config.deploymentDomain` is `HEDRA_DEPLOYMENT_DOMAIN`, `deploymentApiDomain` is `HEDRA_DEPLOYMENT_API_DOMAIN`, and `deploymentDocsDomain` is `HEDRA_DEPLOYMENT_DOCS_DOMAIN`.
 - `hedra.config` is typed as a record of strings, so TypeScript can't know a key is there. Each value falls back to an empty string to satisfy the type. With the settings above, every value is set.
-- `Tenant` is a schema from [Zod](https://zod.dev), the validation library Hedra uses. `.omit`, `.safeParse` and `.parse` are Zod methods.
+- `Tenant` is a schema from [Zod](https://zod.dev), the validation library Hedra uses. `.omit`, `.safeParse` and `.parse` are Zod methods. `Tenant` is also a TypeScript type with the same name, so `Map<string, Tenant>` holds tenants.
 - `NewTenant` is `Tenant` without `id`, `createdAt` and `updatedAt`, because the app sets those. A request body only has to carry a name and a domain.
-- `NewTenant.safeParse` checks the request body. It trims the name, lowercases the domain, and rejects a value that isn't a domain.
-- `tenantDomainValidator` checks that the domain is one label under `hedra.local`, and isn't the API or docs host.
+- `NewTenant.safeParse` checks the request body. It trims the name and lowercases the domain. A value that isn't a domain fails with `Invalid tenant domain`.
+- `tenantDomainValidator` checks that the domain is one label under `hedra.local`, and isn't the API or docs host. When it fails, the route answers `Tenant domain is not available in this deployment`.
 - `tenants` keeps each tenant in memory, keyed by its domain, until the app stops.
 
 The tenant domain is data. You still send every request to `localhost:3000`, because Hedra doesn't route requests by domain yet.
@@ -116,7 +116,7 @@ curl -w '\n%{http_code}\n' -X POST http://localhost:3000/tenants \
 ```
 
 ```text
-{"errors":["Invalid tenant domain"]}
+{"errors":["Tenant domain is not available in this deployment"]}
 400
 ```
 
@@ -129,9 +129,24 @@ curl -w '\n%{http_code}\n' -X POST http://localhost:3000/tenants \
 ```
 
 ```text
+{"errors":["Tenant domain is not available in this deployment"]}
+400
+```
+
+Send a value that isn't a domain at all:
+
+```sh
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/tenants \
+  -H 'content-type: application/json' \
+  -d '{"name":"Broken","tenantDomain":"not a domain"}'
+```
+
+```text
 {"errors":["Invalid tenant domain"]}
 400
 ```
+
+The last message comes from `NewTenant.safeParse`, before the validator runs.
 
 List the tenants:
 
@@ -151,8 +166,12 @@ Stop the app with Ctrl+C.
 
 The app serves one **deployment**: everything it hosts under one root domain. That root is the **deployment domain**, set by `HEDRA_DEPLOYMENT_DOMAIN`.
 
-A **tenant** is a customer organisation in the deployment. Its **tenant domain** is one **label** under the deployment domain. Hosts the deployment already serves, such as its API and docs hosts, are **reserved domains**, and no tenant can have one.
+A **tenant** is a customer organisation in the deployment. Its **tenant domain** is one **label** under the deployment domain. Hosts the deployment keeps for itself, such as its API and docs hosts, are **reserved domains**, and no tenant can have one.
 
-`Tenant` is a **model**: a Zod schema and a TypeScript type with the same name. It extends **`Resource`**, the base model that gives every record an `id`, `name`, optional `description`, `createdAt` and `updatedAt`. The model checks that a tenant domain is a domain. `tenantDomainValidator` checks that it belongs to this deployment, using the domains you pass it.
+`Tenant` is a **model**: a Zod schema and a TypeScript type with the same name. It extends **`Resource`**, the base model that gives every record an `id`, `name`, optional `description`, `createdAt` and `updatedAt`. The model checks that a tenant domain is a domain.
+
+`tenantDomainValidator` is a **validator**: a function that returns `true` or `false`. It checks that a tenant domain belongs to this deployment, using the domains you pass it.
+
+The model doesn't stop two tenants having the same domain. The route checks that itself, with `tenants.has`.
 
 Next: [3. Add environments](03-environments.md)

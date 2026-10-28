@@ -18,15 +18,15 @@ Hedra has three levels, and each one is identified by a domain. With the tutoria
 
 A live deployment follows the same pattern under its own root. With `platformname.com` as the root, a customer is `customername.platformname.com`, and its development environment is `dev.customername.platformname.com`.
 
-The deployment's API host, `deployment.hedra.local` in the tutorial, and its docs host are [reserved domains](../reference/glossary.md). A tenant can't claim them.
+The deployment keeps its API host, `deployment.hedra.local` in the tutorial, and its docs host for itself. They are [reserved domains](../reference/glossary.md), and a tenant can't claim them. `Deployment`, a model with only `deploymentDomain`, describes the root itself.
 
 Domains are trimmed and lowercased wherever Hedra reads them, because host names ignore case. These domains are how a request will be matched to its tenant and environment. Routing requests by domain isn't part of Hedra yet.
 
-Hedra splits each domain check in two. The model checks shape: a tenant domain is a domain at all. A validator checks place: a tenant domain is one label under this deployment's domain. Models never read the app's settings, so the validator takes the deployment domain and reserved domains as arguments.
+Hedra splits each domain check in two. The model checks shape: a tenant domain is a domain at all. A [validator](../reference/glossary.md), such as `tenantDomainValidator`, checks place: a tenant domain is one label under this deployment's domain. Models never read the app's settings, so the validator takes the deployment domain and reserved domains as arguments.
 
 ## Trade-offs
 
-- **Shape and place are separate.** A model loads without the app's settings. Zod's `.omit`, `.pick` and `.partial` throw on a schema with a check that spans two fields, so leaving place out of the model keeps variants like `NewTenant` working. The cost is that a route has to call the validator. Parsing alone accepts a tenant domain from another deployment.
+- **Shape and place are separate.** A model loads without the app's settings, and schemas derived from it keep working. `NewTenant` is one: Zod's `.omit` built it, and `.pick` and `.partial` build others. All three throw on a schema that has a `.refine` check spanning two fields, which an environment's place check would need. The cost is that a route has to call the validator. Parsing alone accepts a tenant domain from another deployment.
 - **The root comes from settings.** Hedra doesn't work out the root by removing a label from a host. A label count can't tell `hedra.local` from `hedra.co.uk`, and the setting already says which is meant.
 - **The caller lists the reserved domains.** Hedra keeps no fixed list of names like `api` or `docs`. Only the deployment knows which hosts it serves, so it passes every one.
 - **Exactly one label per level.** A tenant can't nest organisations inside its domain, and an environment can't have sub-environments.

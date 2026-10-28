@@ -19,7 +19,7 @@ hedra.post('/tenants', async (context) => {
 
   const { tenantDomain } = input.data
   if (!tenantDomainValidator(tenantDomain, deploymentDomain, reservedDomains)) {
-    return context.json({ errors: ['Invalid tenant domain'] }, 400)
+    return context.json({ errors: ['Tenant domain is not available in this deployment'] }, 400)
   }
   if (tenants.has(tenantDomain)) {
     return context.json({ errors: ['Tenant domain already exists'] }, 409)
@@ -48,7 +48,7 @@ hedra.post('/environments', async (context) => {
     return context.json({ errors: ['Unknown tenant domain'] }, 404)
   }
   if (!environmentDomainValidator(environmentDomain, tenantDomain)) {
-    return context.json({ errors: ['Invalid environment domain'] }, 400)
+    return context.json({ errors: ['Environment domain is not under its tenant domain'] }, 400)
   }
   if (environments.has(environmentDomain)) {
     return context.json({ errors: ['Environment domain already exists'] }, 409)

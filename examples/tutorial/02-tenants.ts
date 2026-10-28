@@ -19,7 +19,7 @@ hedra.post('/tenants', async (context) => {
 
   const { tenantDomain } = input.data
   if (!tenantDomainValidator(tenantDomain, deploymentDomain, reservedDomains)) {
-    return context.json({ errors: ['Invalid tenant domain'] }, 400)
+    return context.json({ errors: ['Tenant domain is not available in this deployment'] }, 400)
   }
   if (tenants.has(tenantDomain)) {
     return context.json({ errors: ['Tenant domain already exists'] }, 409)

@@ -1,6 +1,6 @@
 # Hedra docs
 
-Hedra is a framework for apps that serve many customers from one deployment. Start with the tutorial, then read the topics below in order, or go to the one you need.
+Hedra is a framework for apps where one running app serves many customers. Start with the tutorial, then read the topics below in order, or go to the one you need.
 
 ## Tutorial
 

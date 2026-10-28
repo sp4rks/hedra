@@ -1,9 +1,9 @@
 # Models reference
 
-Every model, validator and constraint schema that Hedra exports. Import them from `hedra`, or from `#hedra.ts` inside the Hedra repository.
+Every model, validator and constraint schema that Hedra exports. Inside the Hedra repository, import them from `#hedra.ts`. The package name is `hedra`, and it isn't published yet.
 
 ```ts
-import { Deployment, Domain, Environment, Resource, Tenant } from 'hedra'
+import { Deployment, Domain, Environment, Resource, Tenant } from '#hedra.ts'
 ```
 
 Each model is a Zod schema and a TypeScript type with the same name. A failed `parse` throws a `ZodError`, and `safeParse` returns its issues.
@@ -14,11 +14,11 @@ The base model. `Tenant` and `Environment` extend it.
 
 | Name | Type | Default | Description |
 | --- | --- | --- | --- |
-| `id` | UUID string | none, required | The unique identifier for the resource |
-| `name` | string, trimmed, 2–64 characters | none, required | The name of the object |
-| `description` | string, trimmed, 1–128 characters, or `null` | omitted | The description of the object |
-| `createdAt` | ISO 8601 date-time ending in `Z` | none, required | The date and time the object was created |
-| `updatedAt` | ISO 8601 date-time ending in `Z` | none, required | The date and time the object was last updated |
+| `id` | UUID string | none, required | The record's unique identifier |
+| `name` | string, trimmed, 2–64 characters | none, required | The record's name |
+| `description` | string, trimmed, 1–128 characters, or `null` | omitted | The record's description |
+| `createdAt` | ISO 8601 date-time ending in `Z` | none, required | When the record was created |
+| `updatedAt` | ISO 8601 date-time ending in `Z` | none, required | When the record was last updated |
 
 A timestamp with a numeric offset, such as `+10:00`, or with no zone at all, fails.
 
@@ -38,7 +38,7 @@ A host name. It is trimmed and lowercased, then must match Zod's domain pattern,
 | --- | --- | --- | --- |
 | `deploymentDomain` | `Domain` | none, required | The deployment's root domain, the same value as `HEDRA_DEPLOYMENT_DOMAIN` |
 
-`Deployment` doesn't extend `Resource`.
+`Deployment` describes the deployment itself, and doesn't extend `Resource`. To check a value against the configured deployment domain, call `deploymentDomainValidator`.
 
 ## Tenant
 
@@ -90,7 +90,17 @@ With `platformname.com` as the deployment domain, `tenantDomainValidator` return
 | --- | --- | --- | --- |
 | `compoundUnique` | array of `{ fields: string[] }` | omitted | Each entry lists fields whose values are unique together |
 
+A record's constraints go in the object schema's own `.meta()`:
+
+```ts
+const Member = Resource.extend({ email: z.email() }).meta({
+  constraints: { compoundUnique: [{ fields: ['email', 'name'] }] },
+})
+```
+
 Both schemas are strict. An unknown key fails with `Unrecognized key: "<key>"`.
+
+Hedra's own models declare these field constraints:
 
 | Field | Constraint |
 | --- | --- |

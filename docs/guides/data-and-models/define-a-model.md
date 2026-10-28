@@ -2,11 +2,11 @@
 
 Assumes you've finished [Tutorial 2: Accept tenants](../../tutorial/02-tenants.md). Use this guide when your app stores its own kind of record, such as a project, and you want it to have the same base fields as a tenant.
 
-The code uses Zod 4, which the repository already installs. It uses `.describe()`, `.meta()` and `z.infer`, which the [Zod docs](https://zod.dev) cover. Put each snippet in one file in the repository root, such as `project.ts`, in the order shown.
+Hedra isn't published as a package yet, so this guide works inside the repository, like the tutorial. Put each snippet in one file in the repository root, such as `project.ts`, in the order shown. The code uses Zod 4, which the repository already installs, and its `.describe()`, `.meta()` and `z.infer`. The [Zod docs](https://zod.dev) cover them.
 
 ## Steps
 
-1. Extend [`Resource`](../../reference/models.md#resource) with your fields. Give each field a description and an example. They stay on the schema, where `z.toJSONSchema` can read them.
+1. Extend [`Resource`](../../reference/models.md#resource) with your fields. Give each field a description and an example:
 
    ```ts
    import { z } from 'zod'
@@ -25,7 +25,7 @@ The code uses Zod 4, which the repository already installs. It uses `.describe()
    })
    ```
 
-   `constraints: { unique: true }` declares that no two projects share a slug. The [constraint schemas](../../reference/models.md#constraint-schemas) list every constraint.
+   `constraints` in `.meta()` declares a rule about records: here, that no two projects share a slug. Nothing in Hedra enforces it yet, so your route checks it, as chapter 2's route checks `tenants.has`. The [constraint schemas](../../reference/models.md#constraint-schemas) list every constraint.
 
 2. Derive the type from the schema, with the same name:
 
@@ -33,9 +33,7 @@ The code uses Zod 4, which the repository already installs. It uses `.describe()
    export type Project = z.infer<typeof Project>
    ```
 
-3. Don't add `.refine` to the model if you need variants. Zod's `.omit`, `.pick` and `.partial` throw on an object schema that has one. Put a check that compares two fields in a function your route calls, as the tutorial does with `tenantDomainValidator`.
-
-4. Derive the variant for request bodies from the model, as chapter 2 derived `NewTenant`:
+3. Derive the schema for request bodies from the model, as chapter 2 derived `NewTenant`. Don't add `.refine` to `Project` first: Zod's `.omit` throws on an object schema that has one. Put a check that compares two fields in a function your route calls.
 
    ```ts
    export const NewProject = Project.omit({ id: true, createdAt: true, updatedAt: true })
@@ -81,6 +79,6 @@ Bun prints the constraints, then the project. Your `id` differs:
 }
 ```
 
-A misspelt constraint, such as `uniqe`, throws with `Unrecognized key: "uniqe"`. A slug with a space, or a timestamp without `Z`, throws a `ZodError`. Delete `project.ts` when you're done.
+Delete `project.ts` when you're done.
 
 Next: [Models reference](../../reference/models.md)

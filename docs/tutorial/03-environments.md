@@ -28,7 +28,7 @@ hedra.post('/tenants', async (context) => {
 
   const { tenantDomain } = input.data
   if (!tenantDomainValidator(tenantDomain, deploymentDomain, reservedDomains)) {
-    return context.json({ errors: ['Invalid tenant domain'] }, 400)
+    return context.json({ errors: ['Tenant domain is not available in this deployment'] }, 400)
   }
   if (tenants.has(tenantDomain)) {
     return context.json({ errors: ['Tenant domain already exists'] }, 409)
@@ -57,7 +57,7 @@ hedra.post('/environments', async (context) => {
     return context.json({ errors: ['Unknown tenant domain'] }, 404)
   }
   if (!environmentDomainValidator(environmentDomain, tenantDomain)) {
-    return context.json({ errors: ['Invalid environment domain'] }, 400)
+    return context.json({ errors: ['Environment domain is not under its tenant domain'] }, 400)
   }
   if (environments.has(environmentDomain)) {
     return context.json({ errors: ['Environment domain already exists'] }, 409)
@@ -76,7 +76,7 @@ export default hedra
 The environment routes follow the tenant routes, with two differences:
 
 - The request names its tenant by `tenantDomain`, and the app refuses a tenant it doesn't have.
-- `environmentDomainValidator` checks that `environmentDomain` is one label under that tenant's domain.
+- `environmentDomainValidator` checks that `environmentDomain` is one label under that tenant's domain. When it fails, the route answers `Environment domain is not under its tenant domain`.
 
 ## Check your work
 
@@ -118,7 +118,7 @@ curl -w '\n%{http_code}\n' -X POST http://localhost:3000/environments \
 ```
 
 ```text
-{"errors":["Invalid environment domain"]}
+{"errors":["Environment domain is not under its tenant domain"]}
 400
 ```
 
@@ -140,6 +140,8 @@ Stop the app with Ctrl+C.
 ## What you learned
 
 An **environment** is the smallest separation inside a tenant. It is usually `dev`, `test` or `prod`, and it can also be a brand or a use case. Its **environment domain** is one label under its tenant's domain, and the record keeps that tenant domain too.
+
+An environment isn't the `HEDRA_SERVER_ENV` setting from chapter 1. That setting describes how the app itself runs, and one app can hold tenants with any number of environments.
 
 `Environment` extends `Resource`, like `Tenant`. Its model checks that both fields are domains. `environmentDomainValidator` checks that one sits under the other. `NewEnvironment` comes from `Environment.omit`, the same way `NewTenant` came from `Tenant`.
 

@@ -25,7 +25,9 @@ hedra.get('/', (context) => context.text('Hello Hedra!'))
 export default hedra
 ```
 
-`#hedra.ts` is the file `src/hedra.ts`, which exports everything Hedra offers. The `#` is an import alias that the repository's `package.json` defines. This tutorial stays inside the repository, so every example imports from `#hedra.ts`.
+`#hedra.ts` is the file `src/hedra.ts`, which exports everything Hedra offers. The `#` is an import alias that the repository's `package.json` defines. Hedra isn't published as a package yet, so every example stays inside the repository and imports from `#hedra.ts`.
+
+`examples/01-helloworld.ts` holds the same app. Hedra's own tests run it, so leave it as it is.
 
 ## Run it
 
@@ -53,7 +55,15 @@ See src/server/config/categories/ for defaults and descriptions.
 Started development server: http://localhost:3000
 ```
 
-Leave the app running.
+The line about `src/server/config/categories/` points into Hedra's source. The [configuration reference](../reference/configuration.md) describes the same settings.
+
+If another program already uses port 3000, set the port as you start the app:
+
+```sh
+HEDRA_SERVER_PORT=4000 bun run examples/tutorial/01-hello-hedra.ts
+```
+
+Then use that port in the requests below. Leave the app running.
 
 ## Check your work
 
@@ -77,11 +87,13 @@ curl http://localhost:3000/health
 {"ok":true}
 ```
 
-The first terminal shows a log line for that request. Your `time` and `instanceId` differ:
+The first terminal shows a log line for the health check. Your `time` and `instanceId` differ:
 
 ```json
 {"level":30,"time":1793180584949,"instanceId":"23ffb6a8-7175-437a-9682-ce7c2d757ba3","msg":"health check"}
 ```
+
+`level` 30 means `info`. `time` is in milliseconds since 1970, and `instanceId` is a new ID each time the app starts. This is the only line you see: Hedra reads `HEDRA_SERVER_HTTP_LOGGING`, but doesn't log other requests yet.
 
 Stop the app with Ctrl+C.
 
@@ -89,6 +101,6 @@ Stop the app with Ctrl+C.
 
 `new Hedra()` creates a Hedra **app**. It reads its settings from `HEDRA_*` environment variables, prints them, and adds `GET /health`. It also has a logger that writes JSON lines. A Hedra app is a [Hono](https://hono.dev) app, so `hedra.get` adds a route the way it does in Hono.
 
-Exporting the app as the module's default lets Bun serve it. The port comes from `HEDRA_SERVER_PORT`. The [configuration reference](../reference/configuration.md) lists every setting.
+Exporting the app as the module's default lets Bun serve it, on the port from `HEDRA_SERVER_PORT`.
 
 Next: [2. Accept tenants](02-tenants.md)

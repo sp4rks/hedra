@@ -7,7 +7,7 @@ Every Hedra term, with the chapter that introduces it.
 | App | An instance of `Hedra`: a Hono app with Hedra's settings, a JSON logger and a health check | [1. Hello Hedra](../tutorial/01-hello-hedra.md) |
 | Deployment | Everything one Hedra app serves under one root domain | [2. Accept tenants](../tutorial/02-tenants.md) |
 | Deployment domain | The deployment's root domain, set by `HEDRA_DEPLOYMENT_DOMAIN` | [2. Accept tenants](../tutorial/02-tenants.md) |
-| Environment | The smallest separation inside a tenant, such as `dev`, `prod` or a brand | [3. Add environments](../tutorial/03-environments.md) |
+| Environment | The smallest separation inside a tenant, such as `dev`, `prod` or a brand. Unrelated to `HEDRA_SERVER_ENV` | [3. Add environments](../tutorial/03-environments.md) |
 | Environment domain | One label under the tenant domain, such as `dev.acme.hedra.local` | [3. Add environments](../tutorial/03-environments.md) |
 | Label | One dot-separated part of a domain. `acme.hedra.local` has three | [2. Accept tenants](../tutorial/02-tenants.md) |
 | Model | A Zod schema and the TypeScript type of the same name | [2. Accept tenants](../tutorial/02-tenants.md) |
@@ -15,3 +15,4 @@ Every Hedra term, with the chapter that introduces it.
 | Resource | The base model with `id`, `name`, `description`, `createdAt` and `updatedAt` | [2. Accept tenants](../tutorial/02-tenants.md) |
 | Tenant | A customer organisation in the deployment | [2. Accept tenants](../tutorial/02-tenants.md) |
 | Tenant domain | One label under the deployment domain, such as `acme.hedra.local` | [2. Accept tenants](../tutorial/02-tenants.md) |
+| Validator | A function that returns `true` or `false` for a domain's place, such as `tenantDomainValidator` | [2. Accept tenants](../tutorial/02-tenants.md) |
