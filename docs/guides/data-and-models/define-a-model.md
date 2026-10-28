@@ -6,12 +6,12 @@ Hedra isn't published as a package yet, so this guide works inside the repositor
 
 ## Steps
 
-1. Extend [`Resource`](../../reference/models.md#resource) with your fields. Give each field a description and an example:
+1. Extend [`Resource`](../../reference/models.md#resource) with your fields. Give each field a description and an example, as Hedra's own models do. Zod keeps them on the schema, and `z.toJSONSchema` includes them in the JSON Schema it produces:
 
    ```ts
    import { z } from 'zod'
 
-   import { RecordFieldConstraints, Resource } from '#hedra.ts'
+   import { Resource } from '#hedra.ts'
 
    export const Project = Resource.extend({
      slug: z.string()

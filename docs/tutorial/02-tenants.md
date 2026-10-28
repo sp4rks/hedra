@@ -172,6 +172,6 @@ A **tenant** is a customer organisation in the deployment. Its **tenant domain**
 
 `tenantDomainValidator` is a **validator**: a function that returns `true` or `false`. It checks that a tenant domain belongs to this deployment, using the domains you pass it.
 
-`Tenant` declares `tenantDomain` unique. That declaration is a **constraint**: it states a rule about records, and Hedra doesn't enforce it yet. The route enforces it itself, with `tenants.has`.
+Inside Hedra, the `Tenant` model marks `tenantDomain` as unique. That mark is a **constraint**: it states a rule about records, and Hedra doesn't enforce it yet. Your route enforces it itself, with `tenants.has`. The [models reference](../reference/models.md#constraint-schemas) lists the constraints each model declares.
 
 Next: [3. Add environments](03-environments.md)

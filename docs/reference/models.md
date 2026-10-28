@@ -8,6 +8,8 @@ import { Deployment, Domain, Environment, Resource, Tenant } from '#hedra.ts'
 
 Each model is a Zod schema and a TypeScript type with the same name. A failed `parse` throws a `ZodError`, and `safeParse` returns its issues.
 
+Every field carries a description and an example in its metadata, and timestamps also carry `format: 'date-time'`. `z.toJSONSchema` includes them in the JSON Schema it produces. Nothing else in Hedra reads them yet.
+
 ## Resource
 
 The base model. `Tenant` and `Environment` extend it.
