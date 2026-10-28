@@ -2,9 +2,9 @@
 
 Your app accepts tenants. By the end of this chapter, each tenant can have its own environments, such as `dev` and `prod`.
 
-## Add the environment routes
+## Read the environment routes
 
-The app for this chapter is `examples/tutorial/03-environments.ts`. It keeps chapter 2's code and adds `GET /environments` and `POST /environments`:
+The app for this chapter is `examples/tutorial/03-environments.ts`. Two parts are new. The import line adds `Environment` and `environmentDomainValidator`. Everything from `const NewEnvironment` to the final `export` adds `GET /environments` and `POST /environments`. The rest is chapter 2's code:
 
 ```ts
 import { Environment, environmentDomainValidator, Hedra, Tenant, tenantDomainValidator } from '#hedra.ts'
@@ -75,7 +75,7 @@ export default hedra
 
 The environment routes follow the tenant routes, with two differences:
 
-- The request names the tenant by its `tenantDomain`, and the app refuses a tenant it doesn't have.
+- The request names its tenant by `tenantDomain`, and the app refuses a tenant it doesn't have.
 - `environmentDomainValidator` checks that `environmentDomain` is one label under that tenant's domain.
 
 ## Check your work
@@ -86,50 +86,53 @@ Start the app:
 bun run examples/tutorial/03-environments.ts
 ```
 
-The app keeps tenants in memory, so add Acme again in a second terminal:
+The app keeps tenants in memory, so in a second terminal add Acme again:
 
 ```sh
-curl -X POST http://localhost:3000/tenants \
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/tenants \
   -H 'content-type: application/json' \
   -d '{"name":"Acme Widgets","tenantDomain":"acme.hedra.local"}'
 ```
 
-Give Acme a development environment:
+The app returns the tenant with status 201, as in chapter 2. Give Acme a development environment:
 
 ```sh
-curl -X POST http://localhost:3000/environments \
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/environments \
   -H 'content-type: application/json' \
   -d '{"name":"Development","environmentDomain":"dev.acme.hedra.local","tenantDomain":"acme.hedra.local"}'
 ```
 
-The app returns the environment. Your `id` and timestamps differ:
+The app returns the environment and status 201. Your `id` and timestamps differ:
 
-```json
+```text
 {"id":"0b6f2d4e-3c8a-4e9b-8d1f-6a7b8c9d0e1f","name":"Development","createdAt":"2026-10-28T09:35:00.000Z","updatedAt":"2026-10-28T09:35:00.000Z","environmentDomain":"dev.acme.hedra.local","tenantDomain":"acme.hedra.local"}
+201
 ```
 
 Try an environment domain that sits under a different tenant:
 
 ```sh
-curl -X POST http://localhost:3000/environments \
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/environments \
   -H 'content-type: application/json' \
   -d '{"name":"Development","environmentDomain":"dev.other.hedra.local","tenantDomain":"acme.hedra.local"}'
 ```
 
-```json
+```text
 {"errors":["Invalid environment domain"]}
+400
 ```
 
 Try a tenant the app doesn't have:
 
 ```sh
-curl -X POST http://localhost:3000/environments \
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/environments \
   -H 'content-type: application/json' \
   -d '{"name":"Development","environmentDomain":"dev.globex.hedra.local","tenantDomain":"globex.hedra.local"}'
 ```
 
-```json
+```text
 {"errors":["Unknown tenant domain"]}
+404
 ```
 
 Stop the app with Ctrl+C.
@@ -138,6 +141,6 @@ Stop the app with Ctrl+C.
 
 An **environment** is the smallest separation inside a tenant. It is usually `dev`, `test` or `prod`, and it can also be a brand or a use case. Its **environment domain** is one label under its tenant's domain, and the record keeps that tenant domain too.
 
-`Environment` extends `Resource`, like `Tenant`. Its schema checks that both fields are domains. `environmentDomainValidator` checks that one sits under the other. Because the schema has no check that spans fields, `Environment.omit` works and gives you `NewEnvironment`.
+`Environment` extends `Resource`, like `Tenant`. Its model checks that both fields are domains. `environmentDomainValidator` checks that one sits under the other. `NewEnvironment` comes from `Environment.omit`, the same way `NewTenant` came from `Tenant`.
 
-Next: [How to define a model](../guides/data-and-models/define-a-model.md)
+Next: [Tenancy](../concepts/tenancy.md)

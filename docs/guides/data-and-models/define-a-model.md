@@ -2,16 +2,16 @@
 
 Assumes you've finished [Tutorial 2: Accept tenants](../../tutorial/02-tenants.md). Use this guide when your app stores its own kind of record, such as a project, and you want it to have the same base fields as a tenant.
 
-Your app needs `zod` as a dependency. Hedra's models are Zod schemas.
+The code uses Zod 4, which the repository already installs. It uses `.describe()`, `.meta()` and `z.infer`, which the [Zod docs](https://zod.dev) cover. Put each snippet in one file in the repository root, such as `project.ts`, in the order shown.
 
 ## Steps
 
-1. Extend [`Resource`](../../reference/glossary.md) with your fields, and give each field a description and an example:
+1. Extend [`Resource`](../../reference/models.md#resource) with your fields. Give each field a description and an example. They stay on the schema, where `z.toJSONSchema` can read them.
 
    ```ts
    import { z } from 'zod'
 
-   import { Resource } from 'hedra'
+   import { RecordFieldConstraints, Resource } from '#hedra.ts'
 
    export const Project = Resource.extend({
      slug: z.string()
@@ -25,7 +25,7 @@ Your app needs `zod` as a dependency. Hedra's models are Zod schemas.
    })
    ```
 
-   `constraints` in `.meta()` declares how records relate. `unique: true` says no two projects share a slug. `indexed: true` says the field is often searched. Hedra records these. It doesn't enforce them for you.
+   `constraints: { unique: true }` declares that no two projects share a slug. The [constraint schemas](../../reference/models.md#constraint-schemas) list every constraint.
 
 2. Derive the type from the schema, with the same name:
 
@@ -33,39 +33,54 @@ Your app needs `zod` as a dependency. Hedra's models are Zod schemas.
    export type Project = z.infer<typeof Project>
    ```
 
-3. Derive the request variant from the model instead of writing a second schema:
+3. Don't add `.refine` to the model if you need variants. Zod's `.omit`, `.pick` and `.partial` throw on an object schema that has one. Put a check that compares two fields in a function your route calls, as the tutorial does with `tenantDomainValidator`.
+
+4. Derive the variant for request bodies from the model, as chapter 2 derived `NewTenant`:
 
    ```ts
    export const NewProject = Project.omit({ id: true, createdAt: true, updatedAt: true })
    export type NewProject = z.infer<typeof NewProject>
    ```
 
-   Keep checks that compare two fields out of the schema, in a function the route calls. Zod's `.omit`, `.pick` and `.partial` throw on an object that has a `.refine` check.
-
 ## Verify
 
-Check that the constraints you declared are ones Hedra knows:
+Add these lines to the end of `project.ts`. `RecordFieldConstraints` is the schema for a field's constraints, so parsing with it catches a misspelt key:
 
 ```ts
-import { RecordFieldConstraints } from 'hedra'
+console.log(RecordFieldConstraints.parse(Project.shape.slug.meta()?.constraints))
 
-RecordFieldConstraints.parse(Project.shape.slug.meta()?.constraints)
+console.log(
+  Project.parse({
+    id: crypto.randomUUID(),
+    name: 'Website redesign',
+    slug: 'website-redesign',
+    createdAt: '2026-10-28T09:30:00.000Z',
+    updatedAt: '2026-10-28T09:30:00.000Z',
+  }),
+)
 ```
 
-A misspelt key fails with its name, such as `Unrecognized key: "uniqe"`.
+Run it:
 
-Then parse a record:
-
-```ts
-Project.parse({
-  id: crypto.randomUUID(),
-  name: 'Website redesign',
-  slug: 'website-redesign',
-  createdAt: '2026-10-28T09:30:00.000Z',
-  updatedAt: '2026-10-28T09:30:00.000Z',
-})
+```sh
+bun run project.ts
 ```
 
-It returns the record. A slug with a space, or a timestamp without `Z`, throws a `ZodError`.
+Bun prints the constraints, then the project. Your `id` differs:
 
-Related: [Tenancy](../../concepts/tenancy.md), [Models reference](../../reference/models.md)
+```text
+{
+  unique: true,
+}
+{
+  id: "8d3f0b2a-6c1e-4a7b-9e2d-5f4a3b2c1d0e",
+  name: "Website redesign",
+  slug: "website-redesign",
+  createdAt: "2026-10-28T09:30:00.000Z",
+  updatedAt: "2026-10-28T09:30:00.000Z",
+}
+```
+
+A misspelt constraint, such as `uniqe`, throws with `Unrecognized key: "uniqe"`. A slug with a space, or a timestamp without `Z`, throws a `ZodError`. Delete `project.ts` when you're done.
+
+Next: [Models reference](../../reference/models.md)

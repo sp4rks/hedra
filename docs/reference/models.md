@@ -24,7 +24,13 @@ A timestamp with a numeric offset, such as `+10:00`, or with no zone at all, fai
 
 ## Domain
 
-A host name. It is trimmed and lowercased, then must match Zod's domain pattern. `localhost`, a trailing dot and empty labels fail.
+A host name. It is trimmed and lowercased, then must match Zod's domain pattern, `z.regexes.domain`:
+
+- at least two labels, and at most 253 characters in all;
+- each label 1–63 letters, digits or hyphens, not starting or ending with a hyphen;
+- a last label of 2–63 letters.
+
+`localhost`, a trailing dot and empty labels fail.
 
 ## Deployment
 
@@ -61,15 +67,15 @@ Each validator returns a boolean and never throws. It runs every domain argument
 
 | Name | Arguments | Returns `true` when |
 | --- | --- | --- |
-| `deploymentDomainValidator` | `value`, `deploymentDomain` | `value` is `deploymentDomain` |
-| `tenantDomainValidator` | `value`, `deploymentDomain`, `reservedDomains` | `value` is one label, a dot, then `deploymentDomain`, and isn't in `reservedDomains` |
-| `environmentDomainValidator` | `value`, `tenantDomain` | `value` is one label, a dot, then `tenantDomain` |
+| `deploymentDomainValidator` | `value: string`, `deploymentDomain: string` | `value` is `deploymentDomain` |
+| `tenantDomainValidator` | `value: string`, `deploymentDomain: string`, `reservedDomains: string[]` | `value` is one label, a dot, then `deploymentDomain`, and isn't in `reservedDomains` |
+| `environmentDomainValidator` | `value: string`, `tenantDomain: string` | `value` is one label, a dot, then `tenantDomain` |
 
 With `platformname.com` as the deployment domain, `tenantDomainValidator` returns `false` for `platformname.com`, `customerplatformname.com` and `dev.customername.platformname.com`.
 
 ## Constraint schemas
 
-`constraints` in a field's or object's `.meta()` declares how records relate. Hedra records constraints. It doesn't build indexes or enforce them.
+`constraints` in a field's or object's `.meta()` declares how records relate. Constraints are stored in the schema's metadata. Nothing in Hedra reads them yet, so nothing builds an index or enforces them.
 
 `RecordFieldConstraints` describes one field:
 
@@ -92,4 +98,4 @@ Both schemas are strict. An unknown key fails with `Unrecognized key: "<key>"`.
 | `Environment.environmentDomain` | `unique` |
 | `Environment.tenantDomain` | `indexed` |
 
-Related: [Tenancy](../concepts/tenancy.md), [Glossary](glossary.md)
+Related: [Configuration reference](configuration.md), [Tenancy](../concepts/tenancy.md), [Glossary](glossary.md)

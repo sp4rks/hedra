@@ -1,10 +1,10 @@
 # Hedra docs
 
-Hedra is a framework for apps that serve many customers from one deployment. Start with the tutorial, then use the topics below when you need them.
+Hedra is a framework for apps that serve many customers from one deployment. Start with the tutorial, then read the topics below in order, or go to the one you need.
 
 ## Tutorial
 
-Build one app, a chapter at a time.
+Build one app across three chapters. Each chapter's file adds to the one before it.
 
 1. [Hello Hedra](tutorial/01-hello-hedra.md)
 2. [Accept tenants](tutorial/02-tenants.md)
@@ -21,6 +21,7 @@ Build one app, a chapter at a time.
 ## Reference
 
 - [Models](reference/models.md)
+- [Configuration](reference/configuration.md)
 - [Glossary](reference/glossary.md)
 
 Contributor decisions are in [adr/](adr/).

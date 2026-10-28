@@ -2,19 +2,22 @@
 
 Your app answers on port 3000. By the end of this chapter, it accepts customers over HTTP and refuses domains that don't belong to it.
 
-## Find the deployment's domains
+## Find the app's domains
 
-Run the app from chapter 1 again and read the first three rows of the settings table:
+The first rows of the settings table from chapter 1 are domains:
 
 ```text
+Environment Variable                               Value                                              Source
 HEDRA_DEPLOYMENT_DOMAIN                            hedra.local                                        default
 HEDRA_DEPLOYMENT_API_DOMAIN                        deployment.hedra.local                             default
 HEDRA_DEPLOYMENT_DOCS_DOMAIN                       docs.hedra.local                                   default
 ```
 
-Every customer of this app gets a domain one label under `hedra.local`, such as `acme.hedra.local`. The other two hosts already belong to the app, so no customer can have them. Stop the app.
+`hedra.local` is the root that everything else sits under. `deployment.hedra.local` is the host for the app's own API, and `docs.hedra.local` is the host for its docs.
 
-## Add the tenant routes
+A domain is made of labels, the parts between the dots. `acme.hedra.local` has three: `acme`, `hedra` and `local`. Each customer gets a domain exactly one label under the root, such as `acme.hedra.local`. The app already uses its API and docs hosts, so no customer can have them.
+
+## Read the tenant routes
 
 The app for this chapter is `examples/tutorial/02-tenants.ts`. It keeps chapter 1's route and adds `GET /tenants` and `POST /tenants`:
 
@@ -58,11 +61,15 @@ export default hedra
 
 What the new code does:
 
-- `hedra.config` holds the settings from the table. Its values are typed as possibly missing, so each falls back to an empty string, which no domain matches.
-- `NewTenant` is `Tenant` without `id`, `createdAt` and `updatedAt`, because the app sets those. The request body only has to carry a name and a domain.
-- `NewTenant.safeParse` checks the request body's shape. It trims the name and lowercases the domain.
-- `tenantDomainValidator` checks that the domain is one label under `hedra.local`, and is not one of the app's own hosts.
+- `hedra.config` holds the settings from the table. `hedra.config.deploymentDomain` is `HEDRA_DEPLOYMENT_DOMAIN`, `deploymentApiDomain` is `HEDRA_DEPLOYMENT_API_DOMAIN`, and `deploymentDocsDomain` is `HEDRA_DEPLOYMENT_DOCS_DOMAIN`.
+- `hedra.config` is typed as a record of strings, so TypeScript can't know a key is there. Each value falls back to an empty string to satisfy the type. With the settings above, every value is set.
+- `Tenant` is a schema from [Zod](https://zod.dev), the validation library Hedra uses. `.omit`, `.safeParse` and `.parse` are Zod methods.
+- `NewTenant` is `Tenant` without `id`, `createdAt` and `updatedAt`, because the app sets those. A request body only has to carry a name and a domain.
+- `NewTenant.safeParse` checks the request body. It trims the name, lowercases the domain, and rejects a value that isn't a domain.
+- `tenantDomainValidator` checks that the domain is one label under `hedra.local`, and isn't the API or docs host.
 - `tenants` keeps each tenant in memory, keyed by its domain, until the app stops.
+
+The tenant domain is data. You still send every request to `localhost:3000`, because Hedra doesn't route requests by domain yet.
 
 ## Check your work
 
@@ -72,45 +79,59 @@ Start the app:
 bun run examples/tutorial/02-tenants.ts
 ```
 
-In a second terminal, add a tenant. The domain has a capital letter on purpose:
+In a second terminal, add a tenant. The domain has a capital letter on purpose. `-w` prints the HTTP status after the body:
 
 ```sh
-curl -X POST http://localhost:3000/tenants \
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/tenants \
   -H 'content-type: application/json' \
   -d '{"name":"Acme Widgets","tenantDomain":"Acme.hedra.local"}'
 ```
 
-The app returns the tenant with the domain in lowercase. Your `id` and timestamps differ:
+The app returns the tenant, with the domain in lowercase, and status 201. Your `id` and timestamps differ:
 
-```json
+```text
 {"id":"5c1e3c2a-8f0e-4c1b-9f7a-2d3e4f5a6b7c","name":"Acme Widgets","createdAt":"2026-10-28T09:30:00.000Z","updatedAt":"2026-10-28T09:30:00.000Z","tenantDomain":"acme.hedra.local"}
+201
+```
+
+Add the same tenant again:
+
+```sh
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/tenants \
+  -H 'content-type: application/json' \
+  -d '{"name":"Acme Widgets","tenantDomain":"acme.hedra.local"}'
+```
+
+```text
+{"errors":["Tenant domain already exists"]}
+409
 ```
 
 Try to take the docs host:
 
 ```sh
-curl -X POST http://localhost:3000/tenants \
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/tenants \
   -H 'content-type: application/json' \
   -d '{"name":"Docs","tenantDomain":"docs.hedra.local"}'
 ```
 
-```json
+```text
 {"errors":["Invalid tenant domain"]}
+400
 ```
 
-Send a value that isn't a domain:
+Try a domain two labels under the root:
 
 ```sh
-curl -X POST http://localhost:3000/tenants \
+curl -w '\n%{http_code}\n' -X POST http://localhost:3000/tenants \
   -H 'content-type: application/json' \
-  -d '{"name":"Broken","tenantDomain":"not a domain"}'
+  -d '{"name":"Too deep","tenantDomain":"dev.acme.hedra.local"}'
 ```
 
-```json
+```text
 {"errors":["Invalid tenant domain"]}
+400
 ```
-
-The first failure comes from `tenantDomainValidator`. The second comes from `NewTenant.safeParse`, which rejects the value before the validator runs.
 
 List the tenants:
 
@@ -118,14 +139,20 @@ List the tenants:
 curl http://localhost:3000/tenants
 ```
 
-The list holds the one tenant you added. Stop the app with Ctrl+C.
+The list holds the one tenant you added:
+
+```text
+[{"id":"5c1e3c2a-8f0e-4c1b-9f7a-2d3e4f5a6b7c","name":"Acme Widgets","createdAt":"2026-10-28T09:30:00.000Z","updatedAt":"2026-10-28T09:30:00.000Z","tenantDomain":"acme.hedra.local"}]
+```
+
+Stop the app with Ctrl+C.
 
 ## What you learned
 
 The app serves one **deployment**: everything it hosts under one root domain. That root is the **deployment domain**, set by `HEDRA_DEPLOYMENT_DOMAIN`.
 
-A **tenant** is a customer organisation in the deployment. Its **tenant domain** is one label under the deployment domain. Hosts the deployment already serves, such as its API and docs hosts, are **reserved domains**, and no tenant can have one.
+A **tenant** is a customer organisation in the deployment. Its **tenant domain** is one **label** under the deployment domain. Hosts the deployment already serves, such as its API and docs hosts, are **reserved domains**, and no tenant can have one.
 
-`Tenant` is a **model**: a Zod schema and a TypeScript type with the same name. It extends **`Resource`**, the base model that gives every record an `id`, `name`, optional `description`, `createdAt` and `updatedAt`. A model checks a value's shape. Whether a tenant domain belongs to this deployment depends on the app's settings, so `tenantDomainValidator` checks it with the domains you pass.
+`Tenant` is a **model**: a Zod schema and a TypeScript type with the same name. It extends **`Resource`**, the base model that gives every record an `id`, `name`, optional `description`, `createdAt` and `updatedAt`. The model checks that a tenant domain is a domain. `tenantDomainValidator` checks that it belongs to this deployment, using the domains you pass it.
 
 Next: [3. Add environments](03-environments.md)
