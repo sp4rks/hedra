@@ -1,8 +1,8 @@
 # How to define a model
 
-Assumes you've finished [Tutorial 2: Accept tenants](../../tutorial/02-tenants.md). Use this guide when your app stores its own kind of record, such as a project, and you want it to have the same base fields as a tenant.
+Assumes you've finished [Tutorial 3: Add environments](../../tutorial/03-environments.md). [Tenancy](../../concepts/tenancy.md) explains why models leave checks across fields to functions. Use this guide when your app stores its own kind of record, such as a project, and you want it to have the same base fields as a tenant.
 
-Hedra isn't published as a package yet, so this guide works inside the repository, like the tutorial. Put each snippet in one file in the repository root, such as `project.ts`, in the order shown. The code uses Zod 4, which the repository already installs, and its `.describe()`, `.meta()` and `z.infer`. The [Zod docs](https://zod.dev) cover them.
+Hedra isn't published as a package yet, so this guide works inside the repository, like the tutorial. Put each snippet in one file in the repository root, such as `project.ts`, in the order shown. The code uses Zod 4, which the repository already installs, and its `.describe()`, `.meta()`, `.refine` and `z.infer`. The [Zod docs](https://zod.dev) cover them.
 
 ## Steps
 
@@ -73,9 +73,9 @@ Bun prints the constraints, then the project. Your `id` differs:
 {
   id: "8d3f0b2a-6c1e-4a7b-9e2d-5f4a3b2c1d0e",
   name: "Website redesign",
-  slug: "website-redesign",
   createdAt: "2026-10-28T09:30:00.000Z",
   updatedAt: "2026-10-28T09:30:00.000Z",
+  slug: "website-redesign",
 }
 ```
 

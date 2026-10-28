@@ -38,7 +38,7 @@ A host name. It is trimmed and lowercased, then must match Zod's domain pattern,
 | --- | --- | --- | --- |
 | `deploymentDomain` | `Domain` | none, required | The deployment's root domain, the same value as `HEDRA_DEPLOYMENT_DOMAIN` |
 
-`Deployment` describes the deployment itself, and doesn't extend `Resource`. To check a value against the configured deployment domain, call `deploymentDomainValidator`.
+`Deployment` describes the deployment itself, and doesn't extend `Resource`. Nothing in Hedra uses it yet. To check a value against the configured deployment domain, call `deploymentDomainValidator`.
 
 ## Tenant
 

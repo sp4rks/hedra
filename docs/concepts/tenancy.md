@@ -18,7 +18,7 @@ Hedra has three levels, and each one is identified by a domain. With the tutoria
 
 A live deployment follows the same pattern under its own root. With `platformname.com` as the root, a customer is `customername.platformname.com`, and its development environment is `dev.customername.platformname.com`.
 
-The deployment keeps its API host, `deployment.hedra.local` in the tutorial, and its docs host for itself. They are [reserved domains](../reference/glossary.md), and a tenant can't claim them. `Deployment`, a model with only `deploymentDomain`, describes the root itself.
+The deployment keeps its API host, `deployment.hedra.local` in the tutorial, and its docs host for itself. They are [reserved domains](../reference/glossary.md), and a tenant can't claim them.
 
 Domains are trimmed and lowercased wherever Hedra reads them, because host names ignore case. These domains are how a request will be matched to its tenant and environment. Routing requests by domain isn't part of Hedra yet.
 
@@ -26,9 +26,9 @@ Hedra splits each domain check in two. The model checks shape: a tenant domain i
 
 ## Trade-offs
 
-- **Shape and place are separate.** A model loads without the app's settings, and schemas derived from it keep working. `NewTenant` is one: Zod's `.omit` built it, and `.pick` and `.partial` build others. All three throw on a schema that has a `.refine` check spanning two fields, which an environment's place check would need. The cost is that a route has to call the validator. Parsing alone accepts a tenant domain from another deployment.
+- **Shape and place are separate.** A model loads without the app's settings, and schemas derived from it keep working. `NewTenant` is one, built with Zod's `.omit`. Zod's `.refine` adds a custom check to a schema, and a check that compares two fields is the only way a model could check an environment's place. `.omit` throws on a schema with such a check, and so do Zod's `.pick` and `.partial`, which build schemas from some fields or make every field optional. The cost of keeping place out is that a route has to call the validator. Parsing alone accepts a tenant domain from another deployment.
 - **The root comes from settings.** Hedra doesn't work out the root by removing a label from a host. A label count can't tell `hedra.local` from `hedra.co.uk`, and the setting already says which is meant.
-- **The caller lists the reserved domains.** Hedra keeps no fixed list of names like `api` or `docs`. Only the deployment knows which hosts it serves, so it passes every one.
+- **The caller lists the reserved domains.** Hedra keeps no fixed list of names like `api` or `docs`. Only the deployment knows which hosts it keeps for itself, so it passes every one.
 - **Exactly one label per level.** A tenant can't nest organisations inside its domain, and an environment can't have sub-environments.
 
 ## What this means for you

@@ -63,7 +63,7 @@ If another program already uses port 3000, set the port as you start the app:
 HEDRA_SERVER_PORT=4000 bun run examples/tutorial/01-hello-hedra.ts
 ```
 
-Then use that port in the requests below. Leave the app running.
+Then use that port in the requests below. Start the apps in later chapters the same way, and use your port wherever they say 3000. Leave the app running.
 
 ## Check your work
 
