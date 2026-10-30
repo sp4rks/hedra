@@ -45,8 +45,8 @@ tests/          mirrors src/
 
 - Routes parse requests and shape responses, controllers decide, datastores persist. Controllers work without HTTP.
 - Name every file for what it holds, never `index.ts`, so open tabs stay distinguishable. A module that grows into its own directory names its main file after the directory, as in `tenancy/tenancy.ts`.
-- Expose the public interface through deliberate exports from `src/hedra.ts`, the package entry point; everything else is internal. Write no barrel files that only re-export.
-- Import Hedra modules through a `#` alias from `src/` and from `tests/`, including within the same area. A `#` path maps to `src/`. Config is `#config` and `#config/*`. Errors are `#errors`.
+- Expose the public interface through deliberate exports from `src/hedra.ts`, the package entry point. `src/models/models.ts` re-exports the model schemas and their validators, and `src/hedra.ts` exports those names for apps. It is the only barrel. Write no other file that only re-exports.
+- Import Hedra modules through a `#` alias from `src/` and from `tests/`, including within the same area. A `#` path maps to `src/`. Config is `#config` and `#config/*`. Errors are `#errors`. Models are `#models`, the barrel at `src/models/models.ts`. A file inside `src/models/` imports a sibling by its path, such as `#models/resource.ts`, so it does not import the barrel that exports it. Apps import the public models from the package entry: `import { Hedra, Resource, Tenant } from 'hedra'`.
 - Keep files cohesive, around 100–300 lines. Extend an established area before adding a new one.
 
 ## Readability
