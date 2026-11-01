@@ -1,6 +1,6 @@
 # Model-driven collection CRUD
 
-Status: implementation and documentation complete. Full checks and independent re-review pass. Awaiting approval to merge into main.
+Status: merged into main with user approval. Full checks and independent re-review pass for the committed feature.
 
 ## Agreed intent
 
@@ -147,7 +147,8 @@ Merge docs into the feature branch, run `bun run check` and the documented examp
 - Independent review found one mutable-transform round-trip bug. The coder added a failing public regression and fixed the comparison to use an independent snapshot in `af61ff8`.
 - At `af61ff8`, `bun run check` passed TypeScript, Biome and all 56 tests. Startup tests ran with local loopback access. The lead inspected the focused change and reran the exact documented CRUD command successfully.
 - The independent reviewer passed the focused regression and reported no remaining actionable findings. The documentation and example passed its newcomer review.
-- The main checkout's existing server edit and untracked examples remain untouched. This verification applies to the feature worktree; integration into main still requires approval.
+- The user approved integration, and the feature was merged into main as `032aedc`. A clean checkout of that merge passed `bun run check`: TypeScript, Biome and all 56 tests. The exact documented CRUD command also passed in the main working copy.
+- The existing local server edit and validator draft were preserved. The working-copy check stops at the draft's unsupported `Resource` import in `examples/03-validators.ts`; that draft is outside the committed feature.
 
 ## Approved test design
 
@@ -242,9 +243,9 @@ Its MongoDB, Deno, generated HTTP routes and tenant wiring are not part of the a
 
 ## Working boundaries
 
-The design notes live on `feature/models-crud` in `.worktrees/models-crud`.
-The main checkout contains existing changes to `src/server/server.ts` and untracked model and validator examples.
-Those changes remain in place while the design is discussed.
+The feature was developed on `feature/models-crud` in `.worktrees/models-crud`, with documentation on a separate branch and worktree, then merged into main after approval.
+Before integration, the main checkout contained an existing change to `src/server/server.ts` and untracked model and validator examples.
+The reviewed model example is now tracked in main; the original server edit and validator draft remain local changes.
 
 The project instructions reference a `README.md` that is absent; `IDEA.md` contains the available design goals.
 There are no existing ADRs or glossary in the starting revision.
