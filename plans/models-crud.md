@@ -1,6 +1,6 @@
 # Model-driven collection CRUD
 
-Status: behaviour, concrete design, documentation fallback and test design approved. Implementation is authorised.
+Status: implementation and documentation complete. Full checks and independent re-review pass. Awaiting approval to merge into main.
 
 ## Agreed intent
 
@@ -139,6 +139,15 @@ The project's named `user-docs` skill is absent from the repository, global skil
 After test-design approval, commit the plan and agreed documentation records, hand implementation to the configured coder in this worktree, and write user docs and the example on a separate `feature/models-crud-docs` worktree touching only `docs/` and `examples/`.
 
 Merge docs into the feature branch, run `bun run check` and the documented examples, and obtain one independent read-only review using the configured reviewer. The coder addresses confirmed findings and reruns affected checks. Request approval before merging the reviewed feature into `main`, as the project requires.
+
+## Verification
+
+- Approved design and tests committed as `05606bb`; source and tests as `5edefbc`; documentation and the model example as `4232b67`.
+- Source and docs were combined in `067ff13`. The lead ran `bun run check` successfully: TypeScript, Biome and all 55 tests passed. The exact documented CRUD command also exited successfully.
+- Independent review found one mutable-transform round-trip bug. The coder added a failing public regression and fixed the comparison to use an independent snapshot in `af61ff8`.
+- At `af61ff8`, `bun run check` passed TypeScript, Biome and all 56 tests. Startup tests ran with local loopback access. The lead inspected the focused change and reran the exact documented CRUD command successfully.
+- The independent reviewer passed the focused regression and reported no remaining actionable findings. The documentation and example passed its newcomer review.
+- The main checkout's existing server edit and untracked examples remain untouched. This verification applies to the feature worktree; integration into main still requires approval.
 
 ## Approved test design
 
