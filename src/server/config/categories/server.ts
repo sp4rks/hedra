@@ -4,6 +4,15 @@ import type { Config } from '#config'
 import { ConfigurationError } from '#errors'
 
 export const serverVariables: Config = {
+  HEDRA_SQLITE_PATH: {
+    name: 'sqlitePath',
+    default: '.runtime/hedra.sqlite',
+    options: 'SQLite database path or :memory:',
+    description: 'The shared collection database location',
+    validate: (value: string | number | boolean) => {
+      z.string().min(1).parse(value)
+    },
+  },
   HEDRA_SERVER_ENV: {
     name: 'serverEnv',
     default: 'dev',
