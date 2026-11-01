@@ -46,7 +46,8 @@ test('loadServerConfig uses Hedra defaults when variables are unset', () => {
   expect(config.serverLogLevel).toBe('info')
   expect(config.serverHttpLogEnabled).toBe('true')
   expect(config.serverRequestTimeout).toBe('30000')
-  expect(config.serverPort).toBe('3000')
+  expect(config.serverListenIp).toBe('0.0.0.0')
+  expect(config.serverListenPort).toBe('3000')
   expect(config.instanceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
 })
 
@@ -54,11 +55,15 @@ test('loadServerConfig prefers a trimmed environment value over the default', ()
   const config = loadServerConfig({
     HEDRA_DEPLOYMENT_DOMAIN: '  example.com  ',
     HEDRA_SERVER_ENV: 'prod',
+    HEDRA_SERVER_LISTEN_IP: ' ::1 ',
+    HEDRA_SERVER_LISTEN_PORT: ' 8080 ',
     HEDRA_SERVER_SILENT_STARTUP: 'true',
   })
 
   expect(config.deploymentDomain).toBe('example.com')
   expect(config.serverEnv).toBe('prod')
+  expect(config.serverListenIp).toBe('::1')
+  expect(config.serverListenPort).toBe('8080')
   expect(config.serverSilentStartup).toBe('true')
   expect(config.deploymentApiDomain).toBe('deployment.hedra.local')
 })
@@ -66,10 +71,14 @@ test('loadServerConfig prefers a trimmed environment value over the default', ()
 test('loadServerConfig treats a blank environment value as unset', () => {
   const config = loadServerConfig({
     HEDRA_SERVER_ENV: '   ',
+    HEDRA_SERVER_LISTEN_IP: '   ',
+    HEDRA_SERVER_LISTEN_PORT: '   ',
     HEDRA_SERVER_SILENT_STARTUP: 'true',
   })
 
   expect(config.serverEnv).toBe('dev')
+  expect(config.serverListenIp).toBe('0.0.0.0')
+  expect(config.serverListenPort).toBe('3000')
 })
 
 test('loadServerConfig rejects an invalid deployment domain', () => {
@@ -125,7 +134,7 @@ test('loadServerConfig rejects a port outside 1 to 65535', () => {
   let error: unknown
   try {
     loadServerConfig({
-      HEDRA_SERVER_PORT: '0',
+      HEDRA_SERVER_LISTEN_PORT: '0',
       HEDRA_SERVER_SILENT_STARTUP: 'true',
     })
   } catch (caught) {
@@ -133,8 +142,27 @@ test('loadServerConfig rejects a port outside 1 to 65535', () => {
   }
 
   expect(error).toMatchObject({
-    detail: 'HEDRA_SERVER_PORT has invalid value: 0',
+    detail: 'HEDRA_SERVER_LISTEN_PORT has invalid value: 0',
   })
+})
+
+test('loadServerConfig rejects an invalid listen IP', () => {
+  for (const value of ['localhost', '256.0.0.1']) {
+    let error: unknown
+    try {
+      loadServerConfig({
+        HEDRA_SERVER_LISTEN_IP: value,
+        HEDRA_SERVER_SILENT_STARTUP: 'true',
+      })
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error).toBeInstanceOf(ConfigurationError)
+    expect(error).toMatchObject({
+      detail: `HEDRA_SERVER_LISTEN_IP has invalid value: ${value}`,
+    })
+  }
 })
 
 test('loadServerConfig reads unset variables from HEDRA_ENV_FILE', async () => {

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { createServer } from 'node:net'
+import { createConnection, createServer } from 'node:net'
 import { join } from 'node:path'
 
 const projectRoot = join(import.meta.dir, '..')
@@ -46,7 +46,8 @@ test('the process entrypoint serves GET /health', async () => {
     cwd: projectRoot,
     env: {
       ...process.env,
-      HEDRA_SERVER_PORT: String(port),
+      HEDRA_SERVER_LISTEN_IP: '127.0.0.1',
+      HEDRA_SERVER_LISTEN_PORT: String(port),
       HEDRA_SERVER_SILENT_STARTUP: 'true',
       HEDRA_SERVER_LOG_LEVEL: 'silent',
     },
@@ -58,6 +59,16 @@ test('the process entrypoint serves GET /health', async () => {
     const response = await waitForHealth(port)
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true })
+
+    const acceptsOtherAddress = await new Promise<boolean>((resolve) => {
+      const socket = createConnection({ port, host: '127.0.0.2' })
+      socket.once('connect', () => {
+        socket.destroy()
+        resolve(true)
+      })
+      socket.once('error', () => resolve(false))
+    })
+    expect(acceptsOtherAddress).toBe(false)
   } finally {
     proc.kill()
     await proc.exited

@@ -77,8 +77,21 @@ export const serverVariables: Config = {
       }
     },
   },
-  HEDRA_SERVER_PORT: {
-    name: 'serverPort',
+  HEDRA_SERVER_LISTEN_IP: {
+    name: 'serverListenIp',
+    default: '0.0.0.0',
+    options: 'IPv4 or IPv6 address',
+    description: 'The IP address the server listens on',
+    validate: (value: string | number | boolean) => {
+      try {
+        z.union([z.ipv4(), z.ipv6()]).parse(value)
+      } catch (_error) {
+        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_LISTEN_IP has invalid value: ${value}`)
+      }
+    },
+  },
+  HEDRA_SERVER_LISTEN_PORT: {
+    name: 'serverListenPort',
     default: 3000,
     options: 'Integer value from 1 to 65535',
     description: 'The port the server listens on',
@@ -86,7 +99,7 @@ export const serverVariables: Config = {
       try {
         z.coerce.number().int().min(1).max(65535).parse(value)
       } catch (_error) {
-        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_PORT has invalid value: ${value}`)
+        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_LISTEN_PORT has invalid value: ${value}`)
       }
     },
   },

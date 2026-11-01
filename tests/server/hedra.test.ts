@@ -45,10 +45,16 @@ test('new Hedra throws an invalid configuration and leaves the process running',
   expect(process.exitCode).toBeUndefined()
 })
 
-test('new Hedra uses the configured port', () => {
-  const app = new Hedra({ ...quiet, HEDRA_SERVER_PORT: '8080' })
+test('new Hedra uses the configured listen port', () => {
+  const app = new Hedra({ ...quiet, HEDRA_SERVER_LISTEN_PORT: '8080' })
 
   expect(app.port).toBe(8080)
+})
+
+test('new Hedra uses the configured listen IP', () => {
+  const app = new Hedra({ ...quiet, HEDRA_SERVER_LISTEN_IP: ' 127.0.0.1 ' })
+
+  expect(app.hostname).toBe('127.0.0.1')
 })
 
 test('new Hedra applies the configured log level', () => {
