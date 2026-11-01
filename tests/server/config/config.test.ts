@@ -81,6 +81,19 @@ test('loadServerConfig treats a blank environment value as unset', () => {
   expect(config.serverListenPort).toBe('3000')
 })
 
+test('SQLite path uses the default when unset or blank', () => {
+  expect(loadServerConfig({ HEDRA_SERVER_SILENT_STARTUP: 'true' }).sqlitePath).toBe('.runtime/hedra.sqlite')
+  expect(loadServerConfig({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SQLITE_PATH: '   ' }).sqlitePath).toBe(
+    '.runtime/hedra.sqlite',
+  )
+})
+
+test('SQLite path uses a trimmed explicit override', () => {
+  expect(loadServerConfig({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SQLITE_PATH: ' :memory: ' }).sqlitePath).toBe(
+    ':memory:',
+  )
+})
+
 test('loadServerConfig rejects an invalid deployment domain', () => {
   let error: unknown
   try {
@@ -168,7 +181,10 @@ test('loadServerConfig rejects an invalid listen IP', () => {
 test('loadServerConfig reads unset variables from HEDRA_ENV_FILE', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
   const envPath = join(dir, 'app.env')
-  await Bun.write(envPath, 'HEDRA_SERVER_ENV=nonprod\nHEDRA_DEPLOYMENT_DOMAIN=from-file.example\n')
+  await Bun.write(
+    envPath,
+    'HEDRA_SERVER_ENV=nonprod\nHEDRA_DEPLOYMENT_DOMAIN=from-file.example\nHEDRA_SQLITE_PATH=from-file.sqlite\n',
+  )
 
   try {
     const config = loadServerConfig({
@@ -178,6 +194,7 @@ test('loadServerConfig reads unset variables from HEDRA_ENV_FILE', async () => {
 
     expect(config.serverEnv).toBe('nonprod')
     expect(config.deploymentDomain).toBe('from-file.example')
+    expect(config.sqlitePath).toBe('from-file.sqlite')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -196,16 +213,18 @@ test('loadServerConfig uses defaults when HEDRA_ENV_FILE is missing', async () =
 test('loadServerConfig keeps an explicit value when HEDRA_ENV_FILE sets the same variable', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
   const envPath = join(dir, 'app.env')
-  await Bun.write(envPath, 'HEDRA_SERVER_ENV=prod\n')
+  await Bun.write(envPath, 'HEDRA_SERVER_ENV=prod\nHEDRA_SQLITE_PATH=from-file.sqlite\n')
 
   try {
     const config = loadServerConfig({
       HEDRA_ENV_FILE: envPath,
       HEDRA_SERVER_ENV: 'dev',
+      HEDRA_SQLITE_PATH: 'explicit.sqlite',
       HEDRA_SERVER_SILENT_STARTUP: 'true',
     })
 
     expect(config.serverEnv).toBe('dev')
+    expect(config.sqlitePath).toBe('explicit.sqlite')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
