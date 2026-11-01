@@ -145,6 +145,52 @@ test('Unstable model transformations are rejected before persistence', () => {
   }
 })
 
+test('Mutating model transformations cannot change records across parses', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-models-'))
+  const path = join(dir, 'db.sqlite')
+  const originalModel = z.object({ group: z.string(), value: z.unknown() })
+  const mutatingModel = z.object({
+    group: z.string(),
+    value: z.unknown().transform((value) => {
+      const item = value as { count: number }
+      item.count += 1
+      return item
+    }),
+  })
+  const first = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+  const original = new Collection('items', originalModel)
+
+  try {
+    first.register(original)
+    original.post({ group: 'a', value: { count: 0 } })
+    first.close()
+
+    const second = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+    const mutating = new Collection('items', mutatingModel)
+    second.register(mutating)
+    try {
+      expect(() => mutating.post({ group: 'b', value: { count: 0 } })).toThrow('stable JSON')
+      expect(() => mutating.get()).toThrow('stable JSON')
+      expect(() => mutating.put({ group: 'a' }, { group: 'a', value: { count: 0 } })).toThrow('stable JSON')
+      expect(() => mutating.patch({ group: 'a' }, { group: 'b' })).toThrow('stable JSON')
+    } finally {
+      second.close()
+    }
+
+    const third = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+    const reopened = new Collection('items', originalModel)
+    third.register(reopened)
+    try {
+      expect(reopened.get()).toEqual([{ group: 'a', value: { count: 0 } }])
+    } finally {
+      third.close()
+    }
+  } finally {
+    first.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('PATCH preserves unspecified fields and replaces nested values', () => {
   const app = new Hedra(quiet)
   const cars = new Collection(

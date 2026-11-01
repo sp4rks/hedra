@@ -72,7 +72,7 @@ export class Collection<S extends z.ZodObject> {
     const record = this.model.parse(input)
     const data = jsonString(record)
     const stored: unknown = JSON.parse(data)
-    if (!Bun.deepEquals(stored, this.model.parse(stored))) {
+    if (!Bun.deepEquals(stored, this.model.parse(JSON.parse(data)))) {
       throw new Error('Collection model must produce stable JSON records')
     }
     return { record, data }
