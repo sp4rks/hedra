@@ -110,3 +110,36 @@ test('Biome rejects a missing blank line with CRLF line endings', () => {
   expect(result.exitCode).toBe(1)
   expect(result.stderr.toString()).toContain('blank line')
 })
+
+test.each([
+  'const first = 1\ndeclare const second: number\ndeclare let third: number\ndeclare var fourth: number\nconst last = 5\n\nuse(first, second, third, fourth, last)\n',
+  'export const first = 1\nexport declare const second: number\nexport declare let third: number\nexport declare var fourth: number\nexport const last = 5\n\nuse(first, second, third, fourth, last)\n',
+])('Biome accepts mixed ambient variable declaration groups', (source) => {
+  const result = lint(source)
+
+  expect(result.exitCode).toBe(0)
+})
+
+test.each([
+  'declare const value: number',
+  'declare let value: number',
+  'declare var value: number',
+  'export declare const value: number',
+  'export declare let value: number',
+  'export declare var value: number',
+])('Biome requires a blank line after %s', (declaration) => {
+  const result = lint(`${declaration}\nuse(value)\n`)
+
+  expect(result.exitCode).toBe(1)
+  expect(result.stderr.toString()).toContain('blank line')
+})
+
+test.each(['declare class Thing {}', 'export declare function use(): void'])(
+  'Biome treats %s as the end of a variable group',
+  (declaration) => {
+    const result = lint(`const value = 1\n${declaration}\n`)
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr.toString()).toContain('blank line')
+  },
+)

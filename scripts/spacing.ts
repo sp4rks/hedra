@@ -12,10 +12,13 @@ const spaceBefore = new Set([
 
 /** Identifies local and exported variable declarations. */
 function isVariable(statement: AnyJsAstNode | undefined) {
-  return (
-    statement?.kind === 'JS_VARIABLE_STATEMENT' ||
-    (statement?.kind === 'JS_EXPORT' && statement.exportClause?.kind === 'JS_VARIABLE_DECLARATION_CLAUSE')
-  )
+  const declaration = statement?.kind === 'JS_EXPORT' ? statement.exportClause : statement
+
+  if (declaration?.kind === 'TS_DECLARE_STATEMENT' || declaration?.kind === 'TS_EXPORT_DECLARE_CLAUSE') {
+    return declaration.declaration?.kind === 'JS_VARIABLE_DECLARATION_CLAUSE'
+  }
+
+  return declaration?.kind === 'JS_VARIABLE_STATEMENT' || declaration?.kind === 'JS_VARIABLE_DECLARATION_CLAUSE'
 }
 
 export const statementSpacing = defineRule({
