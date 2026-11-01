@@ -16,6 +16,7 @@ const quiet = {
 test('POST stores and returns the parsed model', () => {
   const app = new Hedra(quiet)
   const cars = new Collection('cars', z.object({ make: z.string().trim(), year: z.number().int().default(2020) }))
+
   app.register(cars)
 
   try {
@@ -29,6 +30,7 @@ test('POST stores and returns the parsed model', () => {
 test('GET requires every supplied filter field to match', () => {
   const app = new Hedra(quiet)
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number().int() }))
+
   app.register(cars)
 
   try {
@@ -53,6 +55,7 @@ test('PUT replaces every match with the full parsed model', () => {
       status: z.string().default('available'),
     }),
   )
+
   app.register(cars)
 
   try {
@@ -76,6 +79,7 @@ test('PATCH rolls back every match when a later result fails validation', () => 
     'ranges',
     z.object({ group: z.string(), min: z.number(), max: z.number() }).refine((range) => range.min <= range.max),
   )
+
   app.register(ranges)
 
   try {
@@ -94,6 +98,7 @@ test('PATCH rolls back every match when a later result fails validation', () => 
 test('DELETE removes every match and reports the count', () => {
   const app = new Hedra(quiet)
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number() }))
+
   app.register(cars)
 
   try {
@@ -111,11 +116,14 @@ test('DELETE removes every match and reports the count', () => {
 test('Non-JSON model output is rejected before persistence', () => {
   const app = new Hedra(quiet)
   const items = new Collection('items', z.object({ value: z.unknown() }))
+
   app.register(items)
   const cycle: { self?: unknown } = {}
+
   cycle.self = cycle
   const symbolKey = { [Symbol('key')]: 'value' }
   const sparse = Array(2)
+
   sparse[1] = 'value'
 
   try {
@@ -132,6 +140,7 @@ test('Unstable model transformations are rejected before persistence', () => {
   const app = new Hedra(quiet)
   const changing = new Collection('changing', z.object({ value: z.number().transform((value) => value + 1) }))
   const converted = new Collection('converted', z.object({ value: z.string().transform(Number) }))
+
   app.register(changing)
   app.register(converted)
 
@@ -153,7 +162,9 @@ test('Mutating model transformations cannot change records across parses', () =>
     group: z.string(),
     value: z.unknown().transform((value) => {
       const item = value as { count: number }
+
       item.count += 1
+
       return item
     }),
   })
@@ -167,6 +178,7 @@ test('Mutating model transformations cannot change records across parses', () =>
 
     const second = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
     const mutating = new Collection('items', mutatingModel)
+
     second.register(mutating)
     try {
       expect(() => mutating.post({ group: 'b', value: { count: 0 } })).toThrow('stable JSON')
@@ -179,6 +191,7 @@ test('Mutating model transformations cannot change records across parses', () =>
 
     const third = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
     const reopened = new Collection('items', originalModel)
+
     third.register(reopened)
     try {
       expect(reopened.get()).toEqual([{ group: 'a', value: { count: 0 } }])
@@ -203,6 +216,7 @@ test('PATCH preserves unspecified fields and replaces nested values', () => {
       note: z.string().nullable(),
     }),
   )
+
   app.register(cars)
 
   try {
@@ -220,10 +234,12 @@ test('PATCH preserves unspecified fields and replaces nested values', () => {
 test('Invalid filters fail without changing records', () => {
   const app = new Hedra(quiet)
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number() }))
+
   app.register(cars)
 
   try {
     cars.post({ make: 'Toyota', year: 2020 })
+
     for (const filter of [
       undefined,
       {},
@@ -256,6 +272,7 @@ test('Filters preserve scalar types and explicit null', () => {
       value: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
     }),
   )
+
   app.register(items)
 
   try {
@@ -276,6 +293,7 @@ test('Filters preserve scalar types and explicit null', () => {
 test('Filters treat field names and values as literal data', () => {
   const app = new Hedra(quiet)
   const items = new Collection('items', z.object({ 'a.b': z.string(), 'q"': z.string() }))
+
   app.register(items)
   const value = "' OR 1=1 --"
 
@@ -293,6 +311,7 @@ test('Filters treat field names and values as literal data', () => {
 test('PUT and PATCH return zero when no records match', () => {
   const app = new Hedra(quiet)
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number().int() }))
+
   app.register(cars)
 
   try {
@@ -311,12 +330,14 @@ test('POST follows the model unknown-field policy', () => {
   const stripped = new Collection('stripped', z.object({ name: z.string() }))
   const strict = new Collection('strict', z.strictObject({ name: z.string() }))
   const loose = new Collection('loose', z.looseObject({ name: z.string() }))
+
   app.register(stripped)
   app.register(strict)
   app.register(loose)
 
   try {
     const input = { name: 'one', extra: 'value' }
+
     expect(stripped.post(input)).toEqual({ name: 'one' })
     expect(() => strict.post(input)).toThrow(z.ZodError)
     expect(loose.post(input)).toEqual(input)
@@ -333,6 +354,7 @@ test('POST follows the model unknown-field policy', () => {
 test('PATCH follows the model unknown-field policy', () => {
   const app = new Hedra(quiet)
   const strict = new Collection('strict', z.strictObject({ name: z.string() }))
+
   app.register(strict)
 
   try {
@@ -348,11 +370,13 @@ test('PATCH follows the model unknown-field policy', () => {
 test('POST rejects invalid model data without inserting a record', () => {
   const app = new Hedra(quiet)
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number().int() }))
+
   app.register(cars)
 
   try {
     // @ts-expect-error The model requires a year.
     expect(() => cars.post({ make: 'Toyota' })).toThrow(z.ZodError)
+
     for (const input of [{}, { make: 'Toyota', year: '2020' }, { make: 'Toyota', year: 2020.5 }]) {
       expect(() => cars.post(input as never)).toThrow(z.ZodError)
       expect(cars.get()).toEqual([])
@@ -365,6 +389,7 @@ test('POST rejects invalid model data without inserting a record', () => {
 test('Invalid PUT leaves every matched record unchanged', () => {
   const app = new Hedra(quiet)
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number().int() }))
+
   app.register(cars)
 
   try {
@@ -384,6 +409,7 @@ test('Collections keep their records separate', () => {
   const app = new Hedra(quiet)
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number() }))
   const bikes = new Collection('bikes', z.object({ make: z.string(), year: z.number() }))
+
   app.register(cars)
   app.register(bikes)
 
@@ -406,6 +432,7 @@ test('Synchronous methods reject asynchronous model validation', () => {
     'items',
     z.object({ name: z.string() }).refine(async () => true),
   )
+
   app.register(items)
 
   try {
@@ -421,6 +448,7 @@ test('GET validates persisted records against the current model', () => {
   const path = join(dir, 'db.sqlite')
   const first = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
   const original = new Collection('items', z.object({ value: z.number() }))
+
   first.register(original)
   original.post({ value: 1 })
   first.close()
@@ -431,9 +459,11 @@ test('GET validates persisted records against the current model', () => {
       z.object({ value: z.number().transform((value) => value + 1) }),
       z.object({ value: z.number().transform((value) => new Date(value)) }),
     ]
+
     for (const schema of schemas) {
       const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
       const items = new Collection('items', schema)
+
       app.register(items)
       try {
         expect(() => items.get()).toThrow()
@@ -443,6 +473,7 @@ test('GET validates persisted records against the current model', () => {
     }
     const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
     const items = new Collection('items', z.object({ value: z.number() }))
+
     app.register(items)
     try {
       expect(items.get()).toEqual([{ value: 1 }])
@@ -460,9 +491,11 @@ test('Native write failures preserve existing records', () => {
   const path = join(dir, 'db.sqlite')
   const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number() }))
+
   app.register(cars)
   cars.post({ make: 'Toyota', year: 2020 })
   const lock = new Database(path)
+
   lock.run('BEGIN IMMEDIATE')
 
   try {

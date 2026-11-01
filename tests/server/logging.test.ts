@@ -13,6 +13,7 @@ function captureDestination(): { destination: DestinationStream; text: () => str
       callback()
     },
   })
+
   return { destination, text: () => chunks.join('') }
 }
 
@@ -37,6 +38,7 @@ test('loadAppLogger pretty-prints when the log type is pino-pretty', () => {
   log.info('health check')
 
   const line = captured.text()
+
   expect(line).toContain('health check')
   expect(line).not.toContain('"msg"')
 })
@@ -48,6 +50,7 @@ test('loadAppLogger pretty-prints when the log type is dev', () => {
   log.info('health check')
 
   const line = captured.text()
+
   expect(line).toContain('health check')
   expect(line).not.toContain('"msg"')
 })

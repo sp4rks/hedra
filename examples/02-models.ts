@@ -8,6 +8,7 @@ const CarModel = z.object({
   model: z.string(),
   year: z.number().int(),
 })
+
 type CarModel = z.infer<typeof CarModel>
 
 const cars = new Collection('cars', CarModel)

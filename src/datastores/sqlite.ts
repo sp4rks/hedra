@@ -17,9 +17,11 @@ export function openDatabase(path: string): Database {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
 
   const db = new Database(path, { create: true, strict: true })
+
   try {
     db.run('CREATE TABLE IF NOT EXISTS hedra_records (collection TEXT NOT NULL, data TEXT NOT NULL)')
     db.run('CREATE INDEX IF NOT EXISTS hedra_records_collection ON hedra_records (collection)')
+
     return db
   } catch (error) {
     db.close()

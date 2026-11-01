@@ -39,6 +39,7 @@ test('new Hedra gives each app its own configuration and logger', () => {
 
 test('new Hedra throws an invalid configuration and leaves the process running', () => {
   let error: unknown
+
   try {
     new Hedra({ ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'not a domain' })
   } catch (caught) {
@@ -69,6 +70,7 @@ test('new Hedra applies the configured log level', () => {
 
 test('Collection methods fail before registration', () => {
   const cars = new Collection('cars', z.object({ make: z.string() }))
+
   expect(() => cars.post({ make: 'Toyota' })).toThrow('registered')
   expect(() => cars.get()).toThrow('registered')
   expect(() => cars.put({ make: 'Toyota' }, { make: 'Honda' })).toThrow('registered')
@@ -93,6 +95,7 @@ test('Register rejects duplicate names and collection reuse across apps', () => 
   const first = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
   const second = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
   const cars = new Collection('cars', z.object({ make: z.string() }))
+
   first.register(cars)
 
   try {
@@ -143,6 +146,7 @@ test('A failed database open leaves the collection available for registration', 
 test('Close is idempotent and ends the app collection lifecycle', () => {
   const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
   const cars = new Collection('cars', z.object({ make: z.string() }))
+
   app.register(cars)
   cars.post({ make: 'Toyota' })
   app.close()
@@ -155,6 +159,7 @@ test('Close is idempotent and ends the app collection lifecycle', () => {
   expect(() => app.register(new Collection('bikes', z.object({ make: z.string() })))).toThrow()
 
   const empty = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
+
   empty.close()
   expect(() => empty.register(new Collection('cars', z.object({ make: z.string() })))).toThrow()
 })
@@ -183,6 +188,7 @@ test('Reopening a database preserves registered collection records', () => {
 
 test('Registering a collection adds no HTTP routes', async () => {
   const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
+
   app.register(new Collection('cars', z.object({ make: z.string() })))
   try {
     expect((await app.request('/cars')).status).toBe(404)

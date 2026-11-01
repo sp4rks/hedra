@@ -6,6 +6,7 @@ import { deleteRecords, insertRecord, readRecords, replaceRecord } from '#datast
 const connections = new WeakMap<object, Database>()
 const scalar = z.union([z.string(), z.number(), z.boolean(), z.null()])
 const filterSchema = z.record(z.string(), scalar)
+
 type Scalar = z.infer<typeof scalar>
 type Filter<S extends z.ZodObject> = Partial<{
   [K in keyof z.output<S> as Exclude<z.output<S>[K], undefined> extends Scalar ? K : never]: z.output<S>[K]
@@ -14,9 +15,11 @@ type Filter<S extends z.ZodObject> = Partial<{
 /** Serializes a value only when JSON preserves it without loss. */
 function jsonString(value: unknown): string {
   const data = JSON.stringify(value)
+
   if (data === undefined) throw new Error('Collection values must be JSON compatible')
   z.json().parse(value)
   if (!Bun.deepEquals(value, JSON.parse(data))) throw new Error('Collection values must be JSON compatible')
+
   return data
 }
 
@@ -47,7 +50,9 @@ export class Collection<S extends z.ZodObject> {
   /** Returns the connection established by registration. */
   private database(): Database {
     const db = connections.get(this)
+
     if (!db) throw new Error('Collection must be registered before use')
+
     return db
   }
 
@@ -56,14 +61,18 @@ export class Collection<S extends z.ZodObject> {
     filterSchema.parse(filter)
     if (Object.getOwnPropertySymbols(filter).length) throw new Error('Collection filter keys must be strings')
     const entries = Object.entries(filter)
+
     if (required && entries.length === 0) throw new Error('A nonempty collection filter is required')
+
     for (const [key, value] of entries) {
       if (!Object.hasOwn(this.model.shape, key)) throw new Error(`Invalid collection filter field: ${key}`)
       const field = this.model.shape[key]
+
       if (!field?.safeParse(scalar.parse(value)).success) {
         throw new Error(`Invalid collection filter field: ${key}`)
       }
     }
+
     return JSON.stringify(Object.fromEntries(entries))
   }
 
@@ -72,9 +81,11 @@ export class Collection<S extends z.ZodObject> {
     const record = this.model.parse(input)
     const data = jsonString(record)
     const stored: unknown = JSON.parse(data)
+
     if (!Bun.deepEquals(stored, this.model.parse(JSON.parse(data)))) {
       throw new Error('Collection model must produce stable JSON records')
     }
+
     return { record, data }
   }
 
@@ -82,13 +93,16 @@ export class Collection<S extends z.ZodObject> {
   post(input: z.input<S>): z.output<S> {
     const db = this.database()
     const { record, data } = this.encode(input)
+
     insertRecord(db, this.name, data)
+
     return record
   }
 
   /** Reads matching records in insertion order. */
   get(filter: Filter<S> = {}): z.output<S>[] {
     const db = this.database()
+
     return readRecords(db, this.name, this.filter(filter)).map((row) => this.encode(JSON.parse(row.data)).record)
   }
 
@@ -96,11 +110,14 @@ export class Collection<S extends z.ZodObject> {
   put(filter: Filter<S>, input: z.input<S>): number {
     const db = this.database()
     const criteria = this.filter(filter, true)
+
     return db
       .transaction(() => {
         const rows = readRecords(db, this.name, criteria)
         const { data } = this.encode(input)
+
         for (const row of rows) replaceRecord(db, this.name, row.id, data)
+
         return rows.length
       })
       .immediate()
@@ -110,16 +127,21 @@ export class Collection<S extends z.ZodObject> {
   patch(filter: Filter<S>, changes: Partial<z.input<S>>): number {
     const db = this.database()
     const criteria = this.filter(filter, true)
+
     z.record(z.string(), z.unknown()).parse(changes)
     const patch: Record<string, unknown> = JSON.parse(jsonString(changes))
+
     return db
       .transaction(() => {
         const rows = readRecords(db, this.name, criteria)
         const updates = rows.map((row) => {
           const record = this.encode(JSON.parse(row.data)).record
+
           return this.encode({ ...record, ...patch }).data
         })
+
         for (const [index, row] of rows.entries()) replaceRecord(db, this.name, row.id, updates[index] as string)
+
         return rows.length
       })
       .immediate()
@@ -128,6 +150,7 @@ export class Collection<S extends z.ZodObject> {
   /** Deletes all matching records. */
   delete(filter: Filter<S>): number {
     const db = this.database()
+
     return deleteRecords(db, this.name, this.filter(filter, true))
   }
 }

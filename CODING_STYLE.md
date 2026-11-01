@@ -13,6 +13,9 @@ Hedra is TypeScript on Bun, with Hono for HTTP, Zod for models and validation, P
 
 Biome, configured in `biome.json`, owns formatting, import order and lint. Run `bun run fmt` rather than formatting by hand.
 
+Its spacing rule reports missing blank lines before returns and loops and after groups of variable declarations. Add those lines manually; `bun run fmt` does not insert them.
+Biome and its runtime types are pinned while the plugin API is in developer preview. Run `bun test tests/spacing.test.ts` when upgrading them.
+
 ## Types and validation
 
 Zod schemas are the single source of truth for types and validation.

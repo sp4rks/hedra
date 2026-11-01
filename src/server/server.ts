@@ -27,6 +27,7 @@ export class Hedra extends Hono {
 
     this.get('/health', (context) => {
       this.log.info('health check')
+
       return context.json({ ok: true })
     })
   }

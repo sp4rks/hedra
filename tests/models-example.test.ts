@@ -42,6 +42,7 @@ test('models example supports the full collection method lifecycle', async () =>
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
     ])
+
     expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: '', stderr: '' })
   } finally {
     proc.kill()

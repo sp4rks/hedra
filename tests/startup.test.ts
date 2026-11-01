@@ -12,12 +12,15 @@ function freePort(): Promise<number> {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', () => {
       const address = server.address()
+
       if (address === null || typeof address === 'string') {
         reject(new Error('failed to reserve a port'))
+
         return
       }
 
       const { port } = address
+
       server.close((error) => (error ? reject(error) : resolve(port)))
     })
   })
@@ -57,17 +60,20 @@ test('the process entrypoint serves GET /health', async () => {
 
   try {
     const response = await waitForHealth(port)
+
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true })
 
     const acceptsOtherAddress = await new Promise<boolean>((resolve) => {
       const socket = createConnection({ port, host: '127.0.0.2' })
+
       socket.once('connect', () => {
         socket.destroy()
         resolve(true)
       })
       socket.once('error', () => resolve(false))
     })
+
     expect(acceptsOtherAddress).toBe(false)
   } finally {
     proc.kill()

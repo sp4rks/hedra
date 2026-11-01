@@ -34,6 +34,7 @@ function printConfigHeader(): void {
 /** Prints one setting and whether its value came from the environment or the built-in default. */
 function printConfigRow(variable: string, value: string, source: 'environ' | 'default'): void {
   const sourceLabel = source === 'environ' ? styleText('blueBright', 'environ') : styleText('greenBright', 'default')
+
   console.log(`${styleText('magenta', variable.padEnd(columnWidth))} ${value.padEnd(columnWidth)} ${sourceLabel}`)
 }
 
@@ -47,9 +48,11 @@ function overlayEnvFile(env: typeof Bun.env, path: string): boolean {
   if (!existsSync(path)) return false
 
   const parsed = parseEnv(readFileSync(path, 'utf8'))
+
   for (const [key, value] of Object.entries(parsed)) {
     if (env[key] === undefined) env[key] = value
   }
+
   return true
 }
 
@@ -64,6 +67,7 @@ export function loadServerConfig(env: typeof Bun.env = process.env): Record<stri
 
   if (envFile) {
     const loaded = overlayEnvFile(resolved, envFile)
+
     if (!loaded && env === process.env) overlayEnvFile(resolved, '.env')
   } else if (env === process.env) {
     overlayEnvFile(resolved, '.env')
@@ -79,6 +83,7 @@ export function loadServerConfig(env: typeof Bun.env = process.env): Record<stri
 
   for (const configKey of Object.keys(defaults)) {
     const defaultConfig = defaults[configKey]
+
     if (!defaultConfig) continue
 
     const environmentValue = resolved[configKey]?.trim()
