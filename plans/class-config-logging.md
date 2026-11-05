@@ -60,11 +60,14 @@ The old `Config` definition-map name becomes `ConfigDefinitions` wherever a dict
 | `serverLogFormat` | `json` or `pretty` | `json` |
 | `serverLogLevel` | `trace`, `debug`, `info`, `warn`, `error`, `fatal` or `silent` | `info` |
 | `serverHttpLogEnabled` | boolean | `true` |
+| `serverPrintRoutes` | boolean | `false` |
 | `serverListenIp` | string, valid IPv4 or IPv6 address | `0.0.0.0` |
 | `serverListenPort` | integer, 1 through 65535 | `3000` |
 | `serverRequestTimeout` | integer, 1 through 300000 | `30000` |
 
 Use `HEDRA_SERVER_LOG_FORMAT` for `serverLogFormat`; other settings retain their current environment names. Trim input strings. Boolean environment values accept only `true` or `false` after trimming, and produce actual booleans. In particular, `false` must never become truthy through generic boolean coercion.
+
+The concurrent main-branch setting `HEDRA_SERVER_PRINT_ROUTES` is preserved as native boolean `serverPrintRoutes`. When enabled, registration logs `Registering collection: <name>` at info level through the app logger; normal filtering still applies. It remains off by default.
 
 Preserve environment resolution:
 
@@ -170,8 +173,9 @@ Decision records: [schema-derived configuration](../docs/adr/0004-schema-derived
 
 ## Verification results
 
-- `bun run check` passed TypeScript, Biome and 110 tests with 338 assertions on implementation commit `bacc025`, including the merged documentation example. The subprocess/loopback checks ran outside the filesystem sandbox.
+- `bun run check` passed TypeScript, Biome and 112 tests with 355 assertions on integration commit `63ec35e`, including the merged documentation example and the concurrent registration-logging setting. The subprocess/loopback checks ran outside the filesystem sandbox.
 - The exact runnable commands in `docs/collections.md` and `docs/logging.md` passed on the final implementation. They exercised model CRUD with in-memory SQLite and the controller example through `app.request`.
 - Independent review of `81e32b2..2614355`, including the newcomer documentation pass, returned no actionable findings. A focused re-review of the final env-file fix, `2614355..bacc025`, also returned no actionable findings.
 - The env-file permission regression failed before the fix and passed afterward. Only `ENOENT` permits fallback; inaccessible files propagate their I/O error. The real permission test executed on non-root Linux and deliberately skips root and Windows.
+- Committed main changes through `f142318` were merged while preserving separately owned uncommitted example edits in the main checkout. Tests cover the new setting's native values, strict boolean parsing, registration message, app identity and level filtering.
 - Source type regressions cover native number/boolean properties and read-only declarations. Documented limits remain compiler-enforced read-only fields and native Pino metadata-name collisions.
