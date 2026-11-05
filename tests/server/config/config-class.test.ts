@@ -14,8 +14,19 @@ test('Config exposes native configuration values as direct properties', () => {
   expect(config.serverHttpLogEnabled).toBe(false)
 })
 
+test('Config exposes print-routes as a native boolean with a false default', () => {
+  const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true' }
+
+  expect(new Config(quiet).serverPrintRoutes).toBe(false)
+  expect(new Config({ ...quiet, HEDRA_SERVER_PRINT_ROUTES: 'true' }).serverPrintRoutes).toBe(true)
+  expect(new Config({ ...quiet, HEDRA_SERVER_PRINT_ROUTES: ' true ' }).serverPrintRoutes).toBe(true)
+  expect(new Config({ ...quiet, HEDRA_SERVER_PRINT_ROUTES: 'false' }).serverPrintRoutes).toBe(false)
+})
+
 test('Config preserves precisely typed readonly fields', () => {
   expectTypeOf<Config['serverListenPort']>().toEqualTypeOf<number>()
   expectTypeOf<Config['serverSilentStartup']>().toEqualTypeOf<boolean>()
+  expectTypeOf<Config['serverPrintRoutes']>().toEqualTypeOf<boolean>()
   expectTypeOf<Pick<Config, 'serverListenPort'>>().toEqualTypeOf<{ readonly serverListenPort: number }>()
+  expectTypeOf<Pick<Config, 'serverPrintRoutes'>>().toEqualTypeOf<{ readonly serverPrintRoutes: boolean }>()
 })

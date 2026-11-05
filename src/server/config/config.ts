@@ -29,6 +29,7 @@ export const ConfigValues = z.object({
   serverLogFormat: serverVariables.HEDRA_SERVER_LOG_FORMAT.schema,
   serverLogLevel: serverVariables.HEDRA_SERVER_LOG_LEVEL.schema,
   serverHttpLogEnabled: serverVariables.HEDRA_SERVER_HTTP_LOGGING.schema,
+  serverPrintRoutes: serverVariables.HEDRA_SERVER_PRINT_ROUTES.schema,
   serverListenIp: serverVariables.HEDRA_SERVER_LISTEN_IP.schema,
   serverListenPort: serverVariables.HEDRA_SERVER_LISTEN_PORT.schema,
   serverRequestTimeout: serverVariables.HEDRA_SERVER_REQUEST_TIMEOUT.schema,
@@ -115,6 +116,7 @@ export class Config {
   declare readonly serverLogFormat: ConfigValues['serverLogFormat']
   declare readonly serverLogLevel: ConfigValues['serverLogLevel']
   declare readonly serverHttpLogEnabled: ConfigValues['serverHttpLogEnabled']
+  declare readonly serverPrintRoutes: ConfigValues['serverPrintRoutes']
   declare readonly serverListenIp: ConfigValues['serverListenIp']
   declare readonly serverListenPort: ConfigValues['serverListenPort']
   declare readonly serverRequestTimeout: ConfigValues['serverRequestTimeout']

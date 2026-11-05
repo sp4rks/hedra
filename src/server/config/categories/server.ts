@@ -45,6 +45,13 @@ export const serverVariables = {
     description: 'Enable or disable HTTP request/response logging',
     schema: z.boolean(),
   },
+  HEDRA_SERVER_PRINT_ROUTES: {
+    name: 'serverPrintRoutes',
+    default: false,
+    options: ['true', 'false'],
+    description: 'Enable or disable printing of registered routes on startup',
+    schema: z.boolean(),
+  },
   HEDRA_SERVER_LISTEN_IP: {
     name: 'serverListenIp',
     default: '0.0.0.0',

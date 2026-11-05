@@ -65,6 +65,10 @@ export class Hedra extends Hono {
     if (this.collectionNames.has(collection.name)) throw new Error(`Collection already registered: ${collection.name}`)
     if (isAttached(collection)) throw new Error('Collection is already attached to an app')
 
+    if (this.config.serverPrintRoutes) {
+      this.log.info(`Registering collection: ${collection.name}`)
+    }
+
     this.database ??= openDatabase(this.config.sqlitePath)
     attachCollection(collection, this.database)
     this.collectionNames.add(collection.name)

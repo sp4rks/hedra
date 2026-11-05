@@ -3,10 +3,11 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
+import { z } from 'zod'
 
 import type { LogFields, Logger } from '#hedra.ts'
 import { ConfigurationError } from '#errors'
-import { Config, Hedra, PinoLogger } from '#hedra.ts'
+import { Collection, Config, Hedra, PinoLogger } from '#hedra.ts'
 
 class RecordingLogger implements Logger {
   /** Shares captured records while keeping this logger's bindings separate. */
@@ -91,6 +92,40 @@ test('Hedra isolates app identities while sharing a custom backend and Config', 
   expect(records[0]).toEqual({ message: 'first', fields: { service: 'test', instanceId: first.instanceId } })
   expect(records[1]).toEqual({ message: 'second', fields: { service: 'test', instanceId: second.instanceId } })
   expect(records[2]).toEqual({ message: 'parent', fields: { service: 'test' } })
+})
+
+test('Hedra logs collection registration only when enabled and allowed by the log level', () => {
+  for (const [setting, level, expected] of [
+    [undefined, 'info', false],
+    ['false', 'info', false],
+    ['true', 'info', true],
+    ['true', 'warn', false],
+  ] as const) {
+    let output = ''
+    const destination = new Writable({
+      write(chunk, _encoding, callback) {
+        output += String(chunk)
+        callback()
+      },
+    })
+    const config = new Config({
+      HEDRA_SERVER_SILENT_STARTUP: 'true',
+      HEDRA_SQLITE_PATH: ':memory:',
+      HEDRA_SERVER_PRINT_ROUTES: setting,
+      HEDRA_SERVER_LOG_LEVEL: level,
+    })
+    const app = new Hedra({ config, logger: new PinoLogger(config, destination) })
+
+    try {
+      app.register(new Collection('cars', z.object({ make: z.string() })))
+
+      expect(output.includes('Registering collection: cars')).toBe(expected)
+      if (expected)
+        expect(JSON.parse(output)).toMatchObject({ msg: 'Registering collection: cars', instanceId: app.instanceId })
+    } finally {
+      app.close()
+    }
+  }
 })
 
 test('Hedra rejects conflicting, unknown or malformed options', () => {
