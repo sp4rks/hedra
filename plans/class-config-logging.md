@@ -1,6 +1,6 @@
 # Class-based configuration and backend-independent logging
 
-Status: design accepted and implementation requested. The final design includes constructor injection for controllers; the checks below cover the public contracts being implemented.
+Status: implemented and independently reviewed; awaiting approval to merge into `main`. The final design includes constructor injection for controllers.
 
 ## Purpose
 
@@ -167,3 +167,11 @@ Implementation follows test-first development in the feature worktree, with docu
 The project references a `user-docs` skill that is not installed in the shared, project, backup or plugin skill locations. Use the available house documentation standards and docs-style guidance, and include a newcomer pass in the independent review. This substitutes the unavailable documentation procedure without changing the requested feature.
 
 Decision records: [schema-derived configuration](../docs/adr/0004-schema-derived-config-class.md) and [backend-independent logging](../docs/adr/0005-backend-independent-logging.md).
+
+## Verification results
+
+- `bun run check` passed TypeScript, Biome and 110 tests with 338 assertions on implementation commit `bacc025`, including the merged documentation example. The subprocess/loopback checks ran outside the filesystem sandbox.
+- The exact runnable commands in `docs/collections.md` and `docs/logging.md` passed on the final implementation. They exercised model CRUD with in-memory SQLite and the controller example through `app.request`.
+- Independent review of `81e32b2..2614355`, including the newcomer documentation pass, returned no actionable findings. A focused re-review of the final env-file fix, `2614355..bacc025`, also returned no actionable findings.
+- The env-file permission regression failed before the fix and passed afterward. Only `ENOENT` permits fallback; inaccessible files propagate their I/O error. The real permission test executed on non-root Linux and deliberately skips root and Windows.
+- Source type regressions cover native number/boolean properties and read-only declarations. Documented limits remain compiler-enforced read-only fields and native Pino metadata-name collisions.
