@@ -63,6 +63,8 @@ The command exits with status `0` and no output. Assertion failures or configura
 
 Use `child(fields)` for additional context. A child inherits its parent's fields without mutating the parent or its siblings. New child fields override matching inherited fields; fields on an individual logging call override matching bindings. Avoid overriding `instanceId` when retaining app identity.
 
+Pino uses `level`, `time` and `msg` for record metadata. Supplying these names as structured fields can produce duplicate JSON keys. Use application-specific field names for portable context; the generic `LogFields` interface does not reserve backend-specific names.
+
 Children retain the implementation's output behaviour. If an application subclasses an adapter and overrides its logging behaviour, its `child` implementation must preserve that behaviour too.
 
 ## Destinations and other backends
