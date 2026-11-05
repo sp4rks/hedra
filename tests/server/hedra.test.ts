@@ -61,6 +61,47 @@ test('new Hedra uses the configured listen IP', () => {
   expect(app.hostname).toBe('127.0.0.1')
 })
 
+test.each([
+  ['', 'info', false],
+  ['false', 'info', false],
+  ['true', 'info', true],
+  ['true', 'warn', false],
+])(
+  'collection registration logging with HEDRA_SERVER_PRINT_ROUTES=%s at %s level',
+  (value, level, logsRegistration) => {
+    const dir = mkdtempSync(join(tmpdir(), 'hedra-registration-'))
+    const example = join(import.meta.dir, '../../examples/02-models.ts')
+    const script = `import hedra from ${JSON.stringify(example)}; hedra.close()`
+
+    try {
+      const proc = Bun.spawnSync([process.execPath, '--no-env-file', '-e', script], {
+        cwd: dir,
+        env: {
+          HEDRA_SERVER_PRINT_ROUTES: value,
+          HEDRA_SERVER_SILENT_STARTUP: 'true',
+          HEDRA_SERVER_LOG_LEVEL: level,
+          HEDRA_SERVER_LOG_FORMAT: 'json',
+          HEDRA_SQLITE_PATH: ':memory:',
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+        timeout: 5000,
+      })
+      const output = proc.stdout.toString()
+
+      expect(proc.exitCode).toBe(0)
+      expect(proc.stderr.toString()).toBe('')
+      if (logsRegistration) {
+        expect(JSON.parse(output).msg).toBe('Registering collection: cars')
+      } else {
+        expect(output).toBe('')
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  },
+)
+
 test('Collection methods fail before registration', () => {
   const cars = new Collection('cars', z.object({ make: z.string() }))
 

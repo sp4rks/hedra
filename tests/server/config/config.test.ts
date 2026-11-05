@@ -242,7 +242,7 @@ test('Config keeps an explicit value when HEDRA_ENV_FILE sets the same variable'
 
 test('Config decodes true and false and rejects other boolean values', () => {
   for (const variable of ['HEDRA_SERVER_SILENT_STARTUP', 'HEDRA_SERVER_HTTP_LOGGING', 'HEDRA_SERVER_PRINT_ROUTES']) {
-    for (const value of ['not-true', 'yes', '0', 'FALSE']) {
+    for (const value of ['not-true', 'yes', '0', 'FALSE', 'tru']) {
       const env = { HEDRA_SERVER_SILENT_STARTUP: 'true', [variable]: value }
 
       expect(() => new Config(env)).toThrow(ConfigurationError)
