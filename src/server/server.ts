@@ -24,12 +24,6 @@ export class Hedra extends Hono {
     this.log = loadAppLogger(this.config)
     this.port = Number(this.config.serverListenPort)
     this.hostname = this.config.serverListenIp as string
-
-    this.get('/health', (context) => {
-      this.log.info('health check')
-
-      return context.json({ ok: true })
-    })
   }
 
   /** Attaches a collection to this app's shared database. */

@@ -6,6 +6,8 @@
   "imports": {
     "#config": "./src/server/config/config.ts",
     "#config/*": "./src/server/config/*",
+    "#models": "./src/models/models.ts",
+    "#models/*": "./src/models/*",
     "#errors": "./src/server/errors/errors.ts",
     "#*": "./src/*"
   },
