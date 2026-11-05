@@ -86,6 +86,23 @@ export const serverVariables: Config = {
       }
     },
   },
+  HEDRA_SERVER_PRINT_ROUTES: {
+    name: 'serverPrintRoutes',
+    default: 'false',
+    options: ['true', 'false'],
+    description: 'Enable or disable printing of registered routes on startup',
+    validate: (value: string | number | boolean) => {
+      try {
+        z.coerce.boolean().parse(value)
+      } catch (_error) {
+        throw new ConfigurationError(
+          500,
+          'configuration error',
+          `HEDRA_SERVER_PRINT_ROUTES has invalid value: ${value}`,
+        )
+      }
+    },
+  },
   HEDRA_SERVER_LISTEN_IP: {
     name: 'serverListenIp',
     default: '0.0.0.0',
