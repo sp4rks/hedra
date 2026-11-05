@@ -43,11 +43,14 @@ Environment values are strings. Hedra trims them, applies defaults for unset or 
 | `HEDRA_SERVER_LOG_FORMAT` | `serverLogFormat` | `json`, `pretty` | `json` |
 | `HEDRA_SERVER_LOG_LEVEL` | `serverLogLevel` | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent` | `info` |
 | `HEDRA_SERVER_HTTP_LOGGING` | `serverHttpLogEnabled` | Boolean | `true` |
+| `HEDRA_SERVER_PRINT_ROUTES` | `serverPrintRoutes` | Boolean | `false` |
 | `HEDRA_SERVER_LISTEN_IP` | `serverListenIp` | IPv4 or IPv6 string | `0.0.0.0` |
 | `HEDRA_SERVER_LISTEN_PORT` | `serverListenPort` | Integer from 1 through 65535 | `3000` |
 | `HEDRA_SERVER_REQUEST_TIMEOUT` | `serverRequestTimeout` | Integer from 1 through 300000, in milliseconds | `30000` |
 
 `serverHttpLogEnabled` retains its configuration meaning; this change does not add HTTP logging middleware. Collection database ownership and persistent-volume requirements are described in [collection storage](collections.md#database-configuration-and-lifecycle).
+
+Set `serverPrintRoutes` through `HEDRA_SERVER_PRINT_ROUTES=true` to log collection registration messages at level `info`. These messages follow the logger's configured filtering; `silent` suppresses them.
 
 ## Environment files and reporting
 
