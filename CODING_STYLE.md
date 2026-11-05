@@ -56,7 +56,7 @@ tests/          mirrors src/
 
 - Prefer straightforward control flow. Separate logical steps with blank lines, and name intermediate values when it clarifies intent.
 - Give every named function and method a doc comment saying what it does. Other comments explain intent, constraints or surprising decisions, in complete sentences.
-- Log through Pino, never `console`, and never log secrets or tenant data.
+- Log through Hedra's `Logger` interface, never `console`, and never log secrets or tenant data. Pino is the default adapter.
 
 ## Tests
 

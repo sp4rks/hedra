@@ -1,132 +1,69 @@
 import { z } from 'zod'
 
-import type { Config } from '#config'
-import { ConfigurationError } from '#errors'
+import type { ConfigDefinitions } from '#config'
 
-export const serverVariables: Config = {
+export const serverVariables = {
   HEDRA_SQLITE_PATH: {
     name: 'sqlitePath',
     default: '.runtime/hedra.sqlite',
     options: 'SQLite database path or :memory:',
     description: 'The shared collection database location',
-    validate: (value: string | number | boolean) => {
-      z.string().min(1).parse(value)
-    },
+    schema: z.string().min(1),
   },
   HEDRA_SERVER_ENV: {
     name: 'serverEnv',
     default: 'dev',
     options: ['test', 'dev', 'nonprod', 'prod'],
-    description: 'The environment the server is running in (development, non-production, or production)',
-    validate: (value: string | number | boolean) => {
-      try {
-        z.enum(['test', 'dev', 'nonprod', 'prod']).parse(value)
-      } catch (_error) {
-        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_ENV has invalid value: ${value}`)
-      }
-    },
+    description: 'The environment the server is running in',
+    schema: z.enum(['test', 'dev', 'nonprod', 'prod']),
   },
   HEDRA_SERVER_SILENT_STARTUP: {
     name: 'serverSilentStartup',
-    default: 'false',
+    default: false,
     options: ['true', 'false'],
     description: 'Whether to suppress the startup message',
-    validate: (value: string | number | boolean) => {
-      try {
-        z.coerce.boolean().parse(value)
-      } catch (_error) {
-        throw new ConfigurationError(
-          500,
-          'configuration error',
-          `HEDRA_SERVER_SILENT_STARTUP has invalid value: ${value}`,
-        )
-      }
-    },
+    schema: z.boolean(),
   },
-  HEDRA_SERVER_LOG_TYPE: {
-    name: 'serverLogType',
-    default: 'pino',
-    options: ['pino', 'pino-pretty', 'dev'],
-    description: 'The logging library to use for server logging',
-    validate: (value: string | number | boolean) => {
-      try {
-        z.enum(['pino', 'pino-pretty', 'dev']).parse(value)
-      } catch (_error) {
-        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_LOG_TYPE has invalid value: ${value}`)
-      }
-    },
+  HEDRA_SERVER_LOG_FORMAT: {
+    name: 'serverLogFormat',
+    default: 'json',
+    options: ['json', 'pretty'],
+    description: 'The format used for server logging',
+    schema: z.enum(['json', 'pretty']),
   },
   HEDRA_SERVER_LOG_LEVEL: {
     name: 'serverLogLevel',
     default: 'info',
     options: ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent'],
-    description: 'The minimum log level to output (trace being most verbose, silent being no output)',
-    validate: (value: string | number | boolean) => {
-      try {
-        z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']).parse(value)
-      } catch (_error) {
-        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_LOG_LEVEL has invalid value: ${value}`)
-      }
-    },
+    description: 'The minimum log level to output',
+    schema: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']),
   },
   HEDRA_SERVER_HTTP_LOGGING: {
     name: 'serverHttpLogEnabled',
-    default: 'true',
+    default: true,
     options: ['true', 'false'],
     description: 'Enable or disable HTTP request/response logging',
-    validate: (value: string | number | boolean) => {
-      try {
-        z.coerce.boolean().parse(value)
-      } catch (_error) {
-        throw new ConfigurationError(
-          500,
-          'configuration error',
-          `HEDRA_SERVER_HTTP_LOGGING has invalid value: ${value}`,
-        )
-      }
-    },
+    schema: z.boolean(),
   },
   HEDRA_SERVER_LISTEN_IP: {
     name: 'serverListenIp',
     default: '0.0.0.0',
     options: 'IPv4 or IPv6 address',
     description: 'The IP address the server listens on',
-    validate: (value: string | number | boolean) => {
-      try {
-        z.union([z.ipv4(), z.ipv6()]).parse(value)
-      } catch (_error) {
-        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_LISTEN_IP has invalid value: ${value}`)
-      }
-    },
+    schema: z.union([z.ipv4(), z.ipv6()]),
   },
   HEDRA_SERVER_LISTEN_PORT: {
     name: 'serverListenPort',
     default: 3000,
     options: 'Integer value from 1 to 65535',
     description: 'The port the server listens on',
-    validate: (value: string | number | boolean) => {
-      try {
-        z.coerce.number().int().min(1).max(65535).parse(value)
-      } catch (_error) {
-        throw new ConfigurationError(500, 'configuration error', `HEDRA_SERVER_LISTEN_PORT has invalid value: ${value}`)
-      }
-    },
+    schema: z.number().int().min(1).max(65535),
   },
   HEDRA_SERVER_REQUEST_TIMEOUT: {
     name: 'serverRequestTimeout',
     default: 30000,
     options: 'Integer value from 1 to 300000',
     description: 'Maximum time in milliseconds to wait for incoming HTTP requests to complete',
-    validate: (value: string | number | boolean) => {
-      try {
-        z.coerce.number().int().min(1).max(300000).parse(value)
-      } catch (_error) {
-        throw new ConfigurationError(
-          500,
-          'configuration error',
-          `HEDRA_SERVER_REQUEST_TIMEOUT has invalid value: ${value}`,
-        )
-      }
-    },
+    schema: z.number().int().min(1).max(300000),
   },
-}
+} satisfies ConfigDefinitions

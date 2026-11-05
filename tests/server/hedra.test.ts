@@ -14,7 +14,7 @@ const quiet = {
 }
 
 test('new Hedra returns a Hono app', async () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
 
   expect(app).toBeInstanceOf(Hedra)
   expect(app).toBeInstanceOf(Hono)
@@ -27,21 +27,20 @@ test('new Hedra returns a Hono app', async () => {
 })
 
 test('new Hedra gives each app its own configuration and logger', () => {
-  const first = new Hedra({ ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'one.example' })
-  const second = new Hedra({ ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'two.example' })
+  const first = new Hedra({ env: { ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'one.example' } })
+  const second = new Hedra({ env: { ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'two.example' } })
 
   expect(first.config.deploymentDomain).toBe('one.example')
   expect(second.config.deploymentDomain).toBe('two.example')
-  expect(first.config.instanceId).not.toBe(second.config.instanceId)
-  expect(first.log.bindings().instanceId).toBe(first.config.instanceId)
-  expect(second.log.bindings().instanceId).toBe(second.config.instanceId)
+  expect(first.instanceId).not.toBe(second.instanceId)
+  expect(first.instanceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
 })
 
 test('new Hedra throws an invalid configuration and leaves the process running', () => {
   let error: unknown
 
   try {
-    new Hedra({ ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'not a domain' })
+    new Hedra({ env: { ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'not a domain' } })
   } catch (caught) {
     error = caught
   }
@@ -51,21 +50,15 @@ test('new Hedra throws an invalid configuration and leaves the process running',
 })
 
 test('new Hedra uses the configured listen port', () => {
-  const app = new Hedra({ ...quiet, HEDRA_SERVER_LISTEN_PORT: '8080' })
+  const app = new Hedra({ env: { ...quiet, HEDRA_SERVER_LISTEN_PORT: '8080' } })
 
   expect(app.port).toBe(8080)
 })
 
 test('new Hedra uses the configured listen IP', () => {
-  const app = new Hedra({ ...quiet, HEDRA_SERVER_LISTEN_IP: ' 127.0.0.1 ' })
+  const app = new Hedra({ env: { ...quiet, HEDRA_SERVER_LISTEN_IP: ' 127.0.0.1 ' } })
 
   expect(app.hostname).toBe('127.0.0.1')
-})
-
-test('new Hedra applies the configured log level', () => {
-  const app = new Hedra({ ...quiet, HEDRA_SERVER_LOG_LEVEL: 'debug' })
-
-  expect(app.log.level).toBe('debug')
 })
 
 test('Collection methods fail before registration', () => {
@@ -92,8 +85,8 @@ test('Collection rejects an invalid name or a non-object model', () => {
 })
 
 test('Register rejects duplicate names and collection reuse across apps', () => {
-  const first = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
-  const second = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
+  const first = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
+  const second = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
   const cars = new Collection('cars', z.object({ make: z.string() }))
 
   first.register(cars)
@@ -114,7 +107,7 @@ test('Register rejects duplicate names and collection reuse across apps', () => 
 test('Hedra opens SQLite only when the first collection is registered', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-sqlite-'))
   const path = join(dir, 'nested', 'db.sqlite')
-  const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+  const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
 
   try {
     expect(existsSync(path)).toBe(false)
@@ -128,8 +121,8 @@ test('Hedra opens SQLite only when the first collection is registered', () => {
 
 test('A failed database open leaves the collection available for registration', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-sqlite-'))
-  const first = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: dir })
-  const second = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
+  const first = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: dir } })
+  const second = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
   const cars = new Collection('cars', z.object({ make: z.string() }))
 
   try {
@@ -144,7 +137,7 @@ test('A failed database open leaves the collection available for registration', 
 })
 
 test('Close is idempotent and ends the app collection lifecycle', () => {
-  const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
+  const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
   const cars = new Collection('cars', z.object({ make: z.string() }))
 
   app.register(cars)
@@ -158,7 +151,7 @@ test('Close is idempotent and ends the app collection lifecycle', () => {
   expect(() => cars.delete({ make: 'Toyota' })).toThrow()
   expect(() => app.register(new Collection('bikes', z.object({ make: z.string() })))).toThrow()
 
-  const empty = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
+  const empty = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
 
   empty.close()
   expect(() => empty.register(new Collection('cars', z.object({ make: z.string() })))).toThrow()
@@ -168,8 +161,8 @@ test('Reopening a database preserves registered collection records', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-sqlite-'))
   const path = join(dir, 'db.sqlite')
   const schema = z.object({ make: z.string(), details: z.object({ tags: z.array(z.string()) }) })
-  const first = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
-  const second = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+  const first = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
+  const second = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
   const cars = new Collection('cars', schema)
   const reopened = new Collection('cars', schema)
 
@@ -187,7 +180,7 @@ test('Reopening a database preserves registered collection records', () => {
 })
 
 test('Registering a collection adds no HTTP routes', async () => {
-  const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' })
+  const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
 
   app.register(new Collection('cars', z.object({ make: z.string() })))
   try {

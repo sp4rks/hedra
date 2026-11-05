@@ -14,7 +14,7 @@ const quiet = {
 }
 
 test('POST stores and returns the parsed model', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', z.object({ make: z.string().trim(), year: z.number().int().default(2020) }))
 
   app.register(cars)
@@ -28,7 +28,7 @@ test('POST stores and returns the parsed model', () => {
 })
 
 test('GET requires every supplied filter field to match', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number().int() }))
 
   app.register(cars)
@@ -45,7 +45,7 @@ test('GET requires every supplied filter field to match', () => {
 })
 
 test('PUT replaces every match with the full parsed model', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection(
     'cars',
     z.object({
@@ -74,7 +74,7 @@ test('PUT replaces every match with the full parsed model', () => {
 })
 
 test('PATCH rolls back every match when a later result fails validation', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const ranges = new Collection(
     'ranges',
     z.object({ group: z.string(), min: z.number(), max: z.number() }).refine((range) => range.min <= range.max),
@@ -96,7 +96,7 @@ test('PATCH rolls back every match when a later result fails validation', () => 
 })
 
 test('DELETE removes every match and reports the count', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number() }))
 
   app.register(cars)
@@ -114,7 +114,7 @@ test('DELETE removes every match and reports the count', () => {
 })
 
 test('Non-JSON model output is rejected before persistence', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const items = new Collection('items', z.object({ value: z.unknown() }))
 
   app.register(items)
@@ -137,7 +137,7 @@ test('Non-JSON model output is rejected before persistence', () => {
 })
 
 test('Unstable model transformations are rejected before persistence', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const changing = new Collection('changing', z.object({ value: z.number().transform((value) => value + 1) }))
   const converted = new Collection('converted', z.object({ value: z.string().transform(Number) }))
 
@@ -168,7 +168,7 @@ test('Mutating model transformations cannot change records across parses', () =>
       return item
     }),
   })
-  const first = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+  const first = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
   const original = new Collection('items', originalModel)
 
   try {
@@ -176,7 +176,7 @@ test('Mutating model transformations cannot change records across parses', () =>
     original.post({ group: 'a', value: { count: 0 } })
     first.close()
 
-    const second = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+    const second = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
     const mutating = new Collection('items', mutatingModel)
 
     second.register(mutating)
@@ -189,7 +189,7 @@ test('Mutating model transformations cannot change records across parses', () =>
       second.close()
     }
 
-    const third = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+    const third = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
     const reopened = new Collection('items', originalModel)
 
     third.register(reopened)
@@ -205,7 +205,7 @@ test('Mutating model transformations cannot change records across parses', () =>
 })
 
 test('PATCH preserves unspecified fields and replaces nested values', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection(
     'cars',
     z.object({
@@ -232,7 +232,7 @@ test('PATCH preserves unspecified fields and replaces nested values', () => {
 })
 
 test('Invalid filters fail without changing records', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number() }))
 
   app.register(cars)
@@ -264,7 +264,7 @@ test('Invalid filters fail without changing records', () => {
 })
 
 test('Filters preserve scalar types and explicit null', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const items = new Collection(
     'items',
     z.object({
@@ -291,7 +291,7 @@ test('Filters preserve scalar types and explicit null', () => {
 })
 
 test('Filters treat field names and values as literal data', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const items = new Collection('items', z.object({ 'a.b': z.string(), 'q"': z.string() }))
 
   app.register(items)
@@ -309,7 +309,7 @@ test('Filters treat field names and values as literal data', () => {
 })
 
 test('PUT and PATCH return zero when no records match', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number().int() }))
 
   app.register(cars)
@@ -326,7 +326,7 @@ test('PUT and PATCH return zero when no records match', () => {
 })
 
 test('POST follows the model unknown-field policy', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const stripped = new Collection('stripped', z.object({ name: z.string() }))
   const strict = new Collection('strict', z.strictObject({ name: z.string() }))
   const loose = new Collection('loose', z.looseObject({ name: z.string() }))
@@ -352,7 +352,7 @@ test('POST follows the model unknown-field policy', () => {
 })
 
 test('PATCH follows the model unknown-field policy', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const strict = new Collection('strict', z.strictObject({ name: z.string() }))
 
   app.register(strict)
@@ -368,7 +368,7 @@ test('PATCH follows the model unknown-field policy', () => {
 })
 
 test('POST rejects invalid model data without inserting a record', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number().int() }))
 
   app.register(cars)
@@ -387,7 +387,7 @@ test('POST rejects invalid model data without inserting a record', () => {
 })
 
 test('Invalid PUT leaves every matched record unchanged', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number().int() }))
 
   app.register(cars)
@@ -406,7 +406,7 @@ test('Invalid PUT leaves every matched record unchanged', () => {
 })
 
 test('Collections keep their records separate', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number() }))
   const bikes = new Collection('bikes', z.object({ make: z.string(), year: z.number() }))
 
@@ -427,7 +427,7 @@ test('Collections keep their records separate', () => {
 })
 
 test('Synchronous methods reject asynchronous model validation', () => {
-  const app = new Hedra(quiet)
+  const app = new Hedra({ env: quiet })
   const items = new Collection(
     'items',
     z.object({ name: z.string() }).refine(async () => true),
@@ -446,7 +446,7 @@ test('Synchronous methods reject asynchronous model validation', () => {
 test('GET validates persisted records against the current model', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-models-'))
   const path = join(dir, 'db.sqlite')
-  const first = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+  const first = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
   const original = new Collection('items', z.object({ value: z.number() }))
 
   first.register(original)
@@ -461,7 +461,7 @@ test('GET validates persisted records against the current model', () => {
     ]
 
     for (const schema of schemas) {
-      const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+      const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
       const items = new Collection('items', schema)
 
       app.register(items)
@@ -471,7 +471,7 @@ test('GET validates persisted records against the current model', () => {
         app.close()
       }
     }
-    const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+    const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
     const items = new Collection('items', z.object({ value: z.number() }))
 
     app.register(items)
@@ -489,7 +489,7 @@ test('GET validates persisted records against the current model', () => {
 test('Native write failures preserve existing records', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-models-'))
   const path = join(dir, 'db.sqlite')
-  const app = new Hedra({ ...quiet, HEDRA_SQLITE_PATH: path })
+  const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
   const cars = new Collection('cars', z.object({ make: z.string(), year: z.number() }))
 
   app.register(cars)
