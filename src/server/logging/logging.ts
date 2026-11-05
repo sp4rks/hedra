@@ -6,6 +6,7 @@ import { z } from 'zod'
 import pretty from 'pino-pretty'
 
 import type { Config } from '#config'
+import { validateConfig } from '#config'
 
 const LogFields = z.record(z.string(), z.unknown())
 
@@ -73,9 +74,10 @@ class PinoAdapter implements Logger {
 export class PinoLogger extends PinoAdapter {
   /** Uses the configured level and format with an optional writable destination. */
   constructor(config: Config, destination?: Writable) {
-    const options = { level: config.serverLogLevel, base: {} }
+    const values = validateConfig(config)
+    const options = { level: values.serverLogLevel, base: {} }
     const stream =
-      config.serverLogFormat === 'pretty'
+      values.serverLogFormat === 'pretty'
         ? pretty({ colorize: true, translateTime: 'SYS:standard', sync: true, destination })
         : destination
 
