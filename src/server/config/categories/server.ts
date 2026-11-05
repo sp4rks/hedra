@@ -93,7 +93,7 @@ export const serverVariables: Config = {
     description: 'Enable or disable printing of registered routes on startup',
     validate: (value: string | number | boolean) => {
       try {
-        z.coerce.boolean().parse(value)
+        z.enum(['true', 'false']).parse(value)
       } catch (_error) {
         throw new ConfigurationError(
           500,

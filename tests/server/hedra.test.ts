@@ -68,6 +68,31 @@ test('new Hedra applies the configured log level', () => {
   expect(app.log.level).toBe('debug')
 })
 
+test.each([
+  ['', false],
+  ['false', false],
+  ['true', true],
+])('collection registration logging with HEDRA_SERVER_PRINT_ROUTES=%s', (value, logsRegistration) => {
+  const proc = Bun.spawnSync([process.execPath, '-e', "import hedra from './examples/02-models.ts'; hedra.close()"], {
+    cwd: join(import.meta.dir, '../..'),
+    env: {
+      HEDRA_SERVER_PRINT_ROUTES: value,
+      HEDRA_SERVER_SILENT_STARTUP: 'true',
+      HEDRA_SERVER_LOG_LEVEL: 'info',
+      HEDRA_SERVER_LOG_TYPE: 'pino',
+      HEDRA_SQLITE_PATH: ':memory:',
+    },
+  })
+  const output = proc.stdout.toString()
+
+  expect(proc.exitCode).toBe(0)
+  if (logsRegistration) {
+    expect(JSON.parse(output).msg).toBe('Registering collection: cars')
+  } else {
+    expect(output).toBe('')
+  }
+})
+
 test('Collection methods fail before registration', () => {
   const cars = new Collection('cars', z.object({ make: z.string() }))
 

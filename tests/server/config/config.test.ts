@@ -131,6 +131,24 @@ test('loadServerConfig rejects a server env outside the allowed set', () => {
   })
 })
 
+test('loadServerConfig rejects an invalid print routes setting', () => {
+  let error: unknown
+
+  try {
+    loadServerConfig({
+      HEDRA_SERVER_PRINT_ROUTES: 'tru',
+      HEDRA_SERVER_SILENT_STARTUP: 'true',
+    })
+  } catch (caught) {
+    error = caught
+  }
+
+  expect(error).toBeInstanceOf(ConfigurationError)
+  expect(error).toMatchObject({
+    detail: 'HEDRA_SERVER_PRINT_ROUTES has invalid value: tru',
+  })
+})
+
 test('loadServerConfig rejects a request timeout outside 1 to 300000', () => {
   let error: unknown
 

@@ -26,14 +26,14 @@ function freePort(): Promise<number> {
   })
 }
 
-/** Polls GET /health until the child accepts a connection or the deadline passes. */
-async function waitForHealth(port: number): Promise<Response> {
+/** Polls GET / until the child accepts a connection or the deadline passes. */
+async function waitForServer(port: number): Promise<Response> {
   const deadline = Date.now() + 5000
   let lastError: unknown
 
   while (Date.now() < deadline) {
     try {
-      return await fetch(`http://127.0.0.1:${port}/health`)
+      return await fetch(`http://127.0.0.1:${port}/`)
     } catch (error) {
       lastError = error
       await Bun.sleep(50)
@@ -43,7 +43,7 @@ async function waitForHealth(port: number): Promise<Response> {
   throw lastError instanceof Error ? lastError : new Error('server did not accept a connection')
 }
 
-test('the process entrypoint serves GET /health', async () => {
+test('the example process serves GET /', async () => {
   const port = await freePort()
   const proc = Bun.spawn(['bun', 'examples/01-helloworld.ts'], {
     cwd: projectRoot,
@@ -59,10 +59,10 @@ test('the process entrypoint serves GET /health', async () => {
   })
 
   try {
-    const response = await waitForHealth(port)
+    const response = await waitForServer(port)
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ ok: true })
+    expect(await response.text()).toBe('Hello Hedra!')
 
     const acceptsOtherAddress = await new Promise<boolean>((resolve) => {
       const socket = createConnection({ port, host: '127.0.0.2' })
