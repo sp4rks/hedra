@@ -14,6 +14,8 @@ type CarModel = z.infer<typeof CarModel>
 const cars = new Collection('cars', CarModel)
 const hedra = new Hedra()
 
+hedra.get('/health', (context) => context.text('Hello Hedra!'))
+
 // Registration attaches the collection to Hedra's shared SQLite database.
 hedra.register(cars)
 
