@@ -67,7 +67,7 @@ Hedra owns one SQLite connection shared by its registered collections. It opens 
 | --- | --- | --- |
 | `HEDRA_SQLITE_PATH` | `.runtime/hedra.sqlite` | Database file, relative to the application's working directory unless absolute. Use `:memory:` for a temporary in-memory database. |
 
-The existing configuration mechanism trims explicit values and uses the default for blank values. Explicit environment values win over an environment file. Registration creates the database's parent directory when necessary. An invalid or unwritable location throws an error.
+[Configuration](configuration.md) trims explicit values and uses the default for blank values. Explicit environment values win over an environment file. Registration creates the database's parent directory when necessary. An invalid or unwritable location throws an error.
 
 For a container, set a path such as `/data/hedra.sqlite` and mount a persistent volume at `/data`. Persist the containing directory so SQLite's accompanying files remain with the database. Different collections share the file and keep their records separate.
 
