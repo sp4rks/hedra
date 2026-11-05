@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -320,6 +320,31 @@ test('Config propagates env-file read failures', async () => {
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+// Root and Windows do not reliably enforce these directory permissions.
+test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+  'Config propagates access errors for an env file inside an inaccessible directory',
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
+    const envPath = join(dir, 'app.env')
+
+    try {
+      await Bun.write(envPath, 'HEDRA_SERVER_LISTEN_PORT=8080\n')
+      await chmod(dir, 0)
+      let failure: unknown
+
+      try {
+        new Config({ HEDRA_ENV_FILE: envPath, HEDRA_SERVER_SILENT_STARTUP: 'true' })
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toMatchObject({ code: 'EACCES' })
+    } finally {
+      await chmod(dir, 0o700)
+      await rm(dir, { recursive: true, force: true })
+    }
+  },
+)
 
 test('Config prints no success report when a setting is invalid', () => {
   const output: string[] = []

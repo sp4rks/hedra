@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { parseEnv, styleText } from 'node:util'
 import { z } from 'zod'
 
@@ -60,9 +60,17 @@ function printConfigRow(variable: string, value: string, source: 'environ' | 'de
 
 /** Reads an env file and fills keys the caller has not already set. */
 function overlayEnvFile(env: typeof Bun.env, path: string): boolean {
-  if (!existsSync(path)) return false
+  let content: string
 
-  const parsed = parseEnv(readFileSync(path, 'utf8'))
+  try {
+    content = readFileSync(path, 'utf8')
+  } catch (error) {
+    if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false
+
+    throw error
+  }
+
+  const parsed = parseEnv(content)
 
   for (const [key, value] of Object.entries(parsed)) {
     if (env[key] === undefined) env[key] = value
