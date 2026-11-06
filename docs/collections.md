@@ -55,7 +55,7 @@ const UpdateCar = CreateCar.partial()
 const prepared = CreateCar.parse({ make: 'Toyota', model: 'Corolla', year: 2024 })
 ```
 
-The controller accepts prepared JSON attributes, handles managed fields and generic JSON integrity, and applies its business rules. It does not repeat public request-input parsing. Explicit undefined values, non-finite numbers, bigint, special objects and cycles reject before persistence. Embedded mutations additionally check requiredness and container constraints at the atomic commit.
+The controller accepts prepared JSON attributes and combines them with current state and managed metadata. Inside the storage transaction it validates the complete proposed resource, including cross-field model rules, before saving. A failed candidate returns 422 without writes; an output-projection failure is an internal 500. Embedded mutations validate the containing document too. The controller stays non-generic and obtains the validator from its per-call collection. ConfigStore's programmatic operations remain model-independent. See the [validation decision](adr/0012-atomic-candidate-validation.md).
 
 `QueryParams` supports only `filter`, a dictionary of top-level scalar equality criteria:
 
@@ -87,6 +87,8 @@ The output validator defines the public fields. The default projection uses decl
 ## Controller selection and lifecycle
 
 The optional collection options object accepts a `controller` class implementing `ControllerInterface`, constructed with `(backend)`, an `outputValidator`, and declared `associations`. Custom controllers retain their own extra method types and remain independent of resource models. Generated handlers pass validated ancestry in their request context; controllers enforce scope and can delegate to BaseController's resource behaviour.
+
+Custom controllers can read that ancestry through the exported `getEmbeddedScope(context)` and `getAssociationScope(context)` functions. Embedded scope identifies the root resource and ordered embedded selectors; association scope identifies independent-resource ancestors. A scope is absent when that request has no corresponding generated ancestry. The exported scope schemas describe the values; callers need no private context keys or internal imports.
 
 Accessing `collection.controller` before registration throws. Registration includes referenced association collections and their root routes. It rejects invalid definitions, ambiguous paths, duplicate names and reusing one collection instance across apps. A collection already registered in the same app may be referenced by a later definition; explicitly registering it again rejects. Internal tenant and association table names are reserved. Failed registration leaves no partially bound controllers or routes.
 

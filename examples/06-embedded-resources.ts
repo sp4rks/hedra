@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { z } from 'zod'
 
 import {
+  Association,
   Collection,
   EmbeddedResource,
+  ErrorResponse,
   Hedra,
   JsonApiListResponse,
   JsonApiResponse,
@@ -91,7 +93,12 @@ try {
   assert.equal(createdLabel.status, 201)
   await app.associations.link({ collection: 'projects', id: second.id }, { collection: 'labels', id: label.id })
   assert.equal((await app.request(`/projects/${second.id}/labels/${label.id}`)).status, 200)
-  assert.equal((await app.request(`/labels/${label.id}`, { method: 'DELETE' })).status, 409)
+  const blocked = await app.request(`/labels/${label.id}`, { method: 'DELETE' })
+  const errors = ErrorResponse.parse(await blocked.json())
+  const detail = z.object({ associations: z.array(Association) }).parse(errors.errors[0]?.detail)
+
+  assert.equal(blocked.status, 409)
+  assert.equal(detail.associations.length, 2)
 
   // Unlinking retains both resources; every link must be removed before deleting either endpoint.
   assert.equal(

@@ -27,7 +27,7 @@ const app = new Hedra({ backend })
 app.register(projects)
 ```
 
-Registration also exposes the referenced labels collection. Notes remain in each project's JSON document, so `/notes` is absent. Ordinary attributes containing objects, arrays or dictionaries gain no routes unless their schemas define EmbeddedResources. An embedded item can itself contain embedded resources.
+Registration also exposes the referenced labels collection. Notes remain in each project's JSON document, so `/notes` is absent. Use a direct EmbeddedResource field, `z.array(EmbeddedResourceModel)` or `z.record(keySchema, EmbeddedResourceModel)`, with optional/nullable/default wrappers as needed. An embedded item can itself declare those fields. Embedding through ordinary wrapper objects, nested arrays, unions or lazy schemas rejects at definition time. Ordinary attributes containing objects, arrays or dictionaries gain no resource routes.
 
 The following requests continue the definition above. Close the app and its borrowed backend when finished. For a complete executable version, run `bun run examples/06-embedded-resources.ts` from the repository root.
 
@@ -49,7 +49,7 @@ The following requests continue the definition above. Close the app and its borr
 
 POST and PATCH accept a JSON attribute object, with a JSON content type. Successful POST returns 201 and a Location header. GET/PATCH return 200. Successful DELETE returns 204 with no body.
 
-Single responses use `JsonApiResponse`: flat attributes in `data` and a self link. Ordinary and array lists use array data. Dictionary lists use dictionary data, retaining their keys. A dictionary value still has its own UUID; that UUID does not replace its key in the path. Encode keys in URLs. Keys must be nonempty, satisfy the model's key schema and differ from `.` and `..`.
+Single responses use `JsonApiResponse`: flat attributes in `data` and a self link. Ordinary and array lists use array data. Dictionary lists use dictionary data, retaining their keys. A dictionary value still has its own UUID; that UUID does not replace its key in the path. Encode keys in URLs. Keys must be nonempty, satisfy the model's key schema and differ from `.`, `..` and the reserved `__proto__` key.
 
 Every ancestor must exist. An embedded item under another owner, or an independent resource without the association named by a navigation path, returns 404. Defining a custom controller does not require writing the HTTP handlers again; the generated handler dispatches to that controller.
 
@@ -62,7 +62,7 @@ Every ancestor must exist. An embedded item under another owner, or an independe
 | 422 | Invalid attributes, item identifiers, dictionary keys, query options or resulting required/container constraints. |
 | 500 | An internal or output-validation failure. |
 
-Generated-route errors use an `errors` envelope with status, title and optional detail. Deletion conflicts report blocking association references rather than private resource attributes. Internal failures never return unfiltered resource data.
+Generated-route errors follow the exported `ErrorResponse` schema: an `errors` envelope with status, title and optional detail. Deletion conflicts report blocking association references rather than private resource attributes. Internal failures never return unfiltered resource data.
 
 ## Filters
 
@@ -89,13 +89,13 @@ PATCH preserves omitted parent attributes. Supplying an embedded container repla
 
 Replacement entries provide their complete ordinary attributes; omitted optional attributes are removed. IDs from outside that containing container, duplicate IDs and mismatched single-value IDs reject the entire update. Supplied timestamps cannot change managed timestamps. Replacement rules apply recursively.
 
-An embedded mutation updates the affected item and its containing resource ancestors. Unaffected siblings retain their timestamps. Requiredness and container constraints still apply: deleting a required single value or the final item from a nonempty array fails without changing storage. A failed validation, projection or storage operation leaves the entire parent unchanged.
+An embedded mutation updates the affected item and its containing resource ancestors. Unaffected siblings retain their timestamps. The controller validates the complete containing resource inside the transaction, including cross-field rules, requiredness and container constraints. Deleting a required single value or the final item from a nonempty array fails without changing storage. A failed validation, projection or storage operation leaves the entire parent unchanged. See the [atomic validation decision](adr/0012-atomic-candidate-validation.md).
 
 ## Associations and deletion
 
 An association connects independent Resources, each retaining its storage and lifetime. A nested path provides navigation. It does not create ownership or a private copy of the associated resource. The same resource can be associated with several parents.
 
-POST to `/projects/:projectId/labels` creates a label and its association in one transaction. Link existing resources through the programmatic interface:
+POST to `/projects/:projectId/labels` creates a label and its association in one transaction. With the IDs of existing resources, link them through the programmatic interface:
 
 ```ts
 await app.associations.link(

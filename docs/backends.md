@@ -16,13 +16,15 @@ All operations return promises. Storage data and filter types derive from the ge
 
 Tables have independent primary keys. Table names use the collection-name grammar and are validated before interpolation as quoted SQL identifiers. IDs, filter values and resource data use bound parameters. Invalid JSON and unsupported filter values reject without altering stored resources.
 
-An update modifier receives the current generic record and returns its replacement. It may not change the primary key. The modifier is not invoked when the ID is absent. A thrown error, invalid output or failed write aborts the transaction. This allows a controller to apply its explicit guards and business rules between reading and writing while keeping the backend model agnostic; it does not imply resource-model parsing.
+An update modifier receives the current generic record and returns its replacement. It may not change the primary key. The modifier is not invoked when the ID is absent. A thrown error, invalid output or failed write aborts the transaction. A controller can run pure candidate validation and business rules between reading and writing; the backend itself remains model agnostic.
 
 There are no bulk mutation, pagination, schema-migration or model-specific operations. SQLite storage errors propagate in their native form; applications decide how to handle or present them.
 
 ## Transactions across records
 
 `Backend.transaction` passes a synchronous `BackendTransaction` to its callback. The session has the same insert/select/update/delete operations without promises. A thrown error, invalid record or failed operation rolls back the transaction. Do not use an async callback or retain a session after it returns; both reject. Await the outer transaction promise.
+
+Given an open backend:
 
 ```ts
 await backend.transaction((transaction) => {
