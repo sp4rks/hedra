@@ -51,7 +51,7 @@ export class Hedra extends Hono {
   readonly port: number
   readonly hostname: string
   private backend?: Backend
-  private ownedBackend?: SqliteBackend
+  private closeBackend?: () => void
   private readonly collectionNames = new Set<string>()
   private closed = false
 
@@ -112,16 +112,18 @@ export class Hedra extends Hono {
     const opened = this.backend === undefined
 
     if (opened) {
-      this.ownedBackend = new SqliteBackend(this.config.sqlitePath)
-      this.backend = this.ownedBackend
+      const backend = new SqliteBackend(this.config.sqlitePath)
+
+      this.backend = backend
+      this.closeBackend = () => backend.close()
     }
 
     try {
       attachCollection(collection, this.guard(this.backend as Backend))
     } catch (error) {
       if (opened) {
-        this.ownedBackend?.close()
-        this.ownedBackend = undefined
+        this.closeBackend?.()
+        this.closeBackend = undefined
         this.backend = undefined
       }
 
@@ -134,6 +136,6 @@ export class Hedra extends Hono {
   close(): void {
     if (this.closed) return
     this.closed = true
-    this.ownedBackend?.close()
+    this.closeBackend?.()
   }
 }
