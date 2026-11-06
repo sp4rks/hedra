@@ -380,11 +380,46 @@ test('Config prints no success report when a setting is invalid', () => {
   expect(output.join('')).toBe('')
 })
 
-test('Hedra preserves ambient process.env identity for .env fallback', async () => {
+test('Hedra loads ambient settings and the selected environment file without options', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
+  const envPath = join(dir, 'app.env')
+  const packageEntry = join(import.meta.dir, '../../../src/hedra.ts')
+  const ambient = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('HEDRA_')))
+  const script = `import { Hedra } from ${JSON.stringify(packageEntry)}; const app = new Hedra(); const other = new Hedra(); process.stdout.write(JSON.stringify({ port: app.port, hostname: app.hostname, separateConfig: app.config !== other.config, separateId: app.instanceId !== other.instanceId }))`
+
+  await Bun.write(envPath, 'HEDRA_SERVER_LISTEN_PORT=9000\nHEDRA_SERVER_LISTEN_IP=127.0.0.2\n')
+
+  try {
+    const result = Bun.spawnSync(['bun', '--no-env-file', '-e', script], {
+      cwd: dir,
+      env: {
+        ...ambient,
+        HEDRA_ENV_FILE: envPath,
+        HEDRA_SERVER_SILENT_STARTUP: 'true',
+        HEDRA_SERVER_LISTEN_PORT: '8123',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+
+    expect(result.stderr.toString()).toBe('')
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout.toString())).toEqual({
+      port: 8123,
+      hostname: '127.0.0.2',
+      separateConfig: true,
+      separateId: true,
+    })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('Hedra loads .env when its selected ambient file is missing', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
   const packageEntry = join(import.meta.dir, '../../../src/hedra.ts')
   const ambient = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('HEDRA_')))
-  const script = `import { Hedra } from ${JSON.stringify(packageEntry)}; process.stdout.write(String(new Hedra({ env: process.env }).port))`
+  const script = `import { Hedra } from ${JSON.stringify(packageEntry)}; process.stdout.write(String(new Hedra().port))`
 
   await Bun.write(join(dir, '.env'), 'HEDRA_SERVER_LISTEN_PORT=8123\n')
 

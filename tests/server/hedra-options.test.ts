@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, expectTypeOf, test } from 'bun:test'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -56,6 +56,23 @@ class RecordingLogger implements Logger {
     return new RecordingLogger(this.records, { ...this.bindings, ...fields })
   }
 }
+
+test('HedraOptions has no environment option', () => {
+  expectTypeOf<'env' extends keyof HedraOptions ? true : false>().toEqualTypeOf<false>()
+})
+
+test('Hedra retains supplied configuration when a wider options object includes env', () => {
+  class CustomConfig extends Config {
+    override readonly serverListenPort = 8080
+  }
+
+  const config = new CustomConfig({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const options = { config, env: { HEDRA_SERVER_LISTEN_PORT: '9000' }, name: 'app' }
+  const app = new Hedra(options)
+
+  expect(app.config).toBe(config)
+  expect(app.port).toBe(8080)
+})
 
 test('PinoLogger uses a supplied logger instead of the default', () => {
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
@@ -135,24 +152,9 @@ test('Hedra logs collection registration only when enabled and allowed by the lo
   }
 })
 
-test('Hedra accepts options from a wider application object', () => {
-  const options = { env: { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LISTEN_PORT: '8080' }, name: 'app' }
-  const hedraOptions: HedraOptions = options
-  const app = new Hedra(hedraOptions)
-
-  expect(app.port).toBe(8080)
-})
-
-test('Hedra rejects conflicting configuration sources', () => {
-  const env = { HEDRA_SERVER_SILENT_STARTUP: 'true' }
-  const config = new Config(env)
-
-  expect(() => new Hedra({ env, config })).toThrow('Provide either env or config')
-})
-
-test('Hedra validates supplied environment values', () => {
-  expect(() => new Hedra({ env: { HEDRA_SERVER_LISTEN_PORT: 3000 } as never })).toThrow()
-  expect(() => new Hedra({ env: { HEDRA_SERVER_LISTEN_PORT: '0' } })).toThrow(ConfigurationError)
+test('Config validates supplied environment values', () => {
+  expect(() => new Config({ HEDRA_SERVER_LISTEN_PORT: 3000 } as never)).toThrow()
+  expect(() => new Config({ HEDRA_SERVER_LISTEN_PORT: '0' })).toThrow(ConfigurationError)
 })
 
 test('Hedra accepts a callable logger implementing the Logger interface', () => {
@@ -167,7 +169,7 @@ test('Hedra accepts a callable logger implementing the Logger interface', () => 
     fatal: recording.fatal.bind(recording),
     child: recording.child.bind(recording),
   })
-  const app = new Hedra({ env: { HEDRA_SERVER_SILENT_STARTUP: 'true' }, logger })
+  const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), logger })
 
   app.log.info('Ready')
 

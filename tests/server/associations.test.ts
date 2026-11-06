@@ -3,14 +3,14 @@ import { z } from 'zod'
 
 import type { Backend } from '#hedra.ts'
 import { ConnectionError } from '#errors'
-import { BaseController, Collection, EmbeddedResource, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { BaseController, Collection, Config, EmbeddedResource, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 const headers = { 'content-type': 'application/json' }
 
 test('associated resources can be shared and block deletion until unlinked', async () => {
   const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ env: quiet, backend })
+  const app = new Hedra({ config: new Config(quiet), backend })
   const labels = new Collection('labels', Resource.extend({ name: z.string() }))
   const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
   const create = async (path: string, body: object) => {
@@ -52,7 +52,7 @@ test('associated resources can be shared and block deletion until unlinked', asy
 
 test('embedded resources under associated resources require every link in their ancestry', async () => {
   const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ env: quiet, backend })
+  const app = new Hedra({ config: new Config(quiet), backend })
   const Note = EmbeddedResource.extend({ text: z.string() })
   const labels = new Collection('labels', Resource.extend({ name: z.string(), notes: z.array(Note).default([]) }))
   const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
@@ -93,7 +93,7 @@ test('embedded resources under associated resources require every link in their 
 
 test('nested associated creation leaves neither resource nor link when output validation fails', async () => {
   const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ env: quiet, backend })
+  const app = new Hedra({ config: new Config(quiet), backend })
   const Label = Resource.extend({ name: z.string() })
   const labels = new Collection('labels', Label, { outputValidator: Label.refine((value) => value.name !== 'bad') })
   const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
@@ -131,8 +131,8 @@ test('nested associated creation leaves neither resource nor link when output va
 
 test('failed graph registration leaves every collection reusable', async () => {
   const backend = new SqliteBackend(':memory:')
-  const first = new Hedra({ env: quiet, backend })
-  const second = new Hedra({ env: quiet, backend })
+  const first = new Hedra({ config: new Config(quiet), backend })
+  const second = new Hedra({ config: new Config(quiet), backend })
   let fails = true
 
   class SometimesFails extends BaseController {
@@ -163,7 +163,7 @@ test('failed graph registration leaves every collection reusable', async () => {
 
 test('saved association operations stop with the app while a borrowed backend remains usable', async () => {
   const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ env: quiet, backend })
+  const app = new Hedra({ config: new Config(quiet), backend })
   const labels = new Collection('labels', Resource.extend({ name: z.string() }))
   const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
 

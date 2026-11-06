@@ -6,6 +6,7 @@ import type { Collection as CollectionType, ResourceInput } from '#hedra.ts'
 import {
   BaseController,
   Collection,
+  Config,
   EmbeddedResource,
   getAssociationScope,
   getEmbeddedScope,
@@ -16,7 +17,10 @@ import {
 
 test('custom controllers can inspect the validated embedded route scope', async () => {
   const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ env: { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }, backend })
+  const app = new Hedra({
+    config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }),
+    backend,
+  })
   let rootId: string | undefined
   let field: string | undefined
 
@@ -60,7 +64,10 @@ test('custom controllers can inspect the validated embedded route scope', async 
 
 test('custom controllers can inspect association ancestors', async () => {
   const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ env: { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }, backend })
+  const app = new Hedra({
+    config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }),
+    backend,
+  })
   let ancestors: ReturnType<typeof getAssociationScope>
 
   class ScopedController extends BaseController {

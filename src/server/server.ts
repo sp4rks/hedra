@@ -15,7 +15,6 @@ import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/
 import { PinoLogger } from '#server/logging/logging.ts'
 
 export type HedraOptions = {
-  env?: typeof Bun.env
   config?: Config
   logger?: Logger
   backend?: Backend
@@ -37,10 +36,8 @@ export class Hedra extends Hono {
   constructor(options: HedraOptions = {}) {
     super()
 
-    if (options.env !== undefined && options.config !== undefined)
-      throw new Error('Provide either env or config, not both')
-    const config = options.config ?? new Config(options.env)
-    const values = options.config ? validateConfig(config) : config
+    const config = options.config ?? new Config()
+    const values = validateConfig(config)
 
     this.config = config
     this.instanceId = crypto.randomUUID()

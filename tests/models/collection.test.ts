@@ -6,6 +6,7 @@ import type { Backend, ControllerInterface } from '#hedra.ts'
 import {
   BaseController,
   Collection,
+  Config,
   EmbeddedResource,
   Hedra,
   JsonApiListResponse,
@@ -64,7 +65,7 @@ test('collections reject embedded resource definitions in unsupported wrapper sh
 })
 
 test('registration constructs the default independent controller', async () => {
-  const app = new Hedra({ env: quiet })
+  const app = new Hedra({ config: new Config(quiet) })
   const cars = new Collection('cars', Car)
   const bikes = new Collection('bikes', Car)
 
@@ -133,7 +134,7 @@ test('an explicitly typed custom controller requires its constructor', () => {
 })
 
 test('registration preserves a custom independent controller and its extra methods', async () => {
-  const app = new Hedra({ env: quiet })
+  const app = new Hedra({ config: new Config(quiet) })
   const cars = new Collection('cars', Car, { controller: CustomController })
 
   try {

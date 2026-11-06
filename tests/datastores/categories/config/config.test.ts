@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
+import { Collection, Config, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -55,7 +55,7 @@ test('ConfigStore instances share tenant storage and remain separate from app re
   const backend = new SqliteBackend(':memory:')
   const first = new ConfigStore(backend)
   const second = new ConfigStore(backend)
-  const app = new Hedra({ env: quiet, backend })
+  const app = new Hedra({ config: new Config(quiet), backend })
   const Car = Resource.extend({ make: z.string() })
   const cars = new Collection('cars', Car)
 
@@ -80,7 +80,7 @@ test('ConfigStore instances share tenant storage and remain separate from app re
 test('application registration rejects the reserved tenant table without changing tenants', async () => {
   const backend = new SqliteBackend(':memory:')
   const config = new ConfigStore(backend)
-  const app = new Hedra({ env: quiet, backend })
+  const app = new Hedra({ config: new Config(quiet), backend })
 
   try {
     const tenant = await config.tenants.create({ name: 'Acme' })
@@ -98,7 +98,7 @@ test('application registration rejects the reserved tenant table without changin
 test('closing a shared backend ends access for every store using it', async () => {
   const backend = new SqliteBackend(':memory:')
   const config = new ConfigStore(backend)
-  const app = new Hedra({ env: quiet, backend })
+  const app = new Hedra({ config: new Config(quiet), backend })
   const cars = new Collection('cars', Resource.extend({ make: z.string() }))
 
   app.register(cars)

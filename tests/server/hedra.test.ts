@@ -10,6 +10,7 @@ import { ConfigurationError, ConnectionError } from '#errors'
 import {
   BaseController,
   Collection,
+  Config,
   ConfigStore,
   Hedra,
   JsonApiListResponse,
@@ -24,7 +25,7 @@ const quiet = {
 }
 
 test('new Hedra returns a Hono app', async () => {
-  const app = new Hedra({ env: quiet })
+  const app = new Hedra({ config: new Config(quiet) })
 
   expect(app).toBeInstanceOf(Hedra)
   expect(app).toBeInstanceOf(Hono)
@@ -36,9 +37,9 @@ test('new Hedra returns a Hono app', async () => {
   expect(await response.json()).toEqual({ name: 'widget' })
 })
 
-test('new Hedra gives each app its own configuration and logger', () => {
-  const first = new Hedra({ env: { ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'one.example' } })
-  const second = new Hedra({ env: { ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'two.example' } })
+test('Hedra keeps separate supplied configurations and app identities', () => {
+  const first = new Hedra({ config: new Config({ ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'one.example' }) })
+  const second = new Hedra({ config: new Config({ ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'two.example' }) })
 
   expect(first.config.deploymentDomain).toBe('one.example')
   expect(second.config.deploymentDomain).toBe('two.example')
@@ -46,11 +47,11 @@ test('new Hedra gives each app its own configuration and logger', () => {
   expect(first.instanceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
 })
 
-test('new Hedra throws an invalid configuration and leaves the process running', () => {
+test('invalid configuration throws and leaves the process running', () => {
   let error: unknown
 
   try {
-    new Hedra({ env: { ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'not a domain' } })
+    new Hedra({ config: new Config({ ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'not a domain' }) })
   } catch (caught) {
     error = caught
   }
@@ -60,13 +61,13 @@ test('new Hedra throws an invalid configuration and leaves the process running',
 })
 
 test('new Hedra uses the configured listen port', () => {
-  const app = new Hedra({ env: { ...quiet, HEDRA_SERVER_LISTEN_PORT: '8080' } })
+  const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SERVER_LISTEN_PORT: '8080' }) })
 
   expect(app.port).toBe(8080)
 })
 
 test('new Hedra uses the configured listen IP', () => {
-  const app = new Hedra({ env: { ...quiet, HEDRA_SERVER_LISTEN_IP: ' 127.0.0.1 ' } })
+  const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SERVER_LISTEN_IP: ' 127.0.0.1 ' }) })
 
   expect(app.hostname).toBe('127.0.0.1')
 })
@@ -133,8 +134,8 @@ function mountCars(app: Hedra, cars: Collection, controller: ControllerInterface
 }
 
 test('registration retains duplicate-name and instance-reuse checks', async () => {
-  const first = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
-  const second = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
+  const first = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
+  const second = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
   const model = Resource.extend({ make: z.string() })
   const cars = new Collection('cars', model)
 
@@ -159,8 +160,8 @@ test('Hedra lazily owns its default SQLite backend', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-sqlite-'))
   const path = join(dir, 'nested', 'db.sqlite')
   const model = Resource.extend({ make: z.string() })
-  const first = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
-  const second = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: path } })
+  const first = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: path }) })
+  const second = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: path }) })
   const cars = new Collection('cars', model)
   const reopened = new Collection('cars', model)
 
@@ -186,8 +187,8 @@ test('Hedra lazily owns its default SQLite backend', async () => {
 
 test('failed registration leaves a collection available for a later successful registration', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-sqlite-'))
-  const first = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: dir } })
-  const second = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
+  const first = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: dir }) })
+  const second = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
   const cars = new Collection('cars', Resource.extend({ make: z.string() }))
 
   try {
@@ -218,7 +219,7 @@ test('a throwing controller constructor leaves the collection available for regi
     }
   }
 
-  const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
+  const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
   const cars = new Collection('cars', model, { controller: CustomController })
 
   try {
@@ -239,8 +240,8 @@ test('a throwing controller constructor leaves the collection available for regi
 test('Hedra.close invalidates saved controller references without closing a borrowed backend', async () => {
   const backend = new SqliteBackend(':memory:')
   const config = new ConfigStore(backend)
-  const first = new Hedra({ env: quiet, backend })
-  const second = new Hedra({ env: quiet, backend })
+  const first = new Hedra({ config: new Config(quiet), backend })
+  const second = new Hedra({ config: new Config(quiet), backend })
   const model = Resource.extend({ make: z.string() })
   const cars = new Collection('cars', model)
   const otherCars = new Collection('cars', model)
@@ -287,7 +288,7 @@ test('Hedra.close invalidates saved controller references without closing a borr
 })
 
 test('collection registration adds HTTP routes and retains custom routes', async () => {
-  const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
+  const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
   const cars = new Collection('cars', Resource.extend({ make: z.string() }))
 
   app.get('/existing', (context) => context.text('ok'))
@@ -306,7 +307,7 @@ test('collection registration adds HTTP routes and retains custom routes', async
 
 test('transaction sessions honor app closure without closing a borrowed backend', async () => {
   const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ env: quiet, backend })
+  const app = new Hedra({ config: new Config(quiet), backend })
 
   class CloseDuringTransaction extends BaseController {
     /** Attempts to write after the app has closed within a transaction. */
