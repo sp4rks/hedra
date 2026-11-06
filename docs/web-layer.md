@@ -81,6 +81,8 @@ Creating a parent can supply embedded values without metadata; the controller ge
 
 PATCH preserves omitted parent attributes. Supplying an embedded container replaces that container. Use a nested item PATCH to change one item's supplied attributes while retaining its other attributes.
 
+An absent or null array/dictionary lists as empty. A nested POST initializes that container before inserting the new item; the resulting document must still pass its model. Single-value POST likewise requires an absent or null value.
+
 | Container | Replacement identity |
 | --- | --- |
 | Array | Supply an existing item's ID to retain its identity/creation timestamp. An ID-less item is new. Omitted items are removed; `[]` removes every item. |
@@ -122,6 +124,8 @@ Embedded ownership is separate: embedded values do not block deletion of their o
 ## Public fields and lifecycle
 
 Default projection strips unknown fields and password fields at Resource and EmbeddedResource levels. Explicit output validators define other public-field policies. Hidden embedded fields receive no exposing generated routes. Projection failures abort writes instead of returning raw data. See [public output](collections.md#public-output).
+
+Output transformations must retain resource identity and the correspondence between a dictionary key and its embedded item. Remapping a key to another item's UUID is an output error, including when its declared schema still accepts the result; it cannot commit a write or return the wrong item.
 
 Closing Hedra invalidates saved controllers and association handles. An owned backend closes with the app; a borrowed backend remains the creator's responsibility. Association operations use the [generic transaction interface](backends.md#transactions-across-records).
 
