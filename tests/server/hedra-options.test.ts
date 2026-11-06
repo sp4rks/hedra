@@ -57,6 +57,13 @@ class RecordingLogger implements Logger {
   }
 }
 
+test('PinoLogger uses a supplied logger instead of the default', () => {
+  const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const supplied = new RecordingLogger([])
+
+  expect(PinoLogger.create(config, supplied)).toBe(supplied)
+})
+
 test('Hedra accepts a Config and binds its identity to the supplied logger', () => {
   let output = ''
   const destination = new Writable({

@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { join } from 'node:path'
 import { Writable } from 'node:stream'
 
 import { ConfigurationError } from '#errors'
@@ -16,6 +17,44 @@ function captureDestination(): { destination: Writable; text: () => string } {
 
   return { destination, text: () => chunks.join('') }
 }
+
+/** Captures a subprocess's standard output without a shared process-wide stream. */
+function captureScript(script: string): string {
+  const result = Bun.spawnSync(['bun', '-e', script], { stdout: 'pipe', stderr: 'pipe' })
+
+  expect(result.stderr.toString()).toBe('')
+  expect(result.exitCode).toBe(0)
+
+  return result.stdout.toString()
+}
+
+test('PinoLogger creates a default logger using the configured JSON format and info level', () => {
+  const entry = join(import.meta.dir, '../../src/hedra.ts')
+  const output = captureScript(`
+    import { Config, PinoLogger } from ${JSON.stringify(entry)}
+    const logger = PinoLogger.create(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }))
+    logger.debug('hidden')
+    logger.info('visible')
+  `)
+
+  expect(JSON.parse(output)).toMatchObject({ msg: 'visible' })
+})
+
+test('PinoLogger creates a default logger using explicit format and level settings', () => {
+  const entry = join(import.meta.dir, '../../src/hedra.ts')
+  const output = captureScript(`
+    import { Config, PinoLogger } from ${JSON.stringify(entry)}
+    const logger = PinoLogger.create(new Config({
+      HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_FORMAT: 'pretty', HEDRA_SERVER_LOG_LEVEL: 'warn'
+    }))
+    logger.info('hidden')
+    logger.warn('visible')
+  `)
+
+  expect(output).toContain('visible')
+  expect(output).not.toContain('hidden')
+  expect(output).not.toContain('"msg"')
+})
 
 test('PinoLogger emits message-first structured JSON', () => {
   const captured = captureDestination()

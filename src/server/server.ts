@@ -45,7 +45,7 @@ export class Hedra extends Hono {
 
     this.config = config
     this.instanceId = crypto.randomUUID()
-    this.log = (options.logger ?? new PinoLogger(config)).child({ instanceId: this.instanceId })
+    this.log = PinoLogger.create(config, options.logger).child({ instanceId: this.instanceId })
     this.port = values.serverListenPort
     this.hostname = values.serverListenIp
     this.backend = options.backend

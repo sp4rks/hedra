@@ -72,6 +72,11 @@ class PinoAdapter implements Logger {
 
 /** Creates the default logging adapter. */
 export class PinoLogger extends PinoAdapter {
+  /** Uses a supplied logger or creates the configured default. */
+  static create(config: Config, logger?: Logger): Logger {
+    return logger ?? new PinoLogger(config)
+  }
+
   /** Uses the configured level and format with an optional writable destination. */
   constructor(config: Config, destination?: Writable) {
     const values = validateConfig(config)
