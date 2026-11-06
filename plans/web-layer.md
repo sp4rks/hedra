@@ -15,7 +15,7 @@ Hedra generates resource routes from collection definitions. Web validates reque
 - Any association involving a Resource blocks its deletion, including the association traversed by a nested URL. Return 409 reporting the blockers; unlink first. Deletion never cascades into deleting associated Resources. Embedded containment is separate and does not block deletion of its owner.
 - Cardinality/exclusivity policies and an HTTP endpoint for linking existing Resources remain deferred.
 
-ADR 0010 records the independent/embedded lifetime decision. ADR 0009's independent REST controller and pure input-validation contracts remain in force.
+ADR 0010 records the independent/embedded lifetime decision. ADR 0009's independent REST controller interface remains in force; ADR 0012 revises validation placement so web validates request fields and controllers validate complete candidate resources atomically.
 
 ## Definition and registration interface
 
@@ -69,7 +69,11 @@ Keep existing response envelopes and self links. Resource links identify the act
 
 ## Validation, identity and output
 
-Derive pure input validators from the target model, recursively including embedded values. Create requires ordinary required attributes and applies model defaults/normalisation; PATCH validates supplied attributes without applying absent defaults. Preserve unknown-property policy and ADR 0009's split between prepared input, controller-managed metadata and business rules. Do not recreate a resource-generic controller or move models into ConfigStore.
+Derive pure input validators from the target model, recursively including embedded values. Create requires ordinary required attributes and applies model defaults/normalisation; PATCH validates supplied attributes without applying absent defaults. Preserve unknown-property policy. Derive request shape validators without object-level checks that need omitted managed fields or current values; do not call .omit() directly on a refined Zod object when the installed Zod rejects that operation.
+
+The user approved a revised validation split: inside the storage transaction, controllers construct the complete candidate, apply the pure full-model validator and persist its parsed result only if valid. This enforces cross-field rules such as end > start on partial updates without a read/validate/write race. Run the containing root model for embedded mutations so ancestor and nested invariants remain valid. Candidate validation failures are 422 and leave all storage unchanged; output projection failures remain 500. Keep ControllerInterface/BaseController nongeneric and do not store a resource model on the instance: obtain the validator from the per-call Collection. Keep ConfigStore/ResourceOperations model-independent. ADR 0012 supersedes ADR 0009's placement of all model input validation in web.
+
+Preserve supported hand-written models which require UUID id but omit audit fields: validate declared model data without presenting undeclared generated audit fields to a strict schema, then preserve the real server-managed metadata. Model parsing must not change managed identity/creation/update values. Ordinary model/default/transform handling must respect ADR 0003's stable stored representation; never persist public output projections.
 
 Create replaces supplied managed metadata and generates it for all new items. Nested PATCH addresses the selected embedded item and preserves creation time. Embedded mutations update affected items and their containing-resource ancestors' timestamps; unaffected siblings retain their values/timestamps. Top-level caller metadata is ignored as in the existing controller contract. Embedded IDs in parent PATCH containers can select retained identities under the rules below.
 
@@ -84,7 +88,7 @@ Container replacement rules:
 
 Nested item PATCH remains a shallow update; replacing a container is explicit replacement. All changes must be atomic. A retained embedded entry's omitted optional attributes are removed by replacement; a nested item PATCH preserves its omitted attributes. New creates ignore supplied managed metadata; parent PATCH rejects unrecognised supplied embedded IDs rather than importing another owner's identity.
 
-Extend default output projection through embedded resources, including default password omission. Apply the same policy to root and nested responses. Explicit output policy must also govern embedded-route exposure: hiding an embedded field must not leave another generated route exposing it. Exposed embedded output definitions must preserve container shape and identity sufficiently to route safely; reject incompatible output definitions rather than leaking or returning a mismatched item. Validate the containing resource's output before committing embedded mutations and reuse the projected subtree. Output projection must not mutate storage. Never return raw values after a projection failure. Preserve declared required/minimum container constraints when deleting embedded values; validate these structural mutation constraints at the atomic commit while retaining pure request-input parsing in the web layer.
+Extend default output projection through embedded resources, including default password omission. Apply the same policy to root and nested responses. Explicit output policy must also govern embedded-route exposure: hiding an embedded field must not leave another generated route exposing it. Exposed embedded output definitions must preserve container shape and identity sufficiently to route safely; reject incompatible output definitions rather than leaking or returning a mismatched item. Validate the containing resource's output before committing embedded mutations and reuse the projected subtree. Output projection must not mutate storage. Never return raw values after a projection failure. Full candidate validation at commit must preserve declared required/minimum container and cross-field constraints when modifying embedded values.
 
 ## Associations and persistence
 
@@ -152,6 +156,7 @@ The lead accepts package exports/registration, HTTP through app.request, program
 | registration exposes resource CRUD with the selected controller | Five operations, statuses, output envelopes, Location/self links and a custom controller through app.request. |
 | definitions distinguish independent and embedded resources | Extended base schemas; independent root routes, nested-only embedded arrays/dictionaries/singletons, ordinary containers, multi-level definitions, reuse/name/collision failures. |
 | request validation prepares data without unintended defaults | Required fields, normalisation/defaults, partial updates, unknown fields, UUIDs, scalar types, duplicate query options, malformed JSON and content types; failures leave public reads unchanged. |
+| complete candidate validation enforces model rules atomically | Refined models can be registered; invalid create and partial updates spanning stored fields return 422 without writes. Embedded mutations preserve root/child cross-field rules. Retain nongeneric controllers and strict UUID-only models without declared timestamps. |
 | embedded operations remain scoped to every ancestor | Two roots, siblings and multiple depths; a valid ID under the wrong owner and missing ancestors return 404. |
 | embedded mutations are atomic and retain metadata | Individual lifecycle, unchanged siblings, deterministic timestamps and file-backed reopen. |
 | parent container replacement retains or creates identities | Retained/new/omitted items, empty/nested arrays, dictionaries and singletons, dictionary key selection/renaming, duplicate/foreign IDs and spoofed timestamps; one invalid entry rolls back all. |
