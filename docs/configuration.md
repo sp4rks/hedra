@@ -44,6 +44,7 @@ Environment values are strings. Hedra trims them, applies defaults for unset or 
 | `HEDRA_SQLITE_PATH` | `sqlitePath` | Nonempty path string, or `:memory:` | `.runtime/hedra.sqlite` |
 | `HEDRA_SERVER_ENV` | `serverEnv` | `test`, `dev`, `nonprod`, `prod` | `dev` |
 | `HEDRA_SERVER_SILENT_STARTUP` | `serverSilentStartup` | Boolean | `false` |
+| `HEDRA_SERVER_LOG_LIBRARY` | `serverLogLibrary` | `pino` | `pino` |
 | `HEDRA_SERVER_LOG_FORMAT` | `serverLogFormat` | `json`, `pretty` | `json` |
 | `HEDRA_SERVER_LOG_LEVEL` | `serverLogLevel` | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent` | `info` |
 | `HEDRA_SERVER_HTTP_LOGGING` | `serverHttpLogEnabled` | Boolean | `true` |
@@ -55,6 +56,8 @@ Environment values are strings. Hedra trims them, applies defaults for unset or 
 `serverHttpLogEnabled` retains its configuration meaning; this change does not add HTTP logging middleware. Connection ownership and persistent-volume requirements are described in [storage backends](backends.md).
 
 Set `serverPrintRoutes` through `HEDRA_SERVER_PRINT_ROUTES=true` to log collection registration messages at level `info`. These messages follow the logger's configured filtering; `silent` suppresses them.
+
+`HEDRA_SERVER_LOG_LIBRARY` selects the logging implementation; `pino` is currently the only accepted value. Unsupported values prevent startup, including when a logger is supplied directly. Output format and minimum level remain separate settings. See [logging](logging.md#select-the-logging-library) for the generic interface and factory.
 
 ## Environment files and reporting
 
@@ -88,4 +91,4 @@ Read-only properties are a TypeScript guarantee. The object is not frozen at run
 
 If a caller previously supplied an explicit environment snapshot, preserve it with `new Hedra({ config: new Config(env) })`. Hedra no longer reads an `env` option; like other unknown properties, it is ignored at runtime.
 
-The old log-type setting and values are no longer supported. Remove old names when migrating; unknown environment variables do not select a backend or output format.
+The old log-type setting and values are no longer supported. Remove old names when migrating. Select the library with `HEDRA_SERVER_LOG_LIBRARY` and the output format with `HEDRA_SERVER_LOG_FORMAT`; the old `HEDRA_SERVER_LOG_TYPE` variable is ignored.

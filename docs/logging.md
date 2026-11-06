@@ -1,6 +1,6 @@
 # Logging
 
-`app.log` uses Hedra's `Logger` interface. The default implementation is `PinoLogger`, which writes JSON to stdout at level `info`. Set `HEDRA_SERVER_LOG_FORMAT=pretty` for readable output, and `HEDRA_SERVER_LOG_LEVEL` for the minimum level. See [configuration](configuration.md#settings) for accepted values.
+`app.log` uses Hedra's library-independent `Logger` interface. `HEDRA_SERVER_LOG_LIBRARY` selects the implementation; its default and only accepted value is currently `pino`. The default output is JSON to stdout at level `info`. Set `HEDRA_SERVER_LOG_FORMAT=pretty` for readable output, and `HEDRA_SERVER_LOG_LEVEL` for the minimum level. See [configuration](configuration.md#settings) for accepted values.
 
 Messages come first, followed by optional structured fields:
 
@@ -67,7 +67,23 @@ Pino uses `level`, `time` and `msg` for record metadata. Supplying these names a
 
 Children retain the implementation's output behaviour. If an application subclasses an adapter and overrides its logging behaviour, its `child` implementation must preserve that behaviour too.
 
-## Destinations and other backends
+## Select the logging library
+
+Hedra obtains its logger through `createLogger(config, logger?)`, which returns the generic `Logger` interface. The factory validates configuration and uses `config.serverLogLibrary` to select the implementation. Unsupported library values throw a `ConfigurationError`; they do not fall back to Pino. A supplied logger is returned unchanged, and configuration is still validated.
+
+Use the same factory to construct a logger independently of Hedra:
+
+```ts
+import { Config, createLogger } from '#hedra.ts'
+
+const logger = createLogger(new Config())
+
+logger.info('Logger configured')
+```
+
+`Config()` loads the process environment, environment files and defaults. Library selection is separate from output format: `HEDRA_SERVER_LOG_LIBRARY=pino` works with either `json` or `pretty` output. `pretty` is not a valid library name.
+
+## Destinations and supplied implementations
 
 `PinoLogger` accepts a `Config` and an optional standard writable destination. For example, this sends application logs to stderr:
 
@@ -81,7 +97,7 @@ const app = new Hedra({ config, logger })
 app.log.info('Application configured')
 ```
 
-To use another backend, implement `Logger` and supply its instance through the `logger` option. Hedra uses that interface and adds app context through `child`; it does not inspect a native backend object or reconfigure a shared logger globally.
+To supply a custom logging implementation, implement `Logger` and pass its instance through the `logger` option. Hedra uses that interface and adds app context through `child`; it does not inspect a native library object or reconfigure a shared logger globally. This dependency override does not register another environment-selectable library; `pino` remains the only accepted configuration value.
 
 Configuration level and format settings configure the default Pino adapter. A supplied implementation owns its output policy and can consume `Config` when constructed. Its `child` method must provide independent bindings and retain that policy.
 
@@ -98,3 +114,5 @@ app.log.error('Database operation failed', { err: error })
 ```
 
 The example above assumes an `error` from application error handling. See the configuration reference for the log-format environment-variable migration.
+
+`PinoLogger.create(config, logger)` becomes `createLogger(config, logger)`. The `PinoLogger` constructor remains available for callers that explicitly need its writable-destination option.
