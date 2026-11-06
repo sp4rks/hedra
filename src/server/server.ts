@@ -1,6 +1,5 @@
 import type { z } from 'zod'
 import { Hono } from 'hono'
-import { TrieRouter } from 'hono/router/trie-router'
 
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
@@ -36,7 +35,7 @@ export class Hedra extends Hono {
 
   /** Loads configuration and a logger and sets the listen address. */
   constructor(options: HedraOptions = {}) {
-    super({ router: new TrieRouter() })
+    super()
 
     if (options.env !== undefined && options.config !== undefined)
       throw new Error('Provide either env or config, not both')

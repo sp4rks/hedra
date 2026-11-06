@@ -139,13 +139,13 @@ test('registration retains duplicate-name and instance-reuse checks', async () =
   const cars = new Collection('cars', model)
 
   first.register(cars)
+  first.register(new Collection('bikes', model))
   mountCars(first, cars)
 
   try {
     const car = JsonApiResponse.parse(await (await first.request('/test/cars', { method: 'POST' })).json()).data
 
     expect(() => first.register({ name: 'bikes' } as never)).toThrow('Collection')
-    first.register(new Collection('bikes', model))
     expect(() => first.register(new Collection('cars', model))).toThrow()
     expect(() => second.register(cars)).toThrow()
     expect(JsonApiListResponse.parse(await (await first.request('/test/cars')).json()).data).toEqual([car])
@@ -292,12 +292,12 @@ test('collection registration adds HTTP routes and retains custom routes', async
 
   app.get('/existing', (context) => context.text('ok'))
   app.register(cars)
+  app.register(new Collection('bikes', Resource.extend({ make: z.string() })))
   try {
     expect(cars.endpoint).toBe('/cars')
     expect((await app.request('/cars')).status).toBe(200)
     expect((await app.request('/cars', { method: 'POST' })).status).toBe(415)
     expect((await app.request('/existing')).status).toBe(200)
-    app.register(new Collection('bikes', Resource.extend({ make: z.string() })))
     expect((await app.request('/bikes')).status).toBe(200)
   } finally {
     app.close()
