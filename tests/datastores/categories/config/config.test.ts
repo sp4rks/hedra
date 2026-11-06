@@ -8,19 +8,25 @@ const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'si
 test('ConfigStore exposes tenant resource operations through the generic controller', async () => {
   const backend = new SqliteBackend(':memory:')
   const config = new ConfigStore(backend)
+  const TenantInput = Tenant.omit({ id: true })
 
   try {
-    const tenant = await config.tenants.create({ name: ' Acme ' })
+    const tenant = await config.tenants.create(TenantInput.parse({ name: ' Acme ' }))
 
     expect(Tenant.parse(tenant)).toEqual({ id: tenant.id, name: 'Acme' })
     expect(await config.tenants.get(tenant.id)).toEqual(tenant)
-    expect(await config.tenants.update(tenant.id, { name: ' New name ' })).toEqual({ id: tenant.id, name: 'New name' })
+    expect(await config.tenants.update(tenant.id, TenantInput.partial().parse({ name: ' New name ' }))).toEqual({
+      id: tenant.id,
+      name: 'New name',
+    })
     expect(await config.tenants.replace(tenant.id, { name: 'Replacement' })).toEqual({
       id: tenant.id,
       name: 'Replacement',
     })
-    await expect(config.tenants.create({ name: ' ' })).rejects.toThrow()
-    expect(await config.tenants.list()).toEqual([{ id: tenant.id, name: 'Replacement' }])
+    const unchecked = await config.tenants.create({ name: ' ' })
+
+    expect(unchecked).toEqual({ id: unchecked.id, name: ' ' })
+    expect(await config.tenants.list()).toEqual([{ id: tenant.id, name: 'Replacement' }, unchecked])
     expect(await config.tenants.delete(tenant.id)).toBe(true)
     expect(await config.tenants.get(tenant.id)).toBeNull()
   } finally {

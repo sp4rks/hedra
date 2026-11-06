@@ -6,92 +6,96 @@ import { z } from 'zod'
 
 import { Controller, Resource, SqliteBackend } from '#hedra.ts'
 
-const Car = Resource.extend({ make: z.string().trim().min(1), year: z.number().int().default(2024) })
+const CarModel = Resource.extend({ make: z.string().trim().min(1), year: z.number().int().default(2024) })
 
-test('create returns a normalized resource with a fresh UUID', async () => {
+type Car = z.output<typeof CarModel>
+
+test('controllers accept plain resource types without a model argument', async () => {
   const backend = new SqliteBackend(':memory:')
-  const cars = new Controller('cars', Car, backend)
+  const cars = new Controller<Car>('cars', backend)
 
   try {
-    const first = await cars.create({ make: ' Toyota ' })
-    const second = await cars.create({ make: 'Honda', year: 2025 })
+    const car = await cars.create({ make: ' Toyota ', year: 2024 })
 
-    expect(Resource.parse(first)).toEqual({ id: first.id })
-    expect(Resource.parse(second)).toEqual({ id: second.id })
-    expect(first.id).not.toBe(second.id)
-    expect(first).toEqual({ id: first.id, make: 'Toyota', year: 2024 })
-    expect(second).toEqual({ id: second.id, make: 'Honda', year: 2025 })
-    expect(await cars.get(first.id)).toEqual(first)
-    expect(await cars.list()).toEqual([first, second])
+    expect(car).toEqual({ id: car.id, make: ' Toyota ', year: 2024 })
+    expect(await cars.get(car.id)).toEqual(car)
+    expect(await cars.list()).toEqual([car])
+    expect(await cars.update(car.id, { year: 2025 })).toEqual({ ...car, year: 2025 })
+    expect(await cars.replace(car.id, { make: 'Honda', year: 2026 })).toEqual({ id: car.id, make: 'Honda', year: 2026 })
+    expect(await cars.delete(car.id)).toBe(true)
+    expect(await cars.get(car.id)).toBeNull()
   } finally {
     backend.close()
   }
 })
 
-test('create rejects a supplied ID without inserting a resource', async () => {
+test('caller validation prepares data before controller operations', async () => {
   const backend = new SqliteBackend(':memory:')
-  const cars = new Controller('cars', Car, backend)
+  const cars = new Controller<Car>('cars', backend)
+  const input = CarModel.omit({ id: true })
 
   try {
-    // @ts-expect-error The controller owns the resource ID.
-    await expect(cars.create({ id: crypto.randomUUID(), make: 'Toyota' })).rejects.toThrow()
-    await expect(cars.create({ id: undefined, make: 'Toyota' })).rejects.toThrow()
-    expect(await cars.list()).toEqual([])
+    const prepared = input.parse({ make: ' Toyota ' })
+    const car = await cars.create(prepared)
+    const direct = await cars.create({ make: ' Honda ', year: 2030 })
+
+    expect(car).toEqual({ id: car.id, make: 'Toyota', year: 2024 })
+    expect(await cars.get(car.id)).toEqual(car)
+    expect(direct).toEqual({ id: direct.id, make: ' Honda ', year: 2030 })
+    expect(await cars.get(direct.id)).toEqual(direct)
   } finally {
     backend.close()
   }
 })
 
-test('create rejects invalid resource attributes without writing', async () => {
+test('controller types describe prepared resource data and the two-argument constructor', async () => {
   const backend = new SqliteBackend(':memory:')
-  const Range = Resource.extend({ min: z.number(), max: z.number() }).refine((value) => value.min <= value.max)
-  const ranges = new Controller('ranges', Range, backend)
+  const cars = new Controller<Car>('cars', backend)
+  const args: ConstructorParameters<typeof Controller<Car>> = ['cars', backend]
+  // @ts-expect-error Controllers do not accept a resource model.
+  const oldArgs: ConstructorParameters<typeof Controller<Car>> = ['cars', CarModel, backend]
 
   try {
-    await expect(ranges.create({ min: 2 } as never)).rejects.toThrow()
-    await expect(ranges.create({ min: '2', max: 3 } as never)).rejects.toThrow()
-    await expect(ranges.create({ min: 3, max: 2 })).rejects.toThrow()
-    expect(await ranges.list()).toEqual([])
+    // @ts-expect-error Prepared data requires the year even when the model supplies a default.
+    const unprepared = await cars.create({ make: 'Toyota' })
+
+    expect(args).toHaveLength(2)
+    expect(oldArgs).toHaveLength(3)
+    expect(unprepared).not.toHaveProperty('year')
+    expect(await cars.get(unprepared.id)).toEqual(unprepared)
   } finally {
     backend.close()
   }
 })
 
-test('create prevents model transforms from replacing the generated ID', async () => {
+test('controllers reject caller-owned changes to server resource IDs', async () => {
   const backend = new SqliteBackend(':memory:')
-  const id = crypto.randomUUID()
-  const Model = Resource.extend({ name: z.string() }).superRefine((value) => {
-    value.id = id
-  })
-  const controller = new Controller('items', Model, backend)
+  const cars = new Controller<Car>('cars', backend)
 
   try {
-    await expect(controller.create({ name: 'Item' })).rejects.toThrow('ID')
-    expect(await controller.list()).toEqual([])
+    const car = await cars.create({ make: 'Toyota', year: 2024 })
+    const other = await cars.create({ make: 'Honda', year: 2025 })
+
+    expect(Resource.shape.id.parse(car.id)).toBe(car.id)
+    expect(car.id).not.toBe(other.id)
+    // @ts-expect-error The controller generates the resource ID.
+    await expect(cars.create({ id: crypto.randomUUID(), make: 'Ford', year: 2026 })).rejects.toThrow()
+    await expect(cars.create({ id: undefined, make: 'Ford', year: 2026 })).rejects.toThrow()
+    // @ts-expect-error An update cannot provide the resource ID.
+    await expect(cars.update(car.id, { id: car.id })).rejects.toThrow()
+    // @ts-expect-error A replacement cannot provide the resource ID.
+    await expect(cars.replace(car.id, { id: car.id, make: 'Ford', year: 2026 })).rejects.toThrow()
+    await expect(cars.get('bad')).rejects.toThrow()
+    await expect(cars.update('bad', { year: 2026 })).rejects.toThrow()
+    await expect(cars.replace('bad', { make: 'Ford', year: 2026 })).rejects.toThrow()
+    await expect(cars.delete('bad')).rejects.toThrow()
+    expect(await cars.list()).toEqual([car, other])
   } finally {
     backend.close()
   }
 })
 
-test('list rejects model transforms that replace stored IDs', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const fixed = crypto.randomUUID()
-  const original = crypto.randomUUID()
-  const Model = Resource.extend({ name: z.string() }).superRefine((value) => {
-    value.id = fixed
-  })
-  const controller = new Controller('items', Model, backend)
-
-  try {
-    await backend.insert('items', { id: original, name: 'Item' })
-    await expect(controller.list()).rejects.toThrow('ID')
-    await expect(controller.get(original)).rejects.toThrow('ID')
-  } finally {
-    backend.close()
-  }
-})
-
-test('update changes only the addressed resource and preserves its ID', async () => {
+test('resource operations remain atomic and scoped to one ID', async () => {
   const backend = new SqliteBackend(':memory:')
   const Model = Resource.extend({
     name: z.string(),
@@ -99,55 +103,39 @@ test('update changes only the addressed resource and preserves its ID', async ()
     tags: z.array(z.string()),
     note: z.string().optional(),
   })
-  const controller = new Controller('items', Model, backend)
+  const cars = new Controller<z.output<typeof Model>>('cars', backend)
+  const bikes = new Controller<z.output<typeof Model>>('bikes', backend)
 
   try {
-    const first = await controller.create({
+    const first = await cars.create({
       name: 'One',
       engine: { fuel: 'petrol', cylinders: 4 },
       tags: ['old'],
       note: 'keep',
     })
-    const second = await controller.create({ name: 'Two', engine: { fuel: 'diesel' }, tags: [] })
+    const second = await cars.create({ name: 'Two', engine: { fuel: 'diesel' }, tags: [] })
+    const bike = await bikes.create({ name: 'Bike', engine: { fuel: 'electric' }, tags: [] })
     const expected = { ...first, engine: { fuel: 'electric' }, tags: ['new'] }
 
-    expect(await controller.update(first.id, { engine: { fuel: 'electric' }, tags: ['new'] })).toEqual(expected)
-    expect(await controller.update(first.id, {})).toEqual(expected)
-    expect(await controller.get(first.id)).toEqual(expected)
-    expect(await controller.get(second.id)).toEqual(second)
-  } finally {
-    backend.close()
-  }
-})
+    expect(await cars.update(first.id, { engine: { fuel: 'electric' }, tags: ['new'] })).toEqual(expected)
+    expect(await cars.update(first.id, {})).toEqual(expected)
+    await expect(cars.update(first.id, { note: undefined })).rejects.toThrow()
+    expect(await cars.get(first.id)).toEqual(expected)
+    expect(await cars.get(second.id)).toEqual(second)
+    expect(await bikes.get(bike.id)).toEqual(bike)
+    const replacement = { id: first.id, name: 'Replacement', engine: { fuel: 'electric' }, tags: [] }
 
-test('replace uses the complete model while preserving the addressed ID', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const Model = Resource.extend({ name: z.string(), status: z.string().default('new'), note: z.string().optional() })
-  const controller = new Controller('items', Model, backend)
+    expect(await cars.replace(first.id, { name: 'Replacement', engine: { fuel: 'electric' }, tags: [] })).toEqual(
+      replacement,
+    )
+    expect(await cars.get(first.id)).toEqual(replacement)
+    const missing = crypto.randomUUID()
 
-  try {
-    const first = await controller.create({ name: 'One', status: 'old', note: 'remove' })
-    const second = await controller.create({ name: 'Two' })
-    const expected = { id: first.id, name: 'Replacement', status: 'new' }
-
-    expect(await controller.replace(first.id, { name: 'Replacement' })).toEqual(expected)
-    expect(await controller.get(first.id)).toEqual(expected)
-    expect(await controller.get(second.id)).toEqual(second)
-  } finally {
-    backend.close()
-  }
-})
-
-test('delete removes only the addressed resource and reports absence', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const cars = new Controller('cars', Car, backend)
-
-  try {
-    const first = await cars.create({ make: 'Toyota' })
-    const second = await cars.create({ make: 'Honda' })
-
+    expect(await cars.get(missing)).toBeNull()
+    expect(await cars.update(missing, { name: 'Missing' })).toBeNull()
+    expect(await cars.replace(missing, { name: 'Missing', engine: { fuel: 'electric' }, tags: [] })).toBeNull()
+    expect(await cars.delete(missing)).toBe(false)
     expect(await cars.delete(first.id)).toBe(true)
-    expect(await cars.delete(first.id)).toBe(false)
     expect(await cars.get(first.id)).toBeNull()
     expect(await cars.get(second.id)).toEqual(second)
   } finally {
@@ -155,334 +143,181 @@ test('delete removes only the addressed resource and reports absence', async () 
   }
 })
 
-test('get returns one resource or null', async () => {
+test('controller filters enforce generic scalar rules without a resource model', async () => {
   const backend = new SqliteBackend(':memory:')
-  const cars = new Controller('cars', Car, backend)
-
-  try {
-    const first = await cars.create({ make: 'Toyota' })
-    const second = await cars.create({ make: 'Honda' })
-
-    expect(await cars.get(first.id)).toEqual(first)
-    expect(await cars.get(second.id)).toEqual(second)
-    expect(await cars.get(crypto.randomUUID())).toBeNull()
-  } finally {
-    backend.close()
-  }
-})
-
-test('list returns matching resources in insertion order', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const cars = new Controller('cars', Car, backend)
+  const cars = new Controller<Car>('cars', backend)
 
   try {
     const first = await cars.create({ make: 'Toyota', year: 2024 })
     const second = await cars.create({ make: 'Honda', year: 2024 })
     const third = await cars.create({ make: 'Toyota', year: 2025 })
 
-    expect(await cars.list()).toEqual([first, second, third])
-    expect(await cars.list({})).toEqual([first, second, third])
     expect(await cars.list({ make: 'Toyota' })).toEqual([first, third])
     expect(await cars.list({ make: 'Toyota', year: 2025 })).toEqual([third])
-    expect(await cars.list({ make: 'Honda', year: 2025 })).toEqual([])
-  } finally {
-    backend.close()
-  }
-})
-
-test('resource operations reject invalid IDs and filters without changing data', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const cars = new Controller('cars', Car, backend)
-
-  try {
-    const car = await cars.create({ make: 'Toyota' })
-
-    await expect(cars.get('bad')).rejects.toThrow()
-    await expect(cars.update('bad', { make: 'Honda' })).rejects.toThrow()
-    await expect(cars.replace('bad', { make: 'Honda' })).rejects.toThrow()
-    await expect(cars.delete('bad')).rejects.toThrow()
+    expect(await cars.list({ year: 2024 })).toEqual([first, second])
+    // @ts-expect-error Fields not declared in Car are rejected statically.
+    expect(await cars.list({ missing: 'value' })).toEqual([])
+    // @ts-expect-error Car's year is numeric; the backend still handles generic scalar criteria.
+    expect(await cars.list({ year: '2024' })).toEqual([])
 
     for (const filter of [
-      { missing: 'x' },
-      { year: '2024' },
       { make: ['Toyota'] },
       { year: Infinity },
       { [Symbol('key')]: 'x' },
-      { constructor: 'x' },
-      JSON.parse('{"__proto__":"x"}'),
+      JSON.parse('{"__proto__":{"nested":true}}'),
     ]) {
       await expect(cars.list(filter as never)).rejects.toThrow()
     }
-    expect(await cars.list()).toEqual([car])
+    expect(await cars.list()).toEqual([first, second, third])
   } finally {
     backend.close()
   }
 })
 
-test('mutations reject an ID in their input and preserve stored resources', async () => {
+test('controller filters distinguish scalar types and explicit null', async () => {
   const backend = new SqliteBackend(':memory:')
-  const cars = new Controller('cars', Car, backend)
+
+  type Item = Resource & { value?: string | number | boolean | null }
+  const items = new Controller<Item>('items', backend)
 
   try {
-    const car = await cars.create({ make: 'Toyota' })
+    const number = await items.create({ value: 1 })
+    const string = await items.create({ value: '1' })
+    const boolean = await items.create({ value: true })
+    const nullable = await items.create({ value: null })
 
-    // @ts-expect-error The resource ID is immutable.
-    await expect(cars.update(car.id, { id: car.id })).rejects.toThrow()
-    // @ts-expect-error A replacement cannot include an ID.
-    await expect(cars.replace(car.id, { id: car.id, make: 'Honda' })).rejects.toThrow()
-    expect(await cars.get(car.id)).toEqual(car)
+    await items.create({})
+    expect(await items.list({ value: 1 })).toEqual([number])
+    expect(await items.list({ value: '1' })).toEqual([string])
+    expect(await items.list({ value: true })).toEqual([boolean])
+    expect(await items.list({ value: null })).toEqual([nullable])
   } finally {
     backend.close()
   }
 })
 
-test('invalid updates and replacements leave the resource unchanged', async () => {
+test('controllers reject non-JSON attributes without changing persisted resources', async () => {
   const backend = new SqliteBackend(':memory:')
-  const Range = Resource.extend({ min: z.number(), max: z.number() }).refine((value) => value.min <= value.max)
-  const ranges = new Controller('ranges', Range, backend)
 
-  try {
-    const range = await ranges.create({ min: 1, max: 4 })
-
-    await expect(ranges.update(range.id, { min: 5 })).rejects.toThrow()
-    await expect(ranges.update(range.id, { min: '2' } as never)).rejects.toThrow()
-    await expect(ranges.replace(range.id, { min: 5, max: 4 })).rejects.toThrow()
-    await expect(ranges.replace(range.id, { min: 2 } as never)).rejects.toThrow()
-    expect(await ranges.get(range.id)).toEqual(range)
-  } finally {
-    backend.close()
-  }
-})
-
-test('update and replace return null without inserting missing resources', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const cars = new Controller('cars', Car, backend)
-  const id = crypto.randomUUID()
-
-  try {
-    expect(await cars.update(id, { make: 'Toyota' })).toBeNull()
-    expect(await cars.replace(id, { make: 'Honda' })).toBeNull()
-    expect(await cars.list()).toEqual([])
-  } finally {
-    backend.close()
-  }
-})
-
-test('resource models retain their unknown-property policy', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const normal = new Controller('normal', Resource.extend({ name: z.string() }), backend)
-  const strict = new Controller('strict', z.strictObject({ id: z.uuid(), name: z.string() }), backend)
-  const loose = new Controller('loose', z.looseObject({ id: z.uuid(), name: z.string() }), backend)
-  const input = { name: 'One', extra: 'value' }
-
-  try {
-    const stripped = await normal.create(input)
-    const retained = await loose.create(input)
-
-    expect(stripped).toEqual({ id: stripped.id, name: 'One' })
-    expect(retained).toEqual({ id: retained.id, name: 'One', extra: 'value' })
-    await expect(strict.create(input)).rejects.toThrow()
-    expect(await strict.list()).toEqual([])
-    const strictRecord = await strict.create({ name: 'One' })
-
-    await expect(strict.update(strictRecord.id, { extra: 'value' } as never)).rejects.toThrow()
-    await expect(strict.update(strictRecord.id, JSON.parse('{"__proto__":"value"}'))).rejects.toThrow()
-    expect(await strict.get(strictRecord.id)).toEqual(strictRecord)
-  } finally {
-    backend.close()
-  }
-})
-
-test('loose and catchall models retain required input attributes', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const Loose = Resource.extend({ name: z.string() }).loose()
-  const Catchall = Resource.extend({ name: z.string() }).catchall(z.union([z.string(), z.number()]))
-  const loose = new Controller('loose-input', Loose, backend)
-  const catchall = new Controller('catchall-input', Catchall, backend)
-
-  try {
-    // @ts-expect-error Loose models still require their declared name field.
-    await expect(loose.create({})).rejects.toThrow()
-    // @ts-expect-error Catchall models still require their declared name field.
-    await expect(catchall.create({})).rejects.toThrow()
-    const first = await loose.create({ name: 'Loose', extra: { enabled: true } })
-    const second = await catchall.create({ name: 'Catchall', extra: 42 })
-
-    expect(first).toEqual({ id: first.id, name: 'Loose', extra: { enabled: true } })
-    expect(second).toEqual({ id: second.id, name: 'Catchall', extra: 42 })
-    // @ts-expect-error Replacement still requires the declared name field.
-    await expect(loose.replace(first.id, {})).rejects.toThrow()
-    // @ts-expect-error Replacement still requires the declared name field.
-    await expect(catchall.replace(second.id, {})).rejects.toThrow()
-    // @ts-expect-error The controller owns the ID even with an open model.
-    await expect(loose.create({ id: crypto.randomUUID(), name: 'Other' })).rejects.toThrow()
-    // @ts-expect-error A catchall model does not permit a caller-supplied ID.
-    await expect(catchall.create({ id: crypto.randomUUID(), name: 'Other' })).rejects.toThrow()
-    // @ts-expect-error A catchall model cannot change a resource ID.
-    await expect(catchall.update(second.id, { id: second.id })).rejects.toThrow()
-    // @ts-expect-error An open-model replacement cannot supply a resource ID.
-    await expect(loose.replace(first.id, { id: first.id, name: 'Other' })).rejects.toThrow()
-    // @ts-expect-error Catchall values must match the catchall schema.
-    await expect(catchall.create({ name: 'Other', extra: true })).rejects.toThrow()
-    expect(await loose.replace(first.id, { name: 'Loose', extra: { enabled: true } })).toEqual(first)
-    expect(await catchall.replace(second.id, { name: 'Catchall', extra: 42 })).toEqual(second)
-    expect(await catchall.update(second.id, { extra: 42 })).toEqual(second)
-    expect(await loose.get(first.id)).toEqual(first)
-    expect(await catchall.get(second.id)).toEqual(second)
-  } finally {
-    backend.close()
-  }
-})
-
-test('resource filters distinguish scalar types, null and literal punctuation', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const Model = Resource.extend({
-    'a.b': z.string(),
-    value: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
-  })
-  const controller = new Controller('items', Model, backend)
-  const literal = "' OR 1=1 --"
-
-  try {
-    const number = await controller.create({ 'a.b': literal, value: 1 })
-    const string = await controller.create({ 'a.b': literal, value: '1' })
-    const boolean = await controller.create({ 'a.b': literal, value: true })
-    const nullable = await controller.create({ 'a.b': literal, value: null })
-
-    await controller.create({ 'a.b': literal })
-    expect(await controller.list({ 'a.b': literal, value: 1 })).toEqual([number])
-    expect(await controller.list({ value: '1' })).toEqual([string])
-    expect(await controller.list({ value: true })).toEqual([boolean])
-    expect(await controller.list({ value: null })).toEqual([nullable])
-  } finally {
-    backend.close()
-  }
-})
-
-test('resources reject non-JSON and unstable model results before storage', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const Values = Resource.extend({ value: z.unknown() })
-  const Changing = Resource.extend({ value: z.number().transform((value) => value + 1) })
-  const Mutating = Resource.extend({
-    value: z.unknown().transform((value) => {
-      const item = value as { count: number }
-
-      item.count += 1
-
-      return item
-    }),
-  })
-  const values = new Controller('values', Values, backend)
-  const changing = new Controller('changing', Changing, backend)
-  const mutating = new Controller('mutating', Mutating, backend)
+  type Item = Resource & { value: unknown }
+  const items = new Controller<Item>('items', backend)
   const cycle: { self?: unknown } = {}
 
   cycle.self = cycle
 
   try {
+    const item = await items.create({ value: 'safe' })
+
     for (const value of [undefined, Infinity, 1n, new Date(), new Map(), cycle, { [Symbol('key')]: 'value' }]) {
-      await expect(values.create({ value })).rejects.toThrow()
+      await expect(items.create({ value })).rejects.toThrow()
+      await expect(items.update(item.id, { value })).rejects.toThrow()
+      await expect(items.replace(item.id, { value })).rejects.toThrow()
     }
-    await expect(changing.create({ value: 1 })).rejects.toThrow('stable JSON')
-    await expect(mutating.create({ value: { count: 0 } })).rejects.toThrow('stable JSON')
-    expect(await values.list()).toEqual([])
-    expect(await changing.list()).toEqual([])
-    expect(await mutating.list()).toEqual([])
+    expect(await items.get(item.id)).toEqual(item)
+    expect(await items.list()).toEqual([item])
   } finally {
     backend.close()
   }
 })
 
-test('resources preserve literal JSON property names across storage', async () => {
+test('controllers return stored resource data without parsing it through a model', async () => {
   const backend = new SqliteBackend(':memory:')
-  const controller = new Controller('items', Resource.extend({ value: z.unknown() }), backend)
+  const cars = new Controller<Car>('cars', backend)
+  const id = crypto.randomUUID()
+
+  try {
+    await backend.insert('cars', { id, make: 42, year: true })
+    expect((await cars.get(id)) as unknown).toEqual({ id, make: 42, year: true })
+    expect((await cars.list()) as unknown).toEqual([{ id, make: 42, year: true }])
+    await backend.insert('cars', { id: 'not-a-uuid', make: 'Broken', year: 2024 })
+    await expect(cars.list()).rejects.toThrow()
+  } finally {
+    backend.close()
+  }
+})
+
+test('plain loose and catchall data retain required types and valid extra fields', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const LooseModel = Resource.extend({ name: z.string() }).loose()
+  const CatchallModel = Resource.extend({ name: z.string() }).catchall(z.union([z.string(), z.number()]))
+  const loose = new Controller<z.output<typeof LooseModel>>('loose-input', backend)
+  const catchall = new Controller<z.output<typeof CatchallModel>>('catchall-input', backend)
+
+  try {
+    const first = await loose.create({ name: 'Loose', extra: { enabled: true } })
+    const second = await catchall.create({ name: 'Catchall', extra: 42 })
+
+    expect(first).toEqual({ id: first.id, name: 'Loose', extra: { enabled: true } })
+    expect(second).toEqual({ id: second.id, name: 'Catchall', extra: 42 })
+    // @ts-expect-error Loose data still requires its declared name field.
+    const missingLoose = await loose.create({})
+    // @ts-expect-error Catchall data still requires its declared name field.
+    const missingCatchall = await catchall.create({})
+
+    expect(missingLoose).not.toHaveProperty('name')
+    expect(missingCatchall).not.toHaveProperty('name')
+    // @ts-expect-error Replacement still requires the declared name field.
+    const replacedLoose = await loose.replace(first.id, {})
+    // @ts-expect-error Replacement still requires the declared name field.
+    const replacedCatchall = await catchall.replace(second.id, {})
+
+    expect(replacedLoose as unknown).toEqual({ id: first.id })
+    expect(replacedCatchall as unknown).toEqual({ id: second.id })
+    // @ts-expect-error Open data cannot provide the server-owned ID.
+    await expect(loose.create({ id: crypto.randomUUID(), name: 'Other' })).rejects.toThrow()
+    // @ts-expect-error Catchall data cannot change the server-owned ID.
+    await expect(catchall.update(second.id, { id: second.id })).rejects.toThrow()
+    // @ts-expect-error A catchall attribute has the declared scalar type.
+    const unchecked = await catchall.create({ name: 'Other', extra: true })
+
+    expect(unchecked as unknown).toEqual({ id: unchecked.id, name: 'Other', extra: true })
+    expect(await loose.replace(first.id, { name: 'Loose', extra: { enabled: true } })).toEqual(first)
+    expect(await catchall.replace(second.id, { name: 'Catchall', extra: 42 })).toEqual(second)
+    expect(await catchall.update(second.id, { extra: 42 })).toEqual(second)
+    expect(await loose.list({ name: 'Loose' })).toEqual([first])
+    expect(await catchall.list({ name: 'Catchall' })).toEqual([second])
+  } finally {
+    backend.close()
+  }
+})
+
+test('controllers preserve literal JSON property names across storage and filtering', async () => {
+  const backend = new SqliteBackend(':memory:')
+
+  type Item = Resource & { value: unknown }
+  const items = new Controller<Item>('items', backend)
 
   try {
     const value = JSON.parse('{"nested":{"__proto__":"literal"}}')
-    const record = await controller.create({ value })
+    const item = await items.create({ value })
+    const special = JSON.parse('{"id":"placeholder","value":"x","__proto__":"literal"}')
 
-    expect(await controller.get(record.id)).toEqual(record)
+    delete special.id
+    const other = await items.create(special)
+
+    expect(await items.get(item.id)).toEqual(item)
+    expect(await items.list(JSON.parse('{"__proto__":"literal"}'))).toEqual([other])
   } finally {
     backend.close()
   }
 })
 
-test('mutating transformations cannot change stored resources across operations', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const original = new Controller('items', Resource.extend({ value: z.unknown() }), backend)
-  const changing = new Controller(
-    'items',
-    Resource.extend({
-      value: z.unknown().transform((value) => {
-        const item = value as { count: number }
-
-        item.count += 1
-
-        return item
-      }),
-    }),
-    backend,
-  )
-
-  try {
-    const record = await original.create({ value: { count: 0 } })
-
-    await expect(changing.get(record.id)).rejects.toThrow('stable JSON')
-    await expect(changing.list()).rejects.toThrow('stable JSON')
-    await expect(changing.update(record.id, {})).rejects.toThrow('stable JSON')
-    await expect(changing.replace(record.id, { value: { count: 0 } })).rejects.toThrow('stable JSON')
-    expect(await original.get(record.id)).toEqual(record)
-  } finally {
-    backend.close()
-  }
-})
-
-test('reads validate persisted records against the current resource model', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const original = new Controller('items', Resource.extend({ value: z.number() }), backend)
-  const stricter = new Controller('items', Resource.extend({ value: z.string() }), backend)
-
-  try {
-    const record = await original.create({ value: 1 })
-
-    await expect(stricter.get(record.id)).rejects.toThrow()
-    await expect(stricter.list()).rejects.toThrow()
-    await expect(stricter.update(record.id, { value: 'new' })).rejects.toThrow()
-    expect(await original.get(record.id)).toEqual(record)
-  } finally {
-    backend.close()
-  }
-})
-
-test('controllers reject asynchronous resource refinements', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const model = Resource.extend({ name: z.string() }).refine(async () => true)
-  const controller = new Controller('items', model, backend)
-
-  try {
-    await expect(controller.create({ name: 'One' })).rejects.toThrow()
-    expect(await backend.select('items')).toEqual([])
-  } finally {
-    backend.close()
-  }
-})
-
-test('native write failures leave persisted resources unchanged', async () => {
+test('backend write failures leave persisted resources unchanged', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-controller-'))
   const path = join(dir, 'db.sqlite')
   const first = new SqliteBackend(path)
-  const cars = new Controller('cars', Car, first)
+  const cars = new Controller<Car>('cars', first)
   let second: SqliteBackend | undefined
 
   try {
-    const car = await cars.create({ make: 'Toyota' })
+    const car = await cars.create({ make: 'Toyota', year: 2024 })
 
     first.close()
     await expect(cars.update(car.id, { make: 'Honda' })).rejects.toThrow()
-    await expect(cars.replace(car.id, { make: 'Honda' })).rejects.toThrow()
+    await expect(cars.replace(car.id, { make: 'Honda', year: 2025 })).rejects.toThrow()
     await expect(cars.delete(car.id)).rejects.toThrow()
     second = new SqliteBackend(path)
-    expect(await new Controller('cars', Car, second).get(car.id)).toEqual(car)
+    expect(await new Controller<Car>('cars', second).get(car.id)).toEqual(car)
   } finally {
     first.close()
     second?.close()

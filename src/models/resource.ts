@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
-export const Resource = z.object({ id: z.uuid() })
+export const ResourceId = z.uuid()
+export const Resource = z.object({ id: ResourceId })
 
 export type Resource = z.infer<typeof Resource>
 
