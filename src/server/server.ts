@@ -1,11 +1,11 @@
+import type { z } from 'zod'
 import { Hono } from 'hono'
 import { TrieRouter } from 'hono/router/trie-router'
-import { z } from 'zod'
 
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import type { Logger } from '#server/logging/logging.ts'
-import { Config, Environment, validateConfig } from '#config'
+import { Config, validateConfig } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { tenantTable } from '#datastores/categories/config/config.ts'
@@ -15,40 +15,12 @@ import { embeddedFields } from '#models/embedded.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
 import { PinoLogger } from '#server/logging/logging.ts'
 
-const EnvironmentInput = z.custom<typeof Bun.env>(
-  (value) => Environment.safeParse(value).success,
-  'Expected an environment map',
-)
-const LoggerValue = z.custom<Logger>(
-  (value) =>
-    value !== null &&
-    (typeof value === 'object' || typeof value === 'function') &&
-    ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'child'].every(
-      (method) => typeof Reflect.get(value, method) === 'function',
-    ),
-  'Expected a logger',
-)
-const BackendValue = z.custom<Backend>(
-  (value) =>
-    value !== null &&
-    (typeof value === 'object' || typeof value === 'function') &&
-    ['insert', 'select', 'update', 'delete', 'transaction'].every(
-      (method) => typeof Reflect.get(value, method) === 'function',
-    ),
-  'Expected a backend',
-)
-const HedraOptions = z
-  .strictObject({
-    env: EnvironmentInput.optional(),
-    config: z.instanceof(Config).optional(),
-    logger: LoggerValue.optional(),
-    backend: BackendValue.optional(),
-  })
-  .refine((options) => options.env === undefined || options.config === undefined, {
-    message: 'Provide either env or config, not both',
-  })
-
-export type HedraOptions = z.infer<typeof HedraOptions>
+export type HedraOptions = {
+  env?: typeof Bun.env
+  config?: Config
+  logger?: Logger
+  backend?: Backend
+}
 
 export class Hedra extends Hono {
   readonly config: Config
@@ -66,16 +38,17 @@ export class Hedra extends Hono {
   constructor(options: HedraOptions = {}) {
     super({ router: new TrieRouter() })
 
-    const parsed = HedraOptions.parse(options)
-    const config = parsed.config ?? new Config(parsed.env)
-    const values = parsed.config ? validateConfig(config) : config
+    if (options.env !== undefined && options.config !== undefined)
+      throw new Error('Provide either env or config, not both')
+    const config = options.config ?? new Config(options.env)
+    const values = options.config ? validateConfig(config) : config
 
     this.config = config
     this.instanceId = crypto.randomUUID()
-    this.log = LoggerValue.parse((parsed.logger ?? new PinoLogger(config)).child({ instanceId: this.instanceId }))
+    this.log = (options.logger ?? new PinoLogger(config)).child({ instanceId: this.instanceId })
     this.port = values.serverListenPort
     this.hostname = values.serverListenIp
-    this.backend = parsed.backend
+    this.backend = options.backend
     this.associations = new AssociationOperations(
       () => {
         if (this.closed) throw new ConnectionError('Hedra is closed')
