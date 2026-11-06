@@ -7,7 +7,7 @@ export const serverVariables = {
     name: 'sqlitePath',
     default: '.runtime/hedra.sqlite',
     options: 'SQLite database path or :memory:',
-    description: 'The shared collection database location',
+    description: 'The default configuration and application database location',
     schema: z.string().min(1),
   },
   HEDRA_SERVER_ENV: {

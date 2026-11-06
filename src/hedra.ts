@@ -1,5 +1,6 @@
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend, BackendTransaction, RecordModifier } from '#datastores/backend.ts'
+import type { ConfigDatastore, ConfigStoreOptions } from '#datastores/categories/config/config.ts'
 import type { LogFields, LoggerInterface } from '#server/logging/logging.ts'
 import type { HedraOptions } from '#server/server.ts'
 import { Config } from '#config'
@@ -21,6 +22,8 @@ import { Hedra } from '#server/server.ts'
 export type {
   Backend,
   BackendTransaction,
+  ConfigDatastore,
+  ConfigStoreOptions,
   ControllerInterface,
   HedraOptions,
   LogFields,

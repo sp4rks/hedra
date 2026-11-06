@@ -1,13 +1,84 @@
 import { expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { z } from 'zod'
 
 import { Collection, Config, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
+test('ConfigStore uses supplied configuration to persist tenants', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-config-store-'))
+  const config = new Config({ ...quiet, HEDRA_SQLITE_PATH: join(dir, 'db.sqlite') })
+  const first = new ConfigStore({ config })
+  let second: ConfigStore | undefined
+
+  try {
+    const tenant = await first.tenants.create({ name: 'Acme' })
+
+    first.close()
+    second = new ConfigStore({ config })
+    expect(await second.tenants.get(tenant.id)).toEqual(tenant)
+  } finally {
+    first.close()
+    second?.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('ConfigStore borrows its supplied backend even when the configured path is unusable', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-config-store-'))
+  const config = new Config({ ...quiet, HEDRA_SQLITE_PATH: dir })
+  const backend = new SqliteBackend(':memory:')
+  const first = new ConfigStore({ config, backend })
+  const second = new ConfigStore({ backend })
+  const app = new Hedra({ config, backend })
+
+  try {
+    const tenant = await first.tenants.create({ name: 'Acme' })
+
+    first.close()
+    first.close()
+    expect(await first.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await second.tenants.get(tenant.id)).toEqual(tenant)
+    app.register(new Collection('cars', Resource.extend({ make: z.string() })))
+    expect((await app.request('/cars')).status).toBe(200)
+  } finally {
+    app.close()
+    second.close()
+    backend.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('ConfigStore accepts and borrows a directly supplied backend', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-config-store-'))
+  const backend = new SqliteBackend(':memory:')
+  const previousPath = process.env.HEDRA_SQLITE_PATH
+  const observer = new ConfigStore({ backend })
+  let store: ConfigStore | undefined
+
+  process.env.HEDRA_SQLITE_PATH = dir
+  try {
+    store = new ConfigStore(backend)
+    const tenant = await store.tenants.create({ name: 'Acme' })
+
+    store.close()
+    expect(await observer.tenants.get(tenant.id)).toEqual(tenant)
+  } finally {
+    if (previousPath === undefined) delete process.env.HEDRA_SQLITE_PATH
+    else process.env.HEDRA_SQLITE_PATH = previousPath
+    store?.close()
+    observer.close()
+    backend.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('ConfigStore exposes tenant resource operations through the generic controller', async () => {
   const backend = new SqliteBackend(':memory:')
-  const config = new ConfigStore(backend)
+  const config = new ConfigStore({ backend })
   const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
 
   try {
@@ -53,8 +124,8 @@ test('ConfigStore exposes tenant resource operations through the generic control
 
 test('ConfigStore instances share tenant storage and remain separate from app resources', async () => {
   const backend = new SqliteBackend(':memory:')
-  const first = new ConfigStore(backend)
-  const second = new ConfigStore(backend)
+  const first = new ConfigStore({ backend })
+  const second = new ConfigStore({ backend })
   const app = new Hedra({ config: new Config(quiet), backend })
   const Car = Resource.extend({ make: z.string() })
   const cars = new Collection('cars', Car)
@@ -79,7 +150,7 @@ test('ConfigStore instances share tenant storage and remain separate from app re
 
 test('application registration rejects the reserved tenant table without changing tenants', async () => {
   const backend = new SqliteBackend(':memory:')
-  const config = new ConfigStore(backend)
+  const config = new ConfigStore({ backend })
   const app = new Hedra({ config: new Config(quiet), backend })
 
   try {
@@ -97,7 +168,7 @@ test('application registration rejects the reserved tenant table without changin
 
 test('closing a shared backend ends access for every store using it', async () => {
   const backend = new SqliteBackend(':memory:')
-  const config = new ConfigStore(backend)
+  const config = new ConfigStore({ backend })
   const app = new Hedra({ config: new Config(quiet), backend })
   const cars = new Collection('cars', Resource.extend({ make: z.string() }))
 
