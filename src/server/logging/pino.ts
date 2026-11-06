@@ -28,7 +28,7 @@ export class PinoLogger implements Logger {
     this.logger = stream ? pino(options, stream) : pino(options)
   }
 
-  /** Combines inherited context with the record's validated fields. */
+  /** Combines initial context with the record's validated fields. */
   private fields(fields?: LogFields): LogFields {
     return { ...this.bindings, ...LogFields.parse(fields === undefined ? {} : fields) }
   }
