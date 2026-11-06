@@ -93,13 +93,12 @@ export function validateConfig(input: unknown, displayValues?: Record<string, st
       const value = input !== null && typeof input === 'object' ? Reflect.get(input, entry.name) : undefined
 
       throw new ConfigurationError(
-        500,
         'configuration error',
         `${variable} has invalid value: ${displayValues?.[entry.name] ?? String(value)}`,
       )
     }
 
-    throw new ConfigurationError(500, 'configuration error', 'Invalid configuration')
+    throw new ConfigurationError('configuration error', 'Invalid configuration')
   }
 
   return result.data

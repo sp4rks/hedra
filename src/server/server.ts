@@ -75,27 +75,22 @@ export class Hedra extends Hono {
   private guard(backend: Backend): Backend {
     return {
       insert: async (...args) => {
-        if (this.closed)
-          throw new ConnectionError(
-            500,
-            'Hedra is closed',
-            'Cannot perform database operations on a closed Hedra instance',
-          )
+        if (this.closed) throw new ConnectionError('Hedra is closed')
 
         return backend.insert(...args)
       },
       select: async (...args) => {
-        if (this.closed) throw new ConnectionError(500, 'Hedra is closed')
+        if (this.closed) throw new ConnectionError('Hedra is closed')
 
         return backend.select(...args)
       },
       update: async (...args) => {
-        if (this.closed) throw new ConnectionError(500, 'Hedra is closed')
+        if (this.closed) throw new ConnectionError('Hedra is closed')
 
         return backend.update(...args)
       },
       delete: async (...args) => {
-        if (this.closed) throw new ConnectionError(500, 'Hedra is closed')
+        if (this.closed) throw new ConnectionError('Hedra is closed')
 
         return backend.delete(...args)
       },
