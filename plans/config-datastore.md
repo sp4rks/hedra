@@ -9,7 +9,7 @@ Retain the existing application `backend` option, collection registration, assoc
 ## Interface and implementation
 
 - Define and export a plain `ConfigDatastore` interface in `src/datastores/categories/config/config.ts`; its readonly `tenants` member derives the six public operation signatures from `ResourceOperations<Tenant>` using `Pick`. This avoids coupling the contract to that class's protected backend, private helpers or public table name.
-- Keep `ConfigStore` as the default implementation and declare that it implements `ConfigDatastore`. Change its constructor to `new ConfigStore(options?: ConfigStoreOptions)`, with optional `config?: Config` and `backend?: Backend`. Export both the interface and options type through `src/hedra.ts`.
+- Keep `ConfigStore` as the default implementation and declare that it implements `ConfigDatastore`. Add `new ConfigStore(options?: ConfigStoreOptions)`, with optional `config?: Config` and `backend?: Backend`. Preserve `new ConfigStore(backend)` through a local constructor overload: existing Bun/JavaScript callers must not silently fall back to default SQLite when they pass a backend directly. Export both the interface and options type through `src/hedra.ts`.
 - A supplied backend is used directly. Otherwise, `ConfigStore` creates a SQLite backend using `(options.config ?? new Config()).sqlitePath`. Backend selection and connection construction remain inside the datastore module, with no new configuration flags, dependency or factory registry. Preserve the existing `HEDRA_SQLITE_PATH`, table name and persisted record format.
 - `ConfigStore.close()` idempotently closes only the backend it creates. Closing a store backed by an injected backend has no effect on that backend or its operations. Its creator retains responsibility for shared connection lifetime. Await operations before closing.
 - Hedra retains a supplied datastore instance unchanged and never closes it, including implementations that happen to offer `close()`. A datastore injected without a lifecycle method is valid.
@@ -35,7 +35,7 @@ docs/adr/0019-config-datastore.md           architectural decision
 examples/04-config-store.ts                standalone executable example
 ```
 
-The coder owns production code and tests, including every test caller affected by the ConfigStore constructor change. The lead owns this plan, GLOSSARY.md and docs/examples. Implementation and documentation run in separate worktrees; the coder must not edit docs/examples. The lead merges the docs branch into the feature branch before acceptance and review. Do not merge main without the user's approval.
+The coder owns production code and tests, including test callers of the ConfigStore constructor. The lead owns this plan, GLOSSARY.md and docs/examples. Implementation and documentation run in separate worktrees; the coder must not edit docs/examples. The lead merges the docs branch into the feature branch before acceptance and review. Do not merge main without the user's approval.
 
 ## Test design and acceptance
 
@@ -51,5 +51,10 @@ Implement one failing test and its passing change at a time:
 6. **ConfigStore uses its supplied Config for SQLite persistence.** Standalone construction with `{ config }`, create and close, then reopen with the same config and retrieve the tenant. This test verifies configuration is interpreted by the datastore itself.
 7. **ConfigStore borrows an injected backend.** Two stores and an app can share it; closing a store twice does not close the backend or stop another user. An injected backend takes precedence over an unusable configured SQLite path.
 8. **Hedra keeps configuration storage separate from its application backend.** Use two real backends with explicit shared stores to prove tenant operations use the supplied datastore while application routes/associations keep using the supplied application backend; retain existing shared-backend compatibility coverage.
+9. **ConfigStore preserves direct backend construction.** Construct with `new ConfigStore(backend)`, with an unusable ambient default path, and verify another store sharing that backend can retrieve the tenant after the first store closes. This protects existing Bun/JavaScript callers from silent storage redirection.
 
-Run `bun run check` and every executable example in an isolated environment with temporary database paths. Update docs to explain construction, configuration, ownership, structural implementations, the `{ backend }` constructor migration, and the separate application backend. Independently review the fixed implementation and docs commit range using the reviewer skill; fix confirmed issues through the same coder and rerun affected checks. Main integration requires user approval.
+Run `bun run check` and every executable example in an isolated environment with temporary database paths. Update docs to explain construction, configuration, ownership, structural implementations, both constructor forms and the separate application backend. Independently review the fixed implementation and docs commit range using the reviewer skill; fix confirmed issues through the same coder and rerun affected checks. Main integration requires user approval.
+
+## Verification correction
+
+The baseline controller-close test expected `Hedra is closed`, while the unchanged backend guard emits `Datastore connection is closed`. Correct that stale test expectation without changing production error behaviour so the complete verification remains meaningful.
