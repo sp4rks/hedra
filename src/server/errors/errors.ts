@@ -1,10 +1,11 @@
-/** Raised when a configuration value is missing or fails validation. */
+/** Base class for Hedra errors, with a status, title and optional detail. */
 export class HedraError extends Error {
   declare name: string
   declare status: number
   declare title: string
   declare detail?: string | object
 
+  /** Records the status, title and optional detail. */
   constructor(status = 500, title: string, detail?: string | object) {
     super(title)
     this.name = this.constructor.name
@@ -23,11 +24,8 @@ export class HedraError extends Error {
  * - Incompatible configuration settings
  */
 export class ConfigurationError extends HedraError {
-  constructor(
-    status = 500,
-    title = 'configuration error',
-    detail?: string | object,
-  ) {
+  /** Creates a configuration error with the supplied status, title and detail. */
+  constructor(status = 500, title = 'configuration error', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -41,11 +39,8 @@ export class ConfigurationError extends HedraError {
  * - Type mismatches in request data
  */
 export class InputValidationError extends HedraError {
-  constructor(
-    status = 422,
-    title = 'input validation error',
-    detail?: string | object,
-  ) {
+  /** Creates an input validation error with the supplied status, title and detail. */
+  constructor(status = 422, title = 'input validation error', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -56,11 +51,8 @@ export class InputValidationError extends HedraError {
  * generated data that doesn't match its own schema.
  */
 export class OutputValidationError extends HedraError {
-  constructor(
-    status = 422,
-    title = 'output validation error',
-    detail?: string | object,
-  ) {
+  /** Creates an output validation error with the supplied status, title and detail. */
+  constructor(status = 500, title = 'output validation error', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -71,11 +63,8 @@ export class OutputValidationError extends HedraError {
  * the request is made on the wrong domain.
  */
 export class PreconditionFailedError extends HedraError {
-  constructor(
-    status = 412,
-    title = 'precondition failed',
-    detail?: string | object,
-  ) {
+  /** Creates a precondition error with the supplied status, title and detail. */
+  constructor(status = 412, title = 'precondition failed', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -86,20 +75,18 @@ export class PreconditionFailedError extends HedraError {
  * don't fit into more specific error categories.
  */
 export class BadRequestError extends HedraError {
+  /** Creates a bad request error with the supplied status, title and detail. */
   constructor(status = 400, title = 'bad request', detail?: string | object) {
     super(status, title, detail)
   }
 }
+
 /**
  * Base class for all database-related errors.
- * Extends M21Error to maintain consistent error handling across the application.
  */
 export class DatastoreError extends HedraError {
-  constructor(
-    status = 500,
-    title = 'datastore error',
-    detail?: string | object,
-  ) {
+  /** Creates a datastore error with the supplied status, title and detail. */
+  constructor(status = 500, title = 'datastore error', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -113,11 +100,8 @@ export class DatastoreError extends HedraError {
  * - Database server rejecting connections
  */
 export class ConnectionError extends DatastoreError {
-  constructor(
-    status = 500,
-    title = 'failed to connect to database',
-    detail?: string | object,
-  ) {
+  /** Creates a connection error with the supplied status, title and detail. */
+  constructor(status = 500, title = 'failed to connect to database', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -131,11 +115,8 @@ export class ConnectionError extends DatastoreError {
  * - Permission denied
  */
 export class QueryError extends DatastoreError {
-  constructor(
-    status = 500,
-    title = 'database query failed',
-    detail?: string | object,
-  ) {
+  /** Creates a query error with the supplied status, title and detail. */
+  constructor(status = 500, title = 'database query failed', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -146,11 +127,8 @@ export class QueryError extends DatastoreError {
  * - Unique key constraint violation
  */
 export class UniqueViolationError extends DatastoreError {
-  constructor(
-    status = 409,
-    title = 'uniqueness violation',
-    detail?: string | object,
-  ) {
+  /** Creates a uniqueness error with the supplied status, title and detail. */
+  constructor(status = 409, title = 'uniqueness violation', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -162,11 +140,8 @@ export class UniqueViolationError extends DatastoreError {
  * - NOT NULL constraint violation
  */
 export class ConstraintViolationError extends DatastoreError {
-  constructor(
-    status = 400,
-    title = 'database constraint violation',
-    detail?: string | object,
-  ) {
+  /** Creates a constraint error with the supplied status, title and detail. */
+  constructor(status = 400, title = 'database constraint violation', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -177,11 +152,8 @@ export class ConstraintViolationError extends DatastoreError {
  * that should be handled gracefully by the application.
  */
 export class RecordNotFoundError extends DatastoreError {
-  constructor(
-    status = 404,
-    title = 'record not found',
-    detail?: string | object,
-  ) {
+  /** Creates a record-not-found error with the supplied status, title and detail. */
+  constructor(status = 404, title = 'record not found', detail?: string | object) {
     super(status, title, detail)
   }
 }
@@ -192,11 +164,8 @@ export class RecordNotFoundError extends DatastoreError {
  * all succeed or all fail together to maintain data consistency.
  */
 export class TransactionError extends DatastoreError {
-  constructor(
-    status = 500,
-    title = 'database transaction failed',
-    detail?: string | object,
-  ) {
+  /** Creates a transaction error with the supplied status, title and detail. */
+  constructor(status = 500, title = 'database transaction failed', detail?: string | object) {
     super(status, title, detail)
   }
 }
