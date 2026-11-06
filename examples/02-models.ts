@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
-import { Collection, Hedra } from '#hedra.ts'
+import { Collection, Hedra, Resource } from '#hedra.ts'
 
-// One schema supplies each car's runtime validation and TypeScript type.
-const CarModel = z.object({
+// Extend shared resource metadata with the car's attributes.
+const CarModel = Resource.extend({
   make: z.string(),
   model: z.string(),
   year: z.number().int(),
@@ -16,9 +16,9 @@ const hedra = new Hedra()
 
 hedra.get('/health', (context) => context.text('Hello Hedra!'))
 
-// Registration attaches the collection to Hedra's shared SQLite database.
+// Registration constructs the controller using Hedra's shared backend.
 hedra.register(cars)
 
-// Import cars to use its methods. See docs/collections.md for a complete example.
+// Import cars to use its async controller methods. See docs/collections.md.
 export { CarModel, cars }
 export default hedra
