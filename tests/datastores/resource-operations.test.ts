@@ -10,6 +10,37 @@ const CarModel = Resource.extend({ make: z.string().trim().min(1), year: z.numbe
 
 type Car = z.output<typeof CarModel>
 
+test('resource operations accept data without resource metadata', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const CarData = z.object({ make: z.string(), year: z.number() })
+  const cars = new ResourceOperations<z.infer<typeof CarData>>('cars', backend)
+
+  try {
+    const car = await cars.create({ make: 'Toyota', year: 2024 })
+    const { id } = Resource.parse(car)
+    const updated = await cars.update(id, { year: 2025 })
+
+    if (!updated) throw new Error('Expected an updated car')
+    expect(await cars.get(id)).toEqual(updated)
+    expect(updated).toMatchObject({ make: 'Toyota', year: 2025 })
+    expect(await cars.list({ make: 'Toyota', year: 2025 })).toEqual([updated])
+    expect(await cars.list({ make: 'Honda' })).toEqual([])
+    // @ts-expect-error Required data attributes must be supplied.
+    const incomplete = await cars.create({ make: 'Toyota' })
+
+    // @ts-expect-error Filter attributes retain their declared types.
+    expect(await cars.list({ year: '2025' })).toEqual([])
+
+    // @ts-expect-error Data attributes retain their declared types.
+    const unchecked = await cars.update(id, { year: '2025' })
+
+    expect(incomplete).not.toHaveProperty('year')
+    expect(unchecked).toMatchObject({ year: '2025' })
+  } finally {
+    backend.close()
+  }
+})
+
 test('resource operations accept plain resource types without a model argument', async () => {
   const backend = new SqliteBackend(':memory:')
   const cars = new ResourceOperations<Car>('cars', backend)
