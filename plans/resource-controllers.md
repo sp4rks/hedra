@@ -84,6 +84,8 @@ const car = await cars.controller.create({ make: 'Toyota', model: 'Corolla', yea
 
 `ConfigStore(backend)` defines and immediately binds its tenant collection, exposing the generic controller as `config.tenants`. Use the existing framework table name `hedra_config_tenants` as that collection's storage name. `config.tenants.create({ name: 'Acme' })` now returns a generated UUID and name, and the controller provides the other resource operations. Remove the tenant-specific `ConfigBackend` interface and `insertTenant` implementation.
 
+Implementation clarification: application registration reserves that exact framework tenant-table name before opening or binding a backend. This enforces configuration/application separation; the generic backend still accepts ordinary table identifiers without knowing tenant models. Share one internal name constant rather than duplicating the reserved string. The existing registration-validation tests include this case.
+
 ## Structure and exports
 
 ```text
