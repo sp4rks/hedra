@@ -16,9 +16,9 @@ const hedra = new Hedra()
 
 hedra.get('/health', (context) => context.text('Hello Hedra!'))
 
-// Registration constructs the controller using Hedra's shared backend.
+// Registration constructs the controller and generates the collection's HTTP routes.
 hedra.register(cars)
 
-// The future Web layer will wire routes to this controller. See docs/collections.md.
+// See docs/collections.md for model, routing and controller responsibilities.
 export { CarModel, cars }
 export default hedra

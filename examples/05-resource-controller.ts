@@ -11,38 +11,12 @@ const CarModel = Resource.extend({
 
 type CarModel = z.infer<typeof CarModel>
 
-const CreateCar = CarModel.omit({ id: true, createdAt: true, updatedAt: true }).strict()
-const UpdateCar = CreateCar.partial()
 const backend = new SqliteBackend(':memory:')
 const app = new Hedra({ backend })
 const cars = new Collection('cars', CarModel)
 
-// Registration selects BaseController; Car needs no specific controller class.
+// Registration selects BaseController, derives input validators and installs the five CRUD routes.
 app.register(cars)
-
-// Routes illustrate the future Web layer, including pure input validation.
-app.post('/cars', async (context) => {
-  const input = CreateCar.parse(await context.req.json())
-
-  return context.json(await cars.controller.create(context, cars, input), 201)
-})
-app.get('/cars/:id', async (context) => context.json(await cars.controller.id(context, cars, context.req.param('id'))))
-app.get('/cars', async (context) => {
-  const make = context.req.query('make')
-  const query = make === undefined ? undefined : { filter: { make } }
-
-  return context.json(await cars.controller.list(context, cars, context.req.url, query))
-})
-app.patch('/cars/:id', async (context) => {
-  const input = UpdateCar.parse(await context.req.json())
-
-  return context.json(await cars.controller.update(context, cars, input, context.req.param('id')))
-})
-app.delete('/cars/:id', async (context) => {
-  await cars.controller.delete(context, cars, context.req.param('id'))
-
-  return context.body(null, 204)
-})
 
 try {
   // app.request supplies real HTTP contexts without opening a listener.
@@ -58,7 +32,8 @@ try {
   const found = await app.request(`/cars/${car.id}`)
 
   assert.deepEqual(CarModel.parse(JsonApiResponse.parse(await found.json()).data), car)
-  const listed = await app.request('/cars?make=Toyota')
+  const query = new URLSearchParams({ filter: JSON.stringify({ make: 'Toyota' }) })
+  const listed = await app.request(`/cars?${query}`)
 
   assert.deepEqual(z.array(CarModel).parse(JsonApiListResponse.parse(await listed.json()).data), [car])
   const changed = await app.request(`/cars/${car.id}`, {
