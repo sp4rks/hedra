@@ -5,11 +5,11 @@ export class HedraError extends Error {
   declare title: string
   declare detail?: string | object
 
-  /** Records the status, title and optional detail. */
-  constructor(status = 500, title: string, detail?: string | object) {
+  /** Records the title and optional detail. */
+  constructor(title: string, detail?: string | object) {
     super(title)
     this.name = this.constructor.name
-    this.status = status
+    this.status = 500
     this.title = title
     this.detail = detail
   }
@@ -24,9 +24,9 @@ export class HedraError extends Error {
  * - Incompatible configuration settings
  */
 export class ConfigurationError extends HedraError {
-  /** Creates a configuration error with the supplied status, title and detail. */
-  constructor(status = 500, title = 'configuration error', detail?: string | object) {
-    super(status, title, detail)
+  /** Creates a configuration error with the supplied title and optional detail. */
+  constructor(title = 'configuration error', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -39,9 +39,11 @@ export class ConfigurationError extends HedraError {
  * - Type mismatches in request data
  */
 export class InputValidationError extends HedraError {
-  /** Creates an input validation error with the supplied status, title and detail. */
-  constructor(status = 422, title = 'input validation error', detail?: string | object) {
-    super(status, title, detail)
+  override status = 422
+
+  /** Creates an input validation error with the supplied title and optional detail. */
+  constructor(title = 'input validation error', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -51,9 +53,9 @@ export class InputValidationError extends HedraError {
  * generated data that doesn't match its own schema.
  */
 export class OutputValidationError extends HedraError {
-  /** Creates an output validation error with the supplied status, title and detail. */
-  constructor(status = 500, title = 'output validation error', detail?: string | object) {
-    super(status, title, detail)
+  /** Creates an output validation error with the supplied title and optional detail. */
+  constructor(title = 'output validation error', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -63,9 +65,11 @@ export class OutputValidationError extends HedraError {
  * the request is made on the wrong domain.
  */
 export class PreconditionFailedError extends HedraError {
-  /** Creates a precondition error with the supplied status, title and detail. */
-  constructor(status = 412, title = 'precondition failed', detail?: string | object) {
-    super(status, title, detail)
+  override status = 412
+
+  /** Creates a precondition error with the supplied title and optional detail. */
+  constructor(title = 'precondition failed', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -75,9 +79,31 @@ export class PreconditionFailedError extends HedraError {
  * don't fit into more specific error categories.
  */
 export class BadRequestError extends HedraError {
-  /** Creates a bad request error with the supplied status, title and detail. */
-  constructor(status = 400, title = 'bad request', detail?: string | object) {
-    super(status, title, detail)
+  override status = 400
+
+  /** Creates a bad request error with the supplied title and optional detail. */
+  constructor(title = 'bad request', detail?: string | object) {
+    super(title, detail)
+  }
+}
+
+/** Thrown when the request conflicts with the current resource state. */
+export class ConflictError extends HedraError {
+  override status = 409
+
+  /** Creates a conflict error with the supplied title and optional detail. */
+  constructor(title = 'conflict', detail?: string | object) {
+    super(title, detail)
+  }
+}
+
+/** Thrown when a request uses an unsupported media type. */
+export class UnsupportedMediaTypeError extends HedraError {
+  override status = 415
+
+  /** Creates an unsupported media type error with the supplied title and optional detail. */
+  constructor(title = 'unsupported media type', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -85,9 +111,9 @@ export class BadRequestError extends HedraError {
  * Base class for all database-related errors.
  */
 export class DatastoreError extends HedraError {
-  /** Creates a datastore error with the supplied status, title and detail. */
-  constructor(status = 500, title = 'datastore error', detail?: string | object) {
-    super(status, title, detail)
+  /** Creates a datastore error with the supplied title and optional detail. */
+  constructor(title = 'datastore error', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -100,9 +126,9 @@ export class DatastoreError extends HedraError {
  * - Database server rejecting connections
  */
 export class ConnectionError extends DatastoreError {
-  /** Creates a connection error with the supplied status, title and detail. */
-  constructor(status = 500, title = 'failed to connect to database', detail?: string | object) {
-    super(status, title, detail)
+  /** Creates a connection error with the supplied title and optional detail. */
+  constructor(title = 'failed to connect to database', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -115,9 +141,9 @@ export class ConnectionError extends DatastoreError {
  * - Permission denied
  */
 export class QueryError extends DatastoreError {
-  /** Creates a query error with the supplied status, title and detail. */
-  constructor(status = 500, title = 'database query failed', detail?: string | object) {
-    super(status, title, detail)
+  /** Creates a query error with the supplied title and optional detail. */
+  constructor(title = 'database query failed', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -127,9 +153,11 @@ export class QueryError extends DatastoreError {
  * - Unique key constraint violation
  */
 export class UniqueViolationError extends DatastoreError {
-  /** Creates a uniqueness error with the supplied status, title and detail. */
-  constructor(status = 409, title = 'uniqueness violation', detail?: string | object) {
-    super(status, title, detail)
+  override status = 409
+
+  /** Creates a uniqueness error with the supplied title and optional detail. */
+  constructor(title = 'uniqueness violation', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -140,9 +168,11 @@ export class UniqueViolationError extends DatastoreError {
  * - NOT NULL constraint violation
  */
 export class ConstraintViolationError extends DatastoreError {
-  /** Creates a constraint error with the supplied status, title and detail. */
-  constructor(status = 400, title = 'database constraint violation', detail?: string | object) {
-    super(status, title, detail)
+  override status = 400
+
+  /** Creates a constraint error with the supplied title and optional detail. */
+  constructor(title = 'database constraint violation', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -152,9 +182,11 @@ export class ConstraintViolationError extends DatastoreError {
  * that should be handled gracefully by the application.
  */
 export class RecordNotFoundError extends DatastoreError {
-  /** Creates a record-not-found error with the supplied status, title and detail. */
-  constructor(status = 404, title = 'record not found', detail?: string | object) {
-    super(status, title, detail)
+  override status = 404
+
+  /** Creates a record-not-found error with the supplied title and optional detail. */
+  constructor(title = 'record not found', detail?: string | object) {
+    super(title, detail)
   }
 }
 
@@ -164,8 +196,8 @@ export class RecordNotFoundError extends DatastoreError {
  * all succeed or all fail together to maintain data consistency.
  */
 export class TransactionError extends DatastoreError {
-  /** Creates a transaction error with the supplied status, title and detail. */
-  constructor(status = 500, title = 'database transaction failed', detail?: string | object) {
-    super(status, title, detail)
+  /** Creates a transaction error with the supplied title and optional detail. */
+  constructor(title = 'database transaction failed', detail?: string | object) {
+    super(title, detail)
   }
 }

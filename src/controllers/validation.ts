@@ -40,7 +40,7 @@ function restore(model: z.ZodObject, original: ObjectValue, validated: ObjectVal
 
   for (const key of metadata) {
     if (Object.hasOwn(model.shape, key) && (!Object.hasOwn(validated, key) || validated[key] !== original[key])) {
-      throw new InputValidationError(422, 'model changed managed metadata')
+      throw new InputValidationError('model changed managed metadata')
     }
     if (Object.hasOwn(original, key))
       Object.defineProperty(result, key, { value: original[key], enumerable: true, writable: true, configurable: true })
@@ -51,22 +51,21 @@ function restore(model: z.ZodObject, original: ObjectValue, validated: ObjectVal
     const after = validated[field.name]
 
     if (after === undefined || after === null) {
-      if (before !== undefined && before !== null)
-        throw new InputValidationError(422, 'model changed embedded identity')
+      if (before !== undefined && before !== null) throw new InputValidationError('model changed embedded identity')
       continue
     }
     if (field.kind === 'array' && Array.isArray(after)) {
       if (before === undefined && after.length === 0) continue
       if (!Array.isArray(before) || before.length !== after.length)
-        throw new InputValidationError(422, 'model changed embedded identity')
+        throw new InputValidationError('model changed embedded identity')
       const byId = new Map(before.filter(isObject).map((item) => [item.id, item]))
       const seen = new Set<unknown>()
 
       result[field.name] = after.map((item) => {
-        if (!isObject(item) || seen.has(item.id)) throw new InputValidationError(422, 'model changed embedded identity')
+        if (!isObject(item) || seen.has(item.id)) throw new InputValidationError('model changed embedded identity')
         const previous = byId.get(item.id)
 
-        if (!previous) throw new InputValidationError(422, 'model changed embedded identity')
+        if (!previous) throw new InputValidationError('model changed embedded identity')
         seen.add(item.id)
 
         return restore(field.model, previous, item)
@@ -74,22 +73,21 @@ function restore(model: z.ZodObject, original: ObjectValue, validated: ObjectVal
     } else if (field.kind === 'dictionary' && isObject(after)) {
       if (before === undefined && Object.keys(after).length === 0) continue
       if (!isObject(before) || Object.keys(before).length !== Object.keys(after).length)
-        throw new InputValidationError(422, 'model changed embedded identity')
+        throw new InputValidationError('model changed embedded identity')
       result[field.name] = Object.fromEntries(
         Object.entries(after).map(([key, item]) => {
           const previous = Object.hasOwn(before, key) ? before[key] : undefined
 
           if (!isObject(previous) || !isObject(item) || previous.id !== item.id)
-            throw new InputValidationError(422, 'model changed embedded identity')
+            throw new InputValidationError('model changed embedded identity')
 
           return [key, restore(field.model, previous, item)]
         }),
       )
     } else if (field.kind === 'single' && isObject(after)) {
-      if (!isObject(before) || before.id !== after.id)
-        throw new InputValidationError(422, 'model changed embedded identity')
+      if (!isObject(before) || before.id !== after.id) throw new InputValidationError('model changed embedded identity')
       result[field.name] = restore(field.model, before, after)
-    } else throw new InputValidationError(422, 'model changed embedded identity')
+    } else throw new InputValidationError('model changed embedded identity')
   }
 
   return result
@@ -100,7 +98,7 @@ export function validateCandidate(model: z.ZodObject, candidate: DatabaseRecord)
   const input = declared(model, structuredClone(candidate))
   const parsed = model.safeParse(input)
 
-  if (!parsed.success) throw new InputValidationError(422, 'input validation error', parsed.error.issues)
+  if (!parsed.success) throw new InputValidationError('input validation error', parsed.error.issues)
   if (!isObject(parsed.data)) throw new InputValidationError()
 
   return restore(model, candidate, parsed.data) as DatabaseRecord

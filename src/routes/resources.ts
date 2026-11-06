@@ -6,7 +6,7 @@ import type { AssociationOperations } from '#controllers/associations.ts'
 import type { Collection } from '#models/collection.ts'
 import type { EmbeddedField } from '#models/embedded.ts'
 import { DatabaseScalar } from '#datastores/backend.ts'
-import { BadRequestError, HedraError, InputValidationError } from '#errors'
+import { BadRequestError, HedraError, InputValidationError, UnsupportedMediaTypeError } from '#errors'
 import { embeddedFields, inputModel, unwrap } from '#models/embedded.ts'
 import { ResourceId } from '#models/resource.ts'
 import { ErrorResponse } from '#models/rest.ts'
@@ -16,7 +16,7 @@ import { setAssociationScope, setEmbeddedScope } from '#models/scope.ts'
 function input<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value)
 
-  if (!result.success) throw new InputValidationError(422, 'input validation error', result.error.issues)
+  if (!result.success) throw new InputValidationError('input validation error', result.error.issues)
 
   return result.data
 }
@@ -26,7 +26,7 @@ async function body(context: Context, model: z.ZodObject, partial: boolean): Pro
   const contentType = context.req.header('content-type')?.split(';')[0]?.trim().toLowerCase()
 
   if (!contentType || !/^application\/(?:json|[\w.+-]+\+json)$/.test(contentType)) {
-    throw new HedraError(415, 'unsupported content type')
+    throw new UnsupportedMediaTypeError('unsupported content type')
   }
   let value: unknown
 

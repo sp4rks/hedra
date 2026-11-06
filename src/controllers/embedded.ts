@@ -9,7 +9,7 @@ import type { EmbeddedScope, EmbeddedStep } from '#models/scope.ts'
 import { assertAssociationScope } from '#controllers/associations.ts'
 import { project } from '#controllers/projection.ts'
 import { validateCandidate } from '#controllers/validation.ts'
-import { HedraError, InputValidationError, RecordNotFoundError } from '#errors'
+import { ConflictError, InputValidationError, RecordNotFoundError } from '#errors'
 import { embeddedFields } from '#models/embedded.ts'
 import { ResourceInput as InputSchema } from '#models/rest.ts'
 import { getAssociationScope } from '#models/scope.ts'
@@ -250,11 +250,11 @@ export async function embeddedMutate(
         if (!selector) throw new InputValidationError()
         const entries = current === undefined || current === null ? {} : object(current)
 
-        if (Object.hasOwn(entries, selector)) throw new HedraError(409, 'embedded key already exists')
+        if (Object.hasOwn(entries, selector)) throw new ConflictError('embedded key already exists')
         set(entries, selector, created)
         set(parent, step.field.name, entries)
       } else {
-        if (current !== undefined && current !== null) throw new HedraError(409, 'embedded resource already exists')
+        if (current !== undefined && current !== null) throw new ConflictError('embedded resource already exists')
         set(parent, step.field.name, created)
       }
     } else {

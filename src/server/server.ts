@@ -78,7 +78,7 @@ export class Hedra extends Hono {
     this.backend = parsed.backend
     this.associations = new AssociationOperations(
       () => {
-        if (this.closed) throw new ConnectionError(500, 'Hedra is closed')
+        if (this.closed) throw new ConnectionError('Hedra is closed')
         if (!this.backend) throw new Error('Register a collection before using associations')
 
         return this.guard(this.backend)
@@ -89,19 +89,13 @@ export class Hedra extends Hono {
 
   /** Prevents a closed app's controllers from using a borrowed backend. */
   private guard(backend: Backend): Backend {
-    const check = (insert = false) => {
-      if (this.closed) {
-        throw new ConnectionError(
-          500,
-          'Hedra is closed',
-          insert ? 'Cannot perform database operations on a closed Hedra instance' : undefined,
-        )
-      }
+    const check = () => {
+      if (this.closed) throw new ConnectionError('Hedra is closed')
     }
 
     return {
       insert: async (...args) => {
-        check(true)
+        check()
 
         return backend.insert(...args)
       },
@@ -121,14 +115,14 @@ export class Hedra extends Hono {
         return backend.delete(...args)
       },
       transaction: async (work) => {
-        check(true)
+        check()
 
         return backend.transaction((transaction) => {
           check()
 
           return work({
             insert: (...args) => {
-              check(true)
+              check()
 
               return transaction.insert(...args)
             },

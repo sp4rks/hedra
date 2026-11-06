@@ -3,7 +3,7 @@ import type { Context } from 'hono'
 import type { Backend, BackendTransaction, DatabaseRecord } from '#datastores/backend.ts'
 import type { Association, ResourceReference } from '#models/association.ts'
 import type { Collection } from '#models/collection.ts'
-import { HedraError, InputValidationError, RecordNotFoundError } from '#errors'
+import { ConflictError, InputValidationError, RecordNotFoundError } from '#errors'
 import { Association as AssociationSchema, ResourceReference as ReferenceSchema } from '#models/association.ts'
 import { getAssociationScope } from '#models/scope.ts'
 
@@ -102,7 +102,7 @@ export function associationsFor(transaction: BackendTransaction, reference: Reso
 export function assertUnassociated(transaction: BackendTransaction, reference: ResourceReference): void {
   const associations = associationsFor(transaction, reference)
 
-  if (associations.length) throw new HedraError(409, 'resource has associations', { associations })
+  if (associations.length) throw new ConflictError('resource has associations', { associations })
 }
 
 /** Deletes one existing association without touching its endpoints. */

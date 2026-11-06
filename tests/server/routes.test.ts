@@ -168,6 +168,31 @@ test('dictionary and singleton routes preserve keys and owned identities', async
   }
 })
 
+test('occupied embedded dictionary keys and singleton slots return conflict', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ env: quiet, backend })
+  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Car = Resource.extend({ namedNotes: z.record(z.string(), Note).default({}), summary: Note.optional() })
+  const headers = { 'content-type': 'application/json' }
+
+  try {
+    app.register(new Collection('cars', Car))
+    const created = await app.request('/cars', { method: 'POST', headers, body: '{}' })
+    const car = ((await created.json()) as { data: { id: string } }).data
+    const dictionaryPath = `/cars/${car.id}/namedNotes?key=service`
+    const singlePath = `/cars/${car.id}/summary`
+    const request = { method: 'POST', headers, body: JSON.stringify({ text: 'first' }) }
+
+    expect((await app.request(dictionaryPath, request)).status).toBe(201)
+    expect((await app.request(dictionaryPath, request)).status).toBe(409)
+    expect((await app.request(singlePath, request)).status).toBe(201)
+    expect((await app.request(singlePath, request)).status).toBe(409)
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
 test('nested creation initializes nullable arrays and dictionaries atomically', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ env: quiet, backend })

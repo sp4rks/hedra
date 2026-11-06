@@ -275,7 +275,7 @@ test('Hedra.close invalidates saved controller references without closing a borr
       expect(error).toBeInstanceOf(ConnectionError)
       expect(error).toMatchObject({ status: 500, title: 'Hedra is closed', message: 'Hedra is closed' })
     }
-    expect(errors[0]).toMatchObject({ detail: 'Cannot perform database operations on a closed Hedra instance' })
+    expect(errors[0]).toHaveProperty('detail', undefined)
     expect(() => first.register(new Collection('bikes', model))).toThrow()
     expect(JsonApiResponse.parse(await (await second.request(`/test/cars/${id}`)).json()).data).toEqual(car)
     expect(await config.tenants.get(tenant.id)).toEqual(tenant)
