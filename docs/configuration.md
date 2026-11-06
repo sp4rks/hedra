@@ -24,7 +24,9 @@ The imports above use this repository's package entry alias. Run examples from t
 
 `new Hedra()` creates configuration from `process.env` and a default logger. To supply an environment snapshot, use `new Hedra({ env: environment })`. To share a configuration instance or use a subclass, pass `new Hedra({ config })`; the app retains that instance.
 
-The options are `env`, `config` and `logger`. Supplying both `env` and `config`, an unknown option, an invalid configuration or an invalid logger throws. Configuration errors prevent server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
+The options are `env`, `config`, `logger` and `backend`. Supply `backend` to borrow an existing storage backend shared with other apps or configuration stores; otherwise Hedra lazily creates and owns its default SQLite backend. See [backend ownership](backends.md#connection-ownership).
+
+Supplying both `env` and `config`, an unknown option, an invalid configuration, an invalid logger or a malformed backend throws. Configuration errors prevent server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
 
 Configuration is fully validated before Hedra creates its default logger or opens a database. Supplied configuration is checked again, including values overridden by subclasses. Each app has its own `instanceId`, even when configuration or a parent logger is shared. See [logging](logging.md) for custom backends and app-bound context.
 
@@ -50,7 +52,7 @@ Environment values are strings. Hedra trims them, applies defaults for unset or 
 | `HEDRA_SERVER_LISTEN_PORT` | `serverListenPort` | Integer from 1 through 65535 | `3000` |
 | `HEDRA_SERVER_REQUEST_TIMEOUT` | `serverRequestTimeout` | Integer from 1 through 300000, in milliseconds | `30000` |
 
-`serverHttpLogEnabled` retains its configuration meaning; this change does not add HTTP logging middleware. Collection database ownership and persistent-volume requirements are described in [collection storage](collections.md#database-configuration-and-lifecycle).
+`serverHttpLogEnabled` retains its configuration meaning; this change does not add HTTP logging middleware. Connection ownership and persistent-volume requirements are described in [storage backends](backends.md).
 
 Set `serverPrintRoutes` through `HEDRA_SERVER_PRINT_ROUTES=true` to log collection registration messages at level `info`. These messages follow the logger's configured filtering; `silent` suppresses them.
 
