@@ -73,7 +73,7 @@ The generic `Controller` can also be constructed directly with a name, model and
 
 ## Registration and lifecycle
 
-Accessing `collection.controller` before registration throws. Registration rejects invalid definitions, duplicate names and reusing one collection instance across apps. Construct a fresh collection from the schema for a new app. A failed registration does not leave a partially bound controller.
+Accessing `collection.controller` before registration throws. Registration rejects invalid definitions, duplicate names and reusing one collection instance across apps. The internal `hedra_config_tenants` table name is reserved for configuration and cannot be registered as an application collection. Construct a fresh collection from the schema for a new app. A failed registration does not leave a partially bound controller.
 
 By default, Hedra opens its owned SQLite backend on the first registration, using `HEDRA_SQLITE_PATH`. See [server configuration](configuration.md) for resolution and defaults, and [backend storage](backends.md#sqlite-storage) for file layout and persistence. Construction of an app alone opens no default database.
 

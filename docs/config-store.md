@@ -43,7 +43,7 @@ It uses an in-memory database and should exit successfully without output or a d
 
 ## Share a backend with application resources
 
-Pass the same backend to `ConfigStore` and `new Hedra({ backend })`. Multiple configuration stores sharing it see the same tenant catalogue. Application collections use their own named tables; the internal tenant collection uses `hedra_config_tenants`.
+Pass the same backend to `ConfigStore` and `new Hedra({ backend })`. Multiple configuration stores sharing it see the same tenant catalogue. Application collections use their own named tables; the internal tenant collection uses `hedra_config_tenants`. Application registration reserves that exact name to prevent accidental overlap.
 
 `ConfigStore` neither opens nor closes connections. Closing an app ends that app's controllers, while the borrowed backend and configuration store remain usable. The caller closes the backend after all its users finish; every store using it then loses storage access. See [backend ownership](backends.md#connection-ownership).
 
