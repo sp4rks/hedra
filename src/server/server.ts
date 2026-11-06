@@ -7,6 +7,7 @@ import type { Logger } from '#server/logging/logging.ts'
 import { Config, Environment, validateConfig } from '#config'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { tenantTable } from '#datastores/categories/config/config.ts'
+import { ConnectionError } from '#errors'
 import { attachCollection, Collection, isAttached } from '#models/collection.ts'
 import { PinoLogger } from '#server/logging/logging.ts'
 
@@ -72,28 +73,29 @@ export class Hedra extends Hono {
 
   /** Prevents a closed app's controllers from using a borrowed backend. */
   private guard(backend: Backend): Backend {
-    const check = () => {
-      if (this.closed) throw new Error('Hedra is closed')
-    }
-
     return {
       insert: async (...args) => {
-        check()
+        if (this.closed)
+          throw new ConnectionError(
+            500,
+            'Hedra is closed',
+            'Cannot perform database operations on a closed Hedra instance',
+          )
 
         return backend.insert(...args)
       },
       select: async (...args) => {
-        check()
+        if (this.closed) throw new ConnectionError(500, 'Hedra is closed')
 
         return backend.select(...args)
       },
       update: async (...args) => {
-        check()
+        if (this.closed) throw new ConnectionError(500, 'Hedra is closed')
 
         return backend.update(...args)
       },
       delete: async (...args) => {
-        check()
+        if (this.closed) throw new ConnectionError(500, 'Hedra is closed')
 
         return backend.delete(...args)
       },

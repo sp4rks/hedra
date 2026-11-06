@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import type { Backend, ControllerInterface } from '#hedra.ts'
-import { ConfigurationError } from '#errors'
+import { ConfigurationError, ConnectionError } from '#errors'
 import {
   BaseController,
   Collection,
@@ -244,6 +244,7 @@ test('Hedra.close invalidates saved controller references without closing a borr
   const model = Resource.extend({ make: z.string() })
   const cars = new Collection('cars', model)
   const otherCars = new Collection('cars', model)
+  const errors: Error[] = []
 
   try {
     first.register(cars)
@@ -256,6 +257,11 @@ test('Hedra.close invalidates saved controller references without closing a borr
     const id = z.uuid().parse(car.id)
     const tenant = await config.tenants.create({ name: 'Acme' })
 
+    first.onError((error, context) => {
+      errors.push(error)
+
+      return context.text('failed', 500)
+    })
     first.close()
     first.close()
     expect((await first.request('/test/cars', { method: 'POST' })).status).toBe(500)
@@ -263,6 +269,13 @@ test('Hedra.close invalidates saved controller references without closing a borr
     expect((await first.request('/test/cars')).status).toBe(500)
     expect((await first.request(`/test/cars/${id}`, { method: 'PATCH' })).status).toBe(500)
     expect((await first.request(`/test/cars/${id}`, { method: 'DELETE' })).status).toBe(500)
+    expect(errors).toHaveLength(5)
+
+    for (const error of errors) {
+      expect(error).toBeInstanceOf(ConnectionError)
+      expect(error).toMatchObject({ status: 500, title: 'Hedra is closed', message: 'Hedra is closed' })
+    }
+    expect(errors[0]).toMatchObject({ detail: 'Cannot perform database operations on a closed Hedra instance' })
     expect(() => first.register(new Collection('bikes', model))).toThrow()
     expect(JsonApiResponse.parse(await (await second.request(`/test/cars/${id}`)).json()).data).toEqual(car)
     expect(await config.tenants.get(tenant.id)).toEqual(tenant)
