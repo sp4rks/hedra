@@ -1,16 +1,26 @@
+import type { Context } from 'hono'
 import { z } from 'zod'
 
-import type { Backend, DatabaseRecord, DatabaseScalar } from '#datastores/backend.ts'
-import type { Resource } from '#models/resource.ts'
-import { DatabaseFilter, DatabaseRecord as RecordSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
-import { ResourceId } from '#models/resource.ts'
+import type { Backend, DatabaseRecord } from '#datastores/backend.ts'
+import type { Collection } from '#models/collection.ts'
+import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
+import { DatabaseFilter as FilterSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
+import { RecordNotFoundError } from '#errors'
+import { ResourceId, ResourceTimestamp } from '#models/resource.ts'
+import { ResourceInput as InputSchema, QueryParams as QuerySchema } from '#models/rest.ts'
 
-type Attributes<T extends Resource> = {
-  [K in keyof T as K extends 'id' ? never : K]: T[K]
-} & { id?: never }
-type Filter<T extends Resource> = Partial<{
-  [K in keyof T as Exclude<T[K], undefined> extends DatabaseScalar ? K : never]: T[K]
-}>
+export interface ControllerInterface {
+  create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse>
+  id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse>
+  list(
+    context: Context,
+    collection: Collection,
+    baseUrl: string,
+    queryParams?: QueryParams,
+  ): Promise<JsonApiListResponse>
+  update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse>
+  delete(context: Context, collection: Collection, id: string): Promise<void>
+}
 
 /** Serializes a value only when JSON preserves it without loss. */
 function jsonString(value: unknown): string {
@@ -23,100 +33,123 @@ function jsonString(value: unknown): string {
   return data
 }
 
-export class Controller<T extends Resource> {
-  /** Uses the supplied backend for one named resource collection. */
-  constructor(
-    readonly name: string,
-    protected readonly backend: Backend,
-  ) {}
+/** Removes server-owned attributes before generic JSON validation. */
+function attributes(input: ResourceInput): ResourceInput {
+  const parsed = z.record(z.string(), z.unknown()).parse(input)
+  const value = { ...parsed, ...input }
 
-  /** Validates generic JSON storage and server-owned resource identity. */
-  private record(input: unknown): DatabaseRecord {
-    const stored: unknown = JSON.parse(jsonString(input))
-    const validated = RecordSchema.parse(stored)
+  delete value.id
+  delete value.createdAt
+  delete value.updatedAt
+  const stored: unknown = JSON.parse(jsonString(value))
+  const validated = InputSchema.parse(stored)
 
-    ResourceId.parse(validated.id)
+  return { ...validated, ...(stored as ResourceInput) }
+}
 
-    return { ...validated, ...(stored as DatabaseRecord) }
-  }
+/** Applies the collection's validator to declared public keys only. */
+function project(collection: Collection, record: DatabaseRecord): ResourceInput {
+  const keys = Object.keys(collection.outputValidator.shape)
+  const input = Object.fromEntries(keys.filter((key) => Object.hasOwn(record, key)).map((key) => [key, record[key]]))
+  const parsed = collection.outputValidator.parse(structuredClone(input))
+  const output = Object.fromEntries(keys.filter((key) => Object.hasOwn(parsed, key)).map((key) => [key, parsed[key]]))
+  const stored: unknown = JSON.parse(jsonString(output))
+  const validated = InputSchema.parse(stored)
 
-  /** Rejects externally supplied resource IDs. */
-  private attributes(input: unknown): Record<string, unknown> {
-    const attributes = z.record(z.string(), z.unknown()).parse(input)
+  return { ...validated, ...(stored as ResourceInput) }
+}
 
-    if (Object.hasOwn(input as object, 'id')) throw new Error('Resource ID is managed by the controller')
+/** Builds a resource link without carrying query parameters into the path. */
+function resourceLink(context: Context, id: string): string {
+  const url = new URL(context.req.url)
 
-    return { ...attributes, ...(input as Record<string, unknown>) }
-  }
+  url.search = ''
+  url.hash = ''
+  const path = url.pathname.replace(/\/+$/, '')
 
-  /** Creates a resource with a fresh ID. */
-  async create(input: Attributes<T>): Promise<T> {
-    const attributes = this.attributes(input)
+  url.pathname = path.endsWith(`/${id}`) ? path : `${path}/${id}`
+
+  return url.toString()
+}
+
+export class BaseController implements ControllerInterface {
+  /** Uses the supplied backend for each collection operation. */
+  constructor(protected readonly backend: Backend) {}
+
+  /** Creates a resource with server-owned identity and timestamps. */
+  async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
+    const fields = attributes(input)
     const id = crypto.randomUUID()
-    const stored = this.record({ ...attributes, id })
+    const timestamp = new Date().toISOString()
+    const record: DatabaseRecord = { ...fields, id, createdAt: timestamp, updatedAt: timestamp }
+    const data = project(collection, record)
 
-    await this.backend.insert(this.name, stored)
+    await this.backend.insert(collection.name, record)
 
-    return stored as T
+    return { data, links: { self: resourceLink(context, id) } }
   }
 
-  /** Returns the addressed resource, or null when it is absent. */
-  async get(id: string): Promise<T | null> {
+  /** Returns one resource. */
+  async id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse> {
     const key = ResourceId.parse(id)
-    const rows = await this.backend.select(this.name, { id: key })
+    const rows = await this.backend.select(collection.name, { id: key })
+    const record = rows[0]
 
-    if (!rows.length) return null
-    const stored = this.record(rows[0])
+    if (!record) throw new RecordNotFoundError()
+    if (record.id !== key) throw new Error('Resource ID cannot change')
 
-    if (stored.id !== key) throw new Error('Resource ID cannot change')
-
-    return stored as T
+    return { data: project(collection, record), links: { self: resourceLink(context, key) } }
   }
 
-  /** Returns resources matching the supplied scalar criteria. */
-  async list(filter: Filter<T> = {}): Promise<T[]> {
+  /** Returns matching resources. */
+  async list(
+    _context: Context,
+    collection: Collection,
+    baseUrl: string,
+    queryParams?: QueryParams,
+  ): Promise<JsonApiListResponse> {
+    const options = queryParams === undefined ? {} : queryParams
+
+    if (Object.getOwnPropertySymbols(options).length) throw new Error('Query parameter keys must be strings')
+    QuerySchema.parse(options)
+    const snapshot = Object.fromEntries(Object.entries(options))
+
+    QuerySchema.parse(snapshot)
+    const filter = snapshot.filter ?? {}
+
     if (Object.getOwnPropertySymbols(filter).length) throw new Error('Filter keys must be strings')
-    DatabaseFilter.parse(filter)
+    FilterSchema.parse(filter)
     const entries = Object.entries(filter).map(([key, value]) => [key, ScalarSchema.parse(value)] as const)
+    const records = await this.backend.select(collection.name, Object.fromEntries(entries))
 
-    return (await this.backend.select(this.name, Object.fromEntries(entries))).map((row) => this.record(row) as T)
+    return { data: records.map((record) => project(collection, record)), links: { self: z.url().parse(baseUrl) } }
   }
 
-  /** Shallowly changes one existing resource while preserving its ID. */
-  async update(id: string, changes: Partial<Attributes<T>>): Promise<T | null> {
+  /** Updates one resource. */
+  async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
     const key = ResourceId.parse(id)
-    const attributes = this.attributes(changes)
-    const patch: Record<string, unknown> = JSON.parse(jsonString(attributes))
-    const result = await this.backend.update(this.name, key, (current) => {
-      const previous = this.record(current)
+    const fields = attributes(input)
+    let data: ResourceInput | undefined
+    const result = await this.backend.update(collection.name, key, (current) => {
+      if (current.id !== key) throw new Error('Resource ID cannot change')
+      const createdAt = ResourceTimestamp.parse(current.createdAt)
+      const updated = { ...current, ...fields, id: key, createdAt, updatedAt: new Date().toISOString() }
 
-      if (previous.id !== key) throw new Error('Resource ID cannot change')
+      data = project(collection, updated)
 
-      return this.record({ ...previous, ...patch, id: key })
+      return updated
     })
 
-    return result === null ? null : (this.record(result) as T)
+    if (!result) throw new RecordNotFoundError()
+    if (!data) throw new Error('Backend did not apply the resource update')
+
+    return { data, links: { self: resourceLink(context, key) } }
   }
 
-  /** Replaces one existing resource while preserving its ID. */
-  async replace(id: string, input: Attributes<T>): Promise<T | null> {
-    const key = ResourceId.parse(id)
-    const attributes = this.attributes(input)
-    const result = await this.backend.update(this.name, key, (current) => {
-      const previous = this.record(current)
-
-      if (previous.id !== key) throw new Error('Resource ID cannot change')
-
-      return this.record({ ...attributes, id: key })
-    })
-
-    return result === null ? null : (this.record(result) as T)
-  }
-
-  /** Removes one resource and reports whether it existed. */
-  async delete(id: string): Promise<boolean> {
+  /** Deletes one resource. */
+  async delete(_context: Context, collection: Collection, id: string): Promise<void> {
     const key = ResourceId.parse(id)
 
-    return this.backend.delete(this.name, key)
+    if (!(await this.backend.delete(collection.name, key))) throw new RecordNotFoundError()
   }
 }

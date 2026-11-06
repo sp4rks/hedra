@@ -8,12 +8,14 @@ Code follows [CODING_STYLE.md](CODING_STYLE.md). `bun run check` enforces types,
 
 ## Feature workflow
 
-Two roles take part: the **lead agent**, which designs, documents and reviews with the user in chat on Claude Opus 5.5 at high effort, and the **coding agent**, the `coder` subagent (`.cursor/agents/coder.md`, on Grok 4.7 at high effort), which the lead hands implementation to. Each stage finishes before the next starts, except implementation and docs, which run in parallel. Worktrees live in `.worktrees/<branch-name>`, which git ignores.
+The **lead agent** owns design, test design, documentation and acceptance. The configured **coder** implements the work, and the configured **reviewer** performs an independent read-only review. Each stage finishes before the next starts, except implementation and docs, which run in parallel. Worktrees live in `.worktrees/<branch-name>`, which git ignores.
+
+The agents manage planning, test boundaries, tests, implementation and review within the user's requested scope. The lead confirms test seams for the TDD workflow and adjusts coverage as needed. User approval is required only for merging into `main`; ask for clarification when a missing product or scope decision prevents progress, rather than requesting design or test-plan sign-off.
 
 1. **Request.** The user describes the feature.
-2. **Grill.** The lead runs the `grilling` skill until the user confirms a shared understanding.
-3. **Design.** The lead proposes a design: the behaviour, the public interface (Zod schemas, routes, exports), where the code lives, and how it serves the design goals. Work through it with the user, then write it to `plans/<feature>.md`, committed with the feature as the record of what was agreed. Done when the user approves the design.
-4. **Test design.** The lead proposes the tests, following the `tdd` skill: each behaviour and failure path, named as a test and placed at a public seam. Add them to the plan. Done when the user approves the tests.
+2. **Clarify.** The lead resolves missing behaviour or scope decisions, using the `grilling` skill where useful, and makes routine implementation choices autonomously. Done when the requested behaviour and constraints are clear.
+3. **Design.** The lead records the behaviour, public interface (Zod schemas, routes, exports), code structure and design trade-offs in `plans/<feature>.md`, committed with the feature. Done when the lead accepts the design against the requested scope.
+4. **Test design.** The lead owns the tests, following the `tdd` skill: each behaviour and failure path is named as a test and placed at a public seam. Add them to the plan. Done when the lead accepts the test boundaries and coverage; no user sign-off is needed.
 5. **Implement and document.** The lead commits the plan to `feature/<feature>`, creates a worktree for that branch, and starts the coding agent in it. While it works, the lead writes the user docs with the `user-docs` skill on `feature/<feature>-docs`, in a separate worktree, touching only `docs/` and `examples/`.
    - The coding agent writes the agreed tests first and sees them fail, then implements until they pass and runs `bun run check`. It reports the commit range and check results.
    - The docs' examples fail until the code lands. The docs are done when the `user-docs` newcomer review is clean.
@@ -23,7 +25,7 @@ A decision that outlives the feature becomes an ADR during design.
 
 ## Small changes
 
-A bug fix or small change that alters no public interface and needs no design decision takes a light path. The lead states the change and its test in a short brief, and once the user agrees, hands the brief to the coding agent on `fix/<slug>` in its own worktree. The coding agent writes the failing test, makes it pass and runs `bun run check`. The lead updates the user docs if users would notice the change, reviews as in stage 6, and merges after the user approves. If the change turns out to need a design decision, switch to the feature workflow.
+A bug fix or small change that alters no public interface and needs no design decision takes a light path. The lead states the change and its test in a short brief, then hands it to the coding agent on `fix/<slug>` in its own worktree. The coding agent writes the failing test, makes it pass and runs `bun run check`. The lead updates the user docs if users would notice the change, reviews as in stage 6, and merges after the user approves. If the change turns out to need a design decision, switch to the feature workflow.
 
 ## Decisions
 
