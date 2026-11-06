@@ -26,7 +26,9 @@ The imports above use this repository's package entry alias. Run examples from t
 
 The options are `env`, `config`, `logger` and `backend`. Supply `backend` to borrow an existing storage backend shared with other apps or configuration stores; otherwise Hedra lazily creates and owns its default SQLite backend. See [backend ownership](backends.md#connection-ownership).
 
-Supplying both `env` and `config`, an unknown option, an invalid configuration, an invalid logger or a malformed backend throws. Configuration errors prevent server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
+`HedraOptions` is a plain TypeScript type for these options and their dependencies. Unknown option properties are ignored at runtime. The constructor relies on callers to supply implementations of the `Logger` and `Backend` interfaces; it does not check their methods or a custom logger's returned child at runtime.
+
+Supplying both `env` and `config`, or invalid configuration, throws. Configuration errors prevent server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
 
 Configuration is fully validated before Hedra creates its default logger or opens a database. Supplied configuration is checked again, including values overridden by subclasses. Each app has its own `instanceId`, even when configuration or a parent logger is shared. See [logging](logging.md) for custom backends and app-bound context.
 
