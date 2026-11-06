@@ -168,6 +168,47 @@ test('dictionary and singleton routes preserve keys and owned identities', async
   }
 })
 
+test('nested creation initializes nullable arrays and dictionaries atomically', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ env: quiet, backend })
+  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Car = Resource.extend({ notes: z.array(Note).nullable(), namedNotes: z.record(z.string(), Note).nullable() })
+  const headers = { 'content-type': 'application/json' }
+
+  try {
+    app.register(new Collection('cars', Car))
+    const created = await app.request('/cars', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ notes: null, namedNotes: null }),
+    })
+    const car = ((await created.json()) as { data: { id: string } }).data
+    const arrayItem = await app.request(`/cars/${car.id}/notes`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text: 'Array' }),
+    })
+    const dictionaryItem = await app.request(`/cars/${car.id}/namedNotes?key=service`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text: 'Dictionary' }),
+    })
+
+    expect([arrayItem.status, dictionaryItem.status]).toEqual([201, 201])
+    const stored = (
+      (await (await app.request(`/cars/${car.id}`)).json()) as {
+        data: { notes: Array<{ text: string }>; namedNotes: Record<string, { text: string }> }
+      }
+    ).data
+
+    expect(stored.notes).toMatchObject([{ text: 'Array' }])
+    expect(stored.namedNotes.service).toMatchObject({ text: 'Dictionary' })
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
 test('parent container replacement preserves addressed identities and rejects foreign ones atomically', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ env: quiet, backend })
@@ -630,6 +671,146 @@ test('candidate validation rejects transformations that alter managed timestamps
     expect(await backend.select('cars')).toEqual([])
   } finally {
     setSystemTime()
+    app.close()
+    backend.close()
+  }
+})
+
+test('output validation cannot map a dictionary key to a different embedded identity', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ env: quiet, backend })
+  const safeApp = new Hedra({ env: quiet, backend })
+  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Car = Resource.extend({ name: z.string(), namedNotes: z.record(z.string(), Note) })
+  let swap = false
+  let projections = 0
+  const output = Resource.extend({
+    name: z.string(),
+    namedNotes: z.record(z.string(), Note).overwrite((value) => {
+      projections++
+      if (!swap || !value.first || !value.second) return value
+
+      return { first: value.second, second: value.first }
+    }),
+  })
+  const headers = { 'content-type': 'application/json' }
+
+  try {
+    app.register(new Collection('cars', Car, { outputValidator: output }))
+    safeApp.register(new Collection('cars', Car))
+    const created = await app.request('/cars', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Toyota', namedNotes: { first: { text: 'one' }, second: { text: 'two' } } }),
+    })
+    const car = ((await created.json()) as { data: { id: string } }).data
+    const before = ((await (await safeApp.request(`/cars/${car.id}`)).json()) as { data: unknown }).data
+
+    swap = true
+    const item = await app.request(`/cars/${car.id}/namedNotes/first`)
+    const collection = await app.request(`/cars/${car.id}/namedNotes`)
+    const root = await app.request(`/cars/${car.id}`)
+    const list = await app.request('/cars')
+    const projectionCount = projections
+    const changed = await app.request(`/cars/${car.id}/namedNotes/first`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ text: 'changed' }),
+    })
+
+    expect([item.status, collection.status, root.status, list.status, changed.status]).toEqual([
+      500, 500, 500, 500, 500,
+    ])
+    expect(projections).toBe(projectionCount + 1)
+    expect(((await (await safeApp.request(`/cars/${car.id}`)).json()) as { data: unknown }).data).toEqual(before)
+  } finally {
+    app.close()
+    safeApp.close()
+    backend.close()
+  }
+})
+
+test('output validation cannot change a resource identity', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ env: quiet, backend })
+  const Car = Resource.extend({ name: z.string() })
+  const output = Car.overwrite((value) => ({ ...value, id: '00000000-0000-4000-8000-000000000000' }))
+
+  try {
+    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const created = await app.request('/cars', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Toyota' }),
+    })
+
+    expect(created.status).toBe(500)
+    expect(await backend.select('cars')).toEqual([])
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
+test('array output may reorder existing identities but cannot duplicate them', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ env: quiet, backend })
+  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Car = Resource.extend({ notes: z.array(Note) })
+  let duplicate = false
+  const output = Resource.extend({
+    notes: z.array(Note).overwrite((items) => {
+      if (duplicate && items[0]) return [items[0], items[0]]
+
+      return [...items].reverse()
+    }),
+  })
+
+  try {
+    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const created = await app.request('/cars', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ notes: [{ text: 'one' }, { text: 'two' }] }),
+    })
+    const car = ((await created.json()) as { data: { id: string; notes: Array<{ id: string; text: string }> } }).data
+    const first = car.notes.find((note) => note.text === 'one')
+
+    if (!first) throw new Error('Expected the original note')
+    expect(car.notes.map((note) => note.text)).toEqual(['two', 'one'])
+    const item = await app.request(`/cars/${car.id}/notes/${first.id}`)
+
+    expect(((await item.json()) as { data: { text: string } }).data.text).toBe('one')
+    duplicate = true
+    expect((await app.request(`/cars/${car.id}`)).status).toBe(500)
+    expect((await app.request(`/cars/${car.id}/notes`)).status).toBe(500)
+    expect((await app.request(`/cars/${car.id}/notes/${first.id}`)).status).toBe(500)
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
+test('output validation cannot change a singleton embedded identity', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ env: quiet, backend })
+  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Car = Resource.extend({ summary: Note })
+  const output = Resource.extend({
+    summary: Note.overwrite((value) => ({ ...value, id: '00000000-0000-4000-8000-000000000000' })),
+  })
+
+  try {
+    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const created = await app.request('/cars', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ summary: { text: 'one' } }),
+    })
+
+    expect(created.status).toBe(500)
+    expect(await backend.select('cars')).toEqual([])
+  } finally {
     app.close()
     backend.close()
   }

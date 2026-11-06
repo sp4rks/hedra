@@ -242,12 +242,13 @@ export async function embeddedMutate(
       const created = { ...fields, id: crypto.randomUUID(), createdAt: timestamp, updatedAt: timestamp }
 
       if (step.field.kind === 'array') {
-        if (current !== undefined && !Array.isArray(current)) throw new Error('Invalid embedded array')
+        if (current !== undefined && current !== null && !Array.isArray(current))
+          throw new Error('Invalid embedded array')
         set(parent, step.field.name, [...(Array.isArray(current) ? current : []), created])
         selector = created.id
       } else if (step.field.kind === 'dictionary') {
         if (!selector) throw new InputValidationError()
-        const entries = current === undefined ? {} : object(current)
+        const entries = current === undefined || current === null ? {} : object(current)
 
         if (Object.hasOwn(entries, selector)) throw new HedraError(409, 'embedded key already exists')
         set(entries, selector, created)
