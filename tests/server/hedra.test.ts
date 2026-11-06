@@ -239,7 +239,7 @@ test('a throwing controller constructor leaves the collection available for regi
 
 test('Hedra.close invalidates saved controller references without closing a borrowed backend', async () => {
   const backend = new SqliteBackend(':memory:')
-  const config = new ConfigStore(backend)
+  const config = new ConfigStore({ backend })
   const first = new Hedra({ config: new Config(quiet), backend })
   const second = new Hedra({ config: new Config(quiet), backend })
   const model = Resource.extend({ make: z.string() })
@@ -274,7 +274,11 @@ test('Hedra.close invalidates saved controller references without closing a borr
 
     for (const error of errors) {
       expect(error).toBeInstanceOf(ConnectionError)
-      expect(error).toMatchObject({ status: 500, title: 'Hedra is closed', message: 'Hedra is closed' })
+      expect(error).toMatchObject({
+        status: 500,
+        title: 'Datastore connection is closed',
+        message: 'Datastore connection is closed',
+      })
     }
     expect(errors[0]).toHaveProperty('detail', undefined)
     expect(() => first.register(new Collection('bikes', model))).toThrow()

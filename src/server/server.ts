@@ -3,11 +3,12 @@ import { Hono } from 'hono'
 
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
+import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
 import type { LoggerInterface } from '#server/logging/logging.ts'
 import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
-import { tenantTable } from '#datastores/categories/config/config.ts'
+import { ConfigStore, tenantTable } from '#datastores/categories/config/config.ts'
 import { ConnectionError } from '#errors'
 import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
@@ -17,6 +18,7 @@ import { Logger } from '#server/logging/logger.ts'
 export type HedraOptions = {
   config?: Config
   backend?: Backend
+  configDatastore?: ConfigDatastore
   logger?: LoggerInterface
 }
 
@@ -27,6 +29,8 @@ export class Hedra extends Hono {
   readonly port: number
   readonly hostname: string
   private backend?: Backend
+  private datastore?: ConfigDatastore
+  private closeConfigDatastore?: () => void
   private closeBackend?: () => void
   private readonly collections = new Map<string, Collection>()
   private closed = false
@@ -43,6 +47,7 @@ export class Hedra extends Hono {
     this.port = this.config.serverListenPort
     this.hostname = this.config.serverListenIp
     this.backend = options.backend
+    this.datastore = options.configDatastore
 
     this.associations = new AssociationOperations(
       () => {
@@ -53,6 +58,19 @@ export class Hedra extends Hono {
       },
       (name) => this.collections.get(name),
     )
+  }
+
+  /** Returns the app's configuration datastore. */
+  get configDatastore(): ConfigDatastore {
+    if (this.closed) throw new ConnectionError('Hedra is closed')
+    if (!this.datastore) {
+      const store = new ConfigStore({ config: this.config })
+
+      this.datastore = store
+      this.closeConfigDatastore = () => store.close()
+    }
+
+    return this.datastore
   }
 
   /** Prevents a closed app's controllers from using a borrowed backend. */
@@ -193,6 +211,7 @@ export class Hedra extends Hono {
   close(): void {
     if (this.closed) return
     this.closed = true
+    this.closeConfigDatastore?.()
     this.closeBackend?.()
   }
 }
