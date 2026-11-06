@@ -92,6 +92,8 @@ The optional collection options object accepts a `controller` class implementing
 
 Custom controllers can read that ancestry through the exported `getEmbeddedScope(context)` and `getAssociationScope(context)` functions. Embedded scope identifies the root resource and ordered embedded selectors; association scope identifies independent-resource ancestors. A scope is absent when that request has no corresponding generated ancestry. The exported scope schemas describe the values; callers need no private context keys or internal imports.
 
+Register collections and custom routes before handling the first request.
+
 Accessing `collection.controller` before registration throws. Registration includes referenced association collections and their root routes. It rejects invalid definitions, ambiguous paths, duplicate names and reusing one collection instance across apps. A collection already registered in the same app may be referenced by a later definition; explicitly registering it again rejects. Internal tenant and association table names are reserved. Failed registration leaves no partially bound controllers or routes.
 
 `new Hedra()` lazily opens its default SQLite backend on first registration using `HEDRA_SQLITE_PATH`. An app can borrow a backend with `new Hedra({ backend })`. Closing the app ends access through its controllers, including saved references. It closes an owned backend; a borrowed backend stays available to other apps and configuration stores. Close is idempotent and registration after closure rejects. See [connection ownership](backends.md#connection-ownership) and [server configuration](configuration.md).
