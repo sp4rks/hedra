@@ -83,7 +83,10 @@ test('the process entrypoint serves the example route', async () => {
   }
 })
 
-test('invalid configuration exits before listening or opening SQLite', async () => {
+test.each([
+  ['HEDRA_DEPLOYMENT_DOMAIN', 'not a domain'],
+  ['HEDRA_SERVER_LOG_LIBRARY', 'pretty'],
+])('invalid %s exits before logging, listening or opening SQLite', async (variable, value) => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-invalid-startup-'))
   const database = join(dir, 'db.sqlite')
   const port = await freePort()
@@ -91,14 +94,14 @@ test('invalid configuration exits before listening or opening SQLite', async () 
     cwd: projectRoot,
     env: {
       ...process.env,
-      HEDRA_DEPLOYMENT_DOMAIN: 'not a domain',
+      [variable]: value,
       HEDRA_SERVER_LISTEN_IP: '127.0.0.1',
       HEDRA_SERVER_LISTEN_PORT: String(port),
       HEDRA_SERVER_SILENT_STARTUP: 'true',
       HEDRA_SERVER_LOG_LEVEL: 'silent',
       HEDRA_SQLITE_PATH: database,
     },
-    stdout: 'ignore',
+    stdout: 'pipe',
     stderr: 'pipe',
   })
 
@@ -123,10 +126,12 @@ test('invalid configuration exits before listening or opening SQLite', async () 
     if (exitCode === -1) proc.kill()
 
     const error = await new Response(proc.stderr).text()
+    const output = await new Response(proc.stdout).text()
 
     expect(exitCode).toBe(1)
     expect(await served).toBe(false)
-    expect(error).toContain('HEDRA_DEPLOYMENT_DOMAIN')
+    expect(error).toContain(variable)
+    expect(output).toBe('')
     expect(existsSync(database)).toBe(false)
   } finally {
     proc.kill()

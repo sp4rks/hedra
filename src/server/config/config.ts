@@ -26,6 +26,7 @@ export const ConfigValues = z.object({
   sqlitePath: serverVariables.HEDRA_SQLITE_PATH.schema,
   serverEnv: serverVariables.HEDRA_SERVER_ENV.schema,
   serverSilentStartup: serverVariables.HEDRA_SERVER_SILENT_STARTUP.schema,
+  serverLogLibrary: serverVariables.HEDRA_SERVER_LOG_LIBRARY.schema,
   serverLogFormat: serverVariables.HEDRA_SERVER_LOG_FORMAT.schema,
   serverLogLevel: serverVariables.HEDRA_SERVER_LOG_LEVEL.schema,
   serverHttpLogEnabled: serverVariables.HEDRA_SERVER_HTTP_LOGGING.schema,
@@ -112,6 +113,7 @@ export class Config {
   declare readonly sqlitePath: ConfigValues['sqlitePath']
   declare readonly serverEnv: ConfigValues['serverEnv']
   declare readonly serverSilentStartup: ConfigValues['serverSilentStartup']
+  declare readonly serverLogLibrary: ConfigValues['serverLogLibrary']
   declare readonly serverLogFormat: ConfigValues['serverLogFormat']
   declare readonly serverLogLevel: ConfigValues['serverLogLevel']
   declare readonly serverHttpLogEnabled: ConfigValues['serverHttpLogEnabled']

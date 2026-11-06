@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
 
@@ -28,11 +30,11 @@ function captureScript(script: string): string {
   return result.stdout.toString()
 }
 
-test('PinoLogger creates a default logger using the configured JSON format and info level', () => {
+test('createLogger emits configured default JSON/info output', () => {
   const entry = join(import.meta.dir, '../../src/hedra.ts')
   const output = captureScript(`
-    import { Config, PinoLogger } from ${JSON.stringify(entry)}
-    const logger = PinoLogger.create(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }))
+    import { Config, createLogger } from ${JSON.stringify(entry)}
+    const logger = createLogger(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }))
     logger.debug('hidden')
     logger.info('visible')
   `)
@@ -40,12 +42,13 @@ test('PinoLogger creates a default logger using the configured JSON format and i
   expect(JSON.parse(output)).toMatchObject({ msg: 'visible' })
 })
 
-test('PinoLogger creates a default logger using explicit format and level settings', () => {
+test('createLogger honors explicit library, format and level settings', () => {
   const entry = join(import.meta.dir, '../../src/hedra.ts')
   const output = captureScript(`
-    import { Config, PinoLogger } from ${JSON.stringify(entry)}
-    const logger = PinoLogger.create(new Config({
-      HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_FORMAT: 'pretty', HEDRA_SERVER_LOG_LEVEL: 'warn'
+    import { Config, createLogger } from ${JSON.stringify(entry)}
+    const logger = createLogger(new Config({
+      HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LIBRARY: 'pino',
+      HEDRA_SERVER_LOG_FORMAT: 'pretty', HEDRA_SERVER_LOG_LEVEL: 'warn'
     }))
     logger.info('hidden')
     logger.warn('visible')
@@ -54,6 +57,40 @@ test('PinoLogger creates a default logger using explicit format and level settin
   expect(output).toContain('visible')
   expect(output).not.toContain('hidden')
   expect(output).not.toContain('"msg"')
+})
+
+test('Hedra selects its logger library from the environment', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-logging-'))
+  const entry = join(import.meta.dir, '../../src/hedra.ts')
+  const script = `
+    import { Hedra } from ${JSON.stringify(entry)}
+    const app = new Hedra()
+    app.log.info('Ready', { expectedInstanceId: app.instanceId })
+  `
+
+  try {
+    const result = Bun.spawnSync([process.execPath, '--no-env-file', '-e', script], {
+      cwd: dir,
+      env: {
+        HEDRA_SERVER_SILENT_STARTUP: 'true',
+        HEDRA_SERVER_LOG_LIBRARY: 'pino',
+        HEDRA_SERVER_LOG_FORMAT: 'json',
+        HEDRA_SERVER_LOG_LEVEL: 'info',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+
+    expect(result.stderr.toString()).toBe('')
+    expect(result.exitCode).toBe(0)
+    const record = JSON.parse(result.stdout.toString())
+
+    expect(record.msg).toBe('Ready')
+    expect(record.instanceId).toBe(record.expectedInstanceId)
+    expect(record.instanceId).toMatch(/^[0-9a-f-]{36}$/i)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('PinoLogger emits message-first structured JSON', () => {

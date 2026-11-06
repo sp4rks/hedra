@@ -24,6 +24,13 @@ export const serverVariables = {
     description: 'Whether to suppress the startup message',
     schema: z.boolean(),
   },
+  HEDRA_SERVER_LOG_LIBRARY: {
+    name: 'serverLogLibrary',
+    default: 'pino',
+    options: ['pino'],
+    description: 'The library used for server logging',
+    schema: z.enum(['pino']),
+  },
   HEDRA_SERVER_LOG_FORMAT: {
     name: 'serverLogFormat',
     default: 'json',

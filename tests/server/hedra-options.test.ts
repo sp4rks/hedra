@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 import type { HedraOptions, LogFields, Logger } from '#hedra.ts'
 import { ConfigurationError } from '#errors'
-import { Collection, Config, Hedra, PinoLogger, Resource } from '#hedra.ts'
+import { Collection, Config, createLogger, Hedra, PinoLogger, Resource } from '#hedra.ts'
 
 class RecordingLogger implements Logger {
   /** Shares captured records while keeping this logger's bindings separate. */
@@ -74,11 +74,30 @@ test('Hedra retains supplied configuration when a wider options object includes 
   expect(app.port).toBe(8080)
 })
 
-test('PinoLogger uses a supplied logger instead of the default', () => {
+test('createLogger uses a supplied logger instead of the default', () => {
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
   const supplied = new RecordingLogger([])
 
-  expect(PinoLogger.create(config, supplied)).toBe(supplied)
+  expect(createLogger(config, supplied)).toBe(supplied)
+})
+
+test('createLogger rejects invalid library configuration even with a supplied logger', () => {
+  class InvalidLibraryConfig extends Config {
+    override readonly serverLogLibrary = 'pretty' as never
+  }
+
+  class UntouchedLogger extends RecordingLogger {
+    /** Fails if Hedra touches a logger before validating its configuration. */
+    override child(): Logger {
+      throw new Error('The logger should not be touched')
+    }
+  }
+
+  const config = new InvalidLibraryConfig({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const supplied = new UntouchedLogger([])
+
+  expect(() => createLogger(config, supplied)).toThrow(ConfigurationError)
+  expect(() => new Hedra({ config, logger: supplied })).toThrow(ConfigurationError)
 })
 
 test('Hedra accepts a Config and binds its identity to the supplied logger', () => {

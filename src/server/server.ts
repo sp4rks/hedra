@@ -12,7 +12,7 @@ import { ConnectionError } from '#errors'
 import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
-import { PinoLogger } from '#server/logging/logging.ts'
+import { createLogger } from '#server/logging/create-logger.ts'
 
 export type HedraOptions = {
   config?: Config
@@ -41,7 +41,7 @@ export class Hedra extends Hono {
 
     this.config = config
     this.instanceId = crypto.randomUUID()
-    this.log = PinoLogger.create(config, options.logger).child({ instanceId: this.instanceId })
+    this.log = createLogger(config, options.logger).child({ instanceId: this.instanceId })
     this.port = values.serverListenPort
     this.hostname = values.serverListenIp
     this.backend = options.backend

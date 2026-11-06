@@ -35,6 +35,8 @@ test('Config prints each setting with its source', () => {
   expect(table).toContain('example.com')
   expect(table).toContain('environ')
   expect(table).toContain('HEDRA_SERVER_ENV')
+  expect(table).toContain('HEDRA_SERVER_LOG_LIBRARY')
+  expect(table).toContain('pino')
   expect(table).toContain('dev')
   expect(table).toContain('default')
 })
@@ -47,6 +49,7 @@ test('Config uses Hedra defaults when variables are unset', () => {
   expect(config.deploymentDocsDomain).toBe('docs.hedra.local')
   expect(config.serverEnv).toBe('dev')
   expect(config.serverSilentStartup).toBe(false)
+  expect(config.serverLogLibrary).toBe('pino')
   expect(config.serverLogFormat).toBe('json')
   expect(config.serverLogLevel).toBe('info')
   expect(config.serverHttpLogEnabled).toBe(true)
@@ -276,8 +279,10 @@ test('Config decodes true and false and rejects other boolean values', () => {
   expect(config.serverHttpLogEnabled).toBe(false)
 })
 
-test('Config rejects an invalid log format or level', () => {
+test('Config rejects an invalid logging library, format or level', () => {
   for (const [variable, value] of [
+    ['HEDRA_SERVER_LOG_LIBRARY', 'pretty'],
+    ['HEDRA_SERVER_LOG_LIBRARY', 'unknown'],
     ['HEDRA_SERVER_LOG_FORMAT', 'pino'],
     ['HEDRA_SERVER_LOG_LEVEL', 'verbose'],
   ] as const) {

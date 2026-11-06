@@ -15,7 +15,8 @@ import { EmbeddedResource, Resource } from '#models/resource.ts'
 import { ErrorResponse, JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { AssociationScope, EmbeddedScope, EmbeddedStep, getAssociationScope, getEmbeddedScope } from '#models/scope.ts'
 import { Tenant } from '#models/tenant.ts'
-import { PinoLogger } from '#server/logging/logging.ts'
+import { createLogger } from '#server/logging/create-logger.ts'
+import { PinoLogger } from '#server/logging/pino.ts'
 import { Hedra } from '#server/server.ts'
 
 export type { Backend, BackendTransaction, ControllerInterface, HedraOptions, LogFields, Logger, RecordModifier }
@@ -26,6 +27,7 @@ export {
   Collection,
   Config,
   ConfigStore,
+  createLogger,
   DatabaseFilter,
   DatabaseRecord,
   DatabaseScalar,
