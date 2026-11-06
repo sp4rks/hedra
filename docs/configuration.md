@@ -5,16 +5,12 @@
 For persisted tenant definitions, see the separate [configuration store](config-store.md).
 
 ```ts
-import { Config, Hedra } from '#hedra.ts'
+import { Hedra } from '#hedra.ts'
 
-const config = new Config({
-  HEDRA_SERVER_LISTEN_PORT: '8080',
-  HEDRA_SERVER_SILENT_STARTUP: 'true',
-})
-const app = new Hedra({ config })
+const app = new Hedra()
 
-config.serverListenPort // 8080
-config.serverSilentStartup // true
+app.config.serverListenPort // A number, loaded from the environment or the default.
+app.config.serverSilentStartup // A boolean.
 app.instanceId // A unique identifier for this app.
 ```
 
@@ -22,13 +18,15 @@ The imports above use this repository's package entry alias. Run examples from t
 
 ## Construct an application
 
-`new Hedra()` creates configuration from `process.env` and a default logger. To supply an environment snapshot, use `new Hedra({ env: environment })`. To share a configuration instance or use a subclass, pass `new Hedra({ config })`; the app retains that instance.
+`new Hedra()` creates a `Config` that loads `process.env`, environment files and defaults, then creates a default logger. Configure the process environment before constructing the app; no environment argument is needed.
 
-The options are `env`, `config`, `logger` and `backend`. Supply `backend` to borrow an existing storage backend shared with other apps or configuration stores; otherwise Hedra lazily creates and owns its default SQLite backend. See [backend ownership](backends.md#connection-ownership).
+The options are `config`, `logger` and `backend`. To share a configuration instance or use a subclass, pass `new Hedra({ config })`; the app retains that instance. For isolated tests or an explicit environment snapshot, construct the dependency with `new Config(environment)` and pass it as `config`.
+
+Supply `backend` to borrow an existing storage backend shared with other apps or configuration stores; otherwise Hedra lazily creates and owns its default SQLite backend. See [backend ownership](backends.md#connection-ownership).
 
 `HedraOptions` is a plain TypeScript type for these options and their dependencies. Unknown option properties are ignored at runtime. The constructor relies on callers to supply implementations of the `Logger` and `Backend` interfaces; it does not check their methods or a custom logger's returned child at runtime.
 
-Supplying both `env` and `config`, or invalid configuration, throws. Configuration errors prevent server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
+Invalid configuration throws before server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
 
 Configuration is fully validated before Hedra creates its default logger or opens a database. Supplied configuration is checked again, including values overridden by subclasses. Each app has its own `instanceId`, even when configuration or a parent logger is shared. See [logging](logging.md) for custom backends and app-bound context.
 
@@ -80,12 +78,14 @@ Read-only properties are a TypeScript guarantee. The object is not frozen at run
 
 | Previous usage | Current usage |
 | --- | --- |
-| `new Hedra(env)` | `new Hedra({ env })` |
+| `new Hedra(env)` or `new Hedra({ env })` | `new Hedra()` to load the process environment |
 | `loadServerConfig(env)` | `new Config(env)` |
 | `config.serverListenPort === '3000'` | `config.serverListenPort === 3000` |
 | `config.serverSilentStartup === 'false'` | `config.serverSilentStartup === false` |
 | `config.instanceId` | `app.instanceId` |
 | `HEDRA_SERVER_LOG_TYPE=pino` | `HEDRA_SERVER_LOG_FORMAT=json` |
 | `HEDRA_SERVER_LOG_TYPE=pino-pretty` or `dev` | `HEDRA_SERVER_LOG_FORMAT=pretty` |
+
+If a caller previously supplied an explicit environment snapshot, preserve it with `new Hedra({ config: new Config(env) })`. Hedra no longer reads an `env` option; like other unknown properties, it is ignored at runtime.
 
 The old log-type setting and values are no longer supported. Remove old names when migrating; unknown environment variables do not select a backend or output format.
