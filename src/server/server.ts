@@ -9,6 +9,7 @@ import { Config, Environment, validateConfig } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { tenantTable } from '#datastores/categories/config/config.ts'
+import { ConnectionError } from '#errors'
 import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
@@ -77,7 +78,7 @@ export class Hedra extends Hono {
     this.backend = parsed.backend
     this.associations = new AssociationOperations(
       () => {
-        if (this.closed) throw new Error('Hedra is closed')
+        if (this.closed) throw new ConnectionError(500, 'Hedra is closed')
         if (!this.backend) throw new Error('Register a collection before using associations')
 
         return this.guard(this.backend)
@@ -88,13 +89,19 @@ export class Hedra extends Hono {
 
   /** Prevents a closed app's controllers from using a borrowed backend. */
   private guard(backend: Backend): Backend {
-    const check = () => {
-      if (this.closed) throw new Error('Hedra is closed')
+    const check = (insert = false) => {
+      if (this.closed) {
+        throw new ConnectionError(
+          500,
+          'Hedra is closed',
+          insert ? 'Cannot perform database operations on a closed Hedra instance' : undefined,
+        )
+      }
     }
 
     return {
       insert: async (...args) => {
-        check()
+        check(true)
 
         return backend.insert(...args)
       },
@@ -114,14 +121,14 @@ export class Hedra extends Hono {
         return backend.delete(...args)
       },
       transaction: async (work) => {
-        check()
+        check(true)
 
         return backend.transaction((transaction) => {
           check()
 
           return work({
             insert: (...args) => {
-              check()
+              check(true)
 
               return transaction.insert(...args)
             },

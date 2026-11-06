@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import type { Backend } from '#hedra.ts'
+import { ConnectionError } from '#errors'
 import { BaseController, Collection, EmbeddedResource, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
@@ -177,7 +178,11 @@ test('saved association operations stop with the app while a borrowed backend re
     const saved = app.associations
 
     app.close()
-    await expect(saved.list({ collection: 'projects', id })).rejects.toThrow('closed')
+    await expect(saved.list({ collection: 'projects', id })).rejects.toBeInstanceOf(ConnectionError)
+    await expect(saved.list({ collection: 'projects', id })).rejects.toMatchObject({
+      status: 500,
+      title: 'Hedra is closed',
+    })
     expect(await backend.select('projects')).toHaveLength(1)
   } finally {
     app.close()
