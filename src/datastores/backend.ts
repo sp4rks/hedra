@@ -1,15 +1,12 @@
 import { z } from 'zod'
 
 export const DatabaseRecord = z.object({ id: z.string() }).catchall(z.json())
-
 export type DatabaseRecord = z.infer<typeof DatabaseRecord>
 
 export const DatabaseScalar = z.union([z.string(), z.number(), z.boolean(), z.null()])
-
 export type DatabaseScalar = z.infer<typeof DatabaseScalar>
 
 export const DatabaseFilter = z.record(z.string(), DatabaseScalar)
-
 export type DatabaseFilter = z.infer<typeof DatabaseFilter>
 
 export type RecordModifier = (record: DatabaseRecord) => DatabaseRecord
