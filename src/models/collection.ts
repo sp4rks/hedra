@@ -1,15 +1,12 @@
 import { z } from 'zod'
 
+import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
-import type { Resource } from '#models/resource.ts'
-import { Controller } from '#controllers/controller.ts'
+import { BaseController } from '#controllers/controller.ts'
 import { assertResourceModel } from '#models/resource.ts'
 
-type ResourceData<S extends z.ZodObject> = z.output<S> & Resource
-type ControllerConstructor<S extends z.ZodObject, C extends Controller<ResourceData<S>>> = new (
-  name: string,
-  backend: Backend,
-) => C
+type ControllerConstructor<C extends ControllerInterface> = new (backend: Backend) => C
+type Options<C extends ControllerInterface> = { controller?: ControllerConstructor<C>; outputValidator?: z.ZodObject }
 
 const factories = new WeakMap<object, (backend: Backend) => unknown>()
 const controllers = new WeakMap<object, unknown>()
@@ -27,18 +24,19 @@ export function attachCollection(collection: object, backend: Backend): void {
   controllers.set(collection, create(backend))
 }
 
-export class Collection<S extends z.ZodObject, C extends Controller<ResourceData<S>> = Controller<ResourceData<S>>> {
+export class Collection<S extends z.ZodObject = z.ZodObject, C extends ControllerInterface = ControllerInterface> {
   readonly name: string
   readonly model: S
   readonly endpoint: string
+  readonly outputValidator: z.ZodObject
 
-  /** Defines a named resource collection and selects its controller. */
+  /** Defines a named resource collection and selects its controller and public output. */
   constructor(
     name: string,
     model: S,
-    ...[controller]: Controller<ResourceData<S>> extends C
-      ? [controller?: ControllerConstructor<S, C>]
-      : [controller: ControllerConstructor<S, C>]
+    ...[options]: ControllerInterface extends C
+      ? [options?: Options<C>]
+      : [options: Options<C> & { controller: ControllerConstructor<C> }]
   ) {
     this.name = z
       .string()
@@ -47,10 +45,17 @@ export class Collection<S extends z.ZodObject, C extends Controller<ResourceData
     assertResourceModel(model)
     this.model = model
     this.endpoint = `/${this.name}`
-    if (controller !== undefined && typeof controller !== 'function') throw new TypeError('Expected a controller class')
-    const selected = controller ?? (Controller as unknown as ControllerConstructor<S, C>)
+    const parsed = z
+      .strictObject({
+        controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
+        outputValidator: z.instanceof(z.ZodObject).optional(),
+      })
+      .parse(options ?? {})
+    const shape = Object.fromEntries(Object.entries(model.shape).filter(([key]) => key !== 'password'))
+    const selected = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
 
-    factories.set(this, (backend) => new selected(this.name, backend))
+    this.outputValidator = parsed.outputValidator ?? z.object(shape)
+    factories.set(this, (backend) => new selected(backend))
   }
 
   /** Returns the controller created during registration. */

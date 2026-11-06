@@ -1,9 +1,8 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import type { Controller } from '#controllers/controller.ts'
+import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
-import type { Resource } from '#models/resource.ts'
 import type { Logger } from '#server/logging/logging.ts'
 import { Config, Environment, validateConfig } from '#config'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
@@ -102,7 +101,7 @@ export class Hedra extends Hono {
   }
 
   /** Constructs the selected controller using this app's backend. */
-  register<S extends z.ZodObject, C extends Controller<z.output<S> & Resource>>(collection: Collection<S, C>): void {
+  register<S extends z.ZodObject, C extends ControllerInterface>(collection: Collection<S, C>): void {
     if (this.closed) throw new Error('Hedra is closed')
     if (!(collection instanceof Collection)) throw new TypeError('Expected a Collection')
     if (collection.name === tenantTable) throw new Error('Collection name is reserved for tenant configuration')

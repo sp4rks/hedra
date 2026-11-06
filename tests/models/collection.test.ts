@@ -1,23 +1,24 @@
+import type { Context } from 'hono'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, Controller, Hedra, Resource } from '#hedra.ts'
+import type { Backend, ControllerInterface } from '#hedra.ts'
+import { BaseController, Collection, Hedra, JsonApiListResponse, JsonApiResponse, Resource } from '#hedra.ts'
 
 const Car = Resource.extend({ make: z.string() })
-
-type Car = z.output<typeof Car>
 const quiet = {
   HEDRA_SERVER_SILENT_STARTUP: 'true',
   HEDRA_SERVER_LOG_LEVEL: 'silent',
   HEDRA_SQLITE_PATH: ':memory:',
 }
 
-test('Collection binds resource metadata and rejects invalid definitions', () => {
+test('Collection binds metadata, a public validator and rejects invalid definitions', () => {
   const cars = new Collection('cars', Car)
 
   expect(cars.name).toBe('cars')
   expect(cars.endpoint).toBe('/cars')
   expect(cars.model).toBe(Car)
+  expect(cars.outputValidator).toBeInstanceOf(z.ZodObject)
   expect(() => cars.controller).toThrow('registered')
 
   for (const name of ['', 'Cars', '../cars', 'cars/other', '1cars']) {
@@ -31,7 +32,8 @@ test('Collection binds resource metadata and rejects invalid definitions', () =>
   expect(
     () => new Collection('cars', Resource.extend({ id: Resource.shape.id.default(crypto.randomUUID()) })),
   ).toThrow()
-  expect(() => new Collection('cars', Car, {} as never)).toThrow()
+  expect(() => new Collection('cars', Car, { controller: {} } as never)).toThrow()
+  expect(() => new Collection('cars', Car, { unsupported: true } as never)).toThrow()
   expect(
     new Collection(
       'cars-v2_archive',
@@ -40,7 +42,7 @@ test('Collection binds resource metadata and rejects invalid definitions', () =>
   ).toBeInstanceOf(Collection)
 })
 
-test('registration constructs the default controller using the collection table', async () => {
+test('registration constructs the default independent controller', async () => {
   const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', Car)
   const bikes = new Collection('bikes', Car)
@@ -48,89 +50,77 @@ test('registration constructs the default controller using the collection table'
   try {
     app.register(cars)
     app.register(bikes)
-    const car = await cars.controller.create({ make: 'Toyota' })
+    app.post('/cars', async (context) => context.json(await cars.controller.create(context, cars, { make: 'Toyota' })))
+    app.get('/bikes', async (context) =>
+      context.json(await bikes.controller.list(context, bikes, 'http://localhost/bikes')),
+    )
+    const created = JsonApiResponse.parse(await (await app.request('/cars', { method: 'POST' })).json())
 
-    expect(await cars.controller.get(car.id)).toEqual(car)
-    expect(await bikes.controller.list()).toEqual([])
+    expect(cars.controller).toBeInstanceOf(BaseController)
+    expect(created.data.make).toBe('Toyota')
+    expect(JsonApiListResponse.parse(await (await app.request('/bikes')).json()).data).toEqual([])
   } finally {
     app.close()
   }
 })
 
-test('collection controllers infer prepared model output, including loose fields', async () => {
-  const app = new Hedra({ env: quiet })
-  const LooseModel = Resource.extend({ name: z.string().default('default') }).loose()
-  const CatchallModel = Resource.extend({ name: z.string() }).catchall(z.union([z.string(), z.number()]))
-  const loose = new Collection('loose', LooseModel)
-  const catchall = new Collection('catchall', CatchallModel)
+class CustomController implements ControllerInterface {
+  private readonly base: BaseController
 
-  try {
-    app.register(loose)
-    app.register(catchall)
-    // @ts-expect-error The model output requires the defaulted name before controller calls.
-    const missingLoose = await loose.controller.create({})
-    // @ts-expect-error The catchall model still requires its declared name.
-    const missingCatchall = await catchall.controller.create({})
-    const first = await loose.controller.create({ name: 'Loose', extra: { enabled: true } })
-    const second = await catchall.controller.create({ name: 'Catchall', extra: 42 })
-
-    expect(missingLoose).not.toHaveProperty('name')
-    expect(missingCatchall).not.toHaveProperty('name')
-    // @ts-expect-error Model-derived open data cannot provide the server-owned ID.
-    await expect(loose.controller.update(first.id, { id: first.id })).rejects.toThrow()
-    // @ts-expect-error A catchall model does not permit a caller-supplied ID.
-    await expect(catchall.controller.create({ id: crypto.randomUUID(), name: 'Other' })).rejects.toThrow()
-    expect(await loose.controller.get(first.id)).toEqual(first)
-    expect(await catchall.controller.get(second.id)).toEqual(second)
-  } finally {
-    app.close()
+  /** Delegates shared resource behaviour to the supplied backend. */
+  constructor(backend: Backend) {
+    this.base = new BaseController(backend)
   }
-})
 
-test('collection registration does not make the controller run the resource model', async () => {
-  const app = new Hedra({ env: quiet })
-  const model = Resource.extend({ name: z.string() }).refine(() => false)
-  const collection = new Collection('items', model)
-
-  try {
-    app.register(collection)
-    const item = await collection.controller.create({ name: 'Supplied data' })
-
-    expect(await collection.controller.get(item.id)).toEqual(item)
-  } finally {
-    app.close()
+  /** Creates a resource. */
+  create(...args: Parameters<ControllerInterface['create']>) {
+    return this.base.create(...args)
   }
-})
-
-class CarController extends Controller<Car> {
-  /** Returns cars matching a maker. */
-  async byMake(make: string) {
-    return this.list({ make })
+  /** Reads a resource. */
+  id(...args: Parameters<ControllerInterface['id']>) {
+    return this.base.id(...args)
+  }
+  /** Lists resources. */
+  list(...args: Parameters<ControllerInterface['list']>) {
+    return this.base.list(...args)
+  }
+  /** Updates a resource. */
+  update(...args: Parameters<ControllerInterface['update']>) {
+    return this.base.update(...args)
+  }
+  /** Deletes a resource. */
+  delete(...args: Parameters<ControllerInterface['delete']>) {
+    return this.base.delete(...args)
+  }
+  /** Lists cars matching one maker. */
+  byMake(context: Context, collection: Collection, make: string) {
+    return this.list(context, collection, 'http://localhost/cars', { filter: { make } })
   }
 }
 
 test('an explicitly typed custom controller requires its constructor', () => {
   // @ts-expect-error A custom controller type requires the matching constructor.
-  const cars = new Collection<typeof Car, CarController>('cars', Car)
-  const base = new Collection<typeof Car, Controller<Car>>('cars', Car)
-  const custom = new Collection<typeof Car, CarController>('cars', Car, CarController)
+  const cars = new Collection<typeof Car, CustomController>('cars', Car)
+  const base = new Collection<typeof Car, ControllerInterface>('cars', Car)
+  const custom = new Collection<typeof Car, CustomController>('cars', Car, { controller: CustomController })
 
   expect(() => cars.controller).toThrow('registered')
   expect(() => base.controller).toThrow('registered')
   expect(() => custom.controller).toThrow('registered')
 })
 
-test('registration preserves a custom controller and its additional operations', async () => {
+test('registration preserves a custom independent controller and its extra methods', async () => {
   const app = new Hedra({ env: quiet })
-  const cars = new Collection('cars', Car, CarController)
+  const cars = new Collection('cars', Car, { controller: CustomController })
 
   try {
     app.register(cars)
-    const car = await cars.controller.create({ make: 'Toyota' })
+    app.post('/cars', async (context) => context.json(await cars.controller.create(context, cars, { make: 'Toyota' })))
+    app.get('/cars', async (context) => context.json(await cars.controller.byMake(context, cars, 'Toyota')))
+    const created = JsonApiResponse.parse(await (await app.request('/cars', { method: 'POST' })).json())
 
-    expect(cars.controller).toBeInstanceOf(CarController)
-    expect(await cars.controller.byMake('Toyota')).toEqual([car])
-    expect(await cars.controller.byMake('Honda')).toEqual([])
+    expect(cars.controller).toBeInstanceOf(CustomController)
+    expect(JsonApiListResponse.parse(await (await app.request('/cars')).json()).data).toEqual([created.data])
   } finally {
     app.close()
   }
