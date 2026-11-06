@@ -1,14 +1,13 @@
 import { z } from 'zod'
 
 import type { Backend, DatabaseRecord, DatabaseScalar } from '#datastores/backend.ts'
-import type { Resource } from '#models/resource.ts'
 import { DatabaseFilter, DatabaseRecord as RecordSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
 import { ResourceId, ResourceTimestamp } from '#models/resource.ts'
 
-type Attributes<T extends Resource> = {
+type Attributes<T> = {
   [K in keyof T as K extends 'id' | 'createdAt' | 'updatedAt' ? never : K]: T[K]
 } & { id?: never; createdAt?: never; updatedAt?: never }
-type Filter<T extends Resource> = Partial<{
+type Filter<T> = Partial<{
   [K in keyof T as Exclude<T[K], undefined> extends DatabaseScalar ? K : never]: T[K]
 }>
 
@@ -23,7 +22,7 @@ function jsonString(value: unknown): string {
   return data
 }
 
-export class ResourceOperations<T extends Resource> {
+export class ResourceOperations<T> {
   /** Uses the supplied backend for one named resource collection. */
   constructor(
     readonly name: string,
