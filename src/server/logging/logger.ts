@@ -4,17 +4,17 @@ import pino from 'pino'
 
 import pretty from 'pino-pretty'
 
-import type { Config } from '#config'
-import type { Logger } from '#server/logging/logging.ts'
+import type { LoggerInterface } from '#server/logging/logging.ts'
+import { Config } from '#config'
 import { LogFields } from '#server/logging/logging.ts'
 
 /** Creates the default logging adapter. */
-export class PinoLogger implements Logger {
+export class Logger implements LoggerInterface {
   private readonly logger: NativePinoLogger
   private readonly bindings: LogFields
 
   /** Uses the configured level and format with initial context and an optional destination. */
-  constructor(config: Config, destination?: Writable, bindings: LogFields = {}) {
+  constructor(config: Config = new Config(), destination?: Writable, bindings: LogFields = {}) {
     const initial = LogFields.parse(bindings)
     const options = { level: config.serverLogLevel, base: {} }
     const stream =

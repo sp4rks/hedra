@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
 
-import { Config, createLogger, PinoLogger } from '#hedra.ts'
+import { Config, Logger } from '#hedra.ts'
 
 /** Collects logger output through its public destination. */
 function captureDestination(): { destination: Writable; text: () => string } {
@@ -29,11 +29,34 @@ function captureScript(script: string): string {
   return result.stdout.toString()
 }
 
-test('createLogger emits configured default JSON/info output', () => {
+test('Logger constructs without arguments from the process environment', () => {
+  const entry = join(import.meta.dir, '../../src/hedra.ts')
+  const script = `
+    import { Logger } from ${JSON.stringify(entry)}
+    const logger = new Logger()
+    logger.debug('hidden')
+    logger.info('visible')
+  `
+  const result = Bun.spawnSync([process.execPath, '--no-env-file', '-e', script], {
+    env: {
+      HEDRA_SERVER_SILENT_STARTUP: 'true',
+      HEDRA_SERVER_LOG_FORMAT: 'json',
+      HEDRA_SERVER_LOG_LEVEL: 'info',
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  expect(result.stderr.toString()).toBe('')
+  expect(result.exitCode).toBe(0)
+  expect(JSON.parse(result.stdout.toString())).toMatchObject({ msg: 'visible' })
+})
+
+test('Logger emits configured default JSON/info output', () => {
   const entry = join(import.meta.dir, '../../src/hedra.ts')
   const output = captureScript(`
-    import { Config, createLogger } from ${JSON.stringify(entry)}
-    const logger = createLogger(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }))
+    import { Config, Logger } from ${JSON.stringify(entry)}
+    const logger = new Logger(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }))
     logger.debug('hidden')
     logger.info('visible')
   `)
@@ -41,22 +64,22 @@ test('createLogger emits configured default JSON/info output', () => {
   expect(JSON.parse(output)).toMatchObject({ msg: 'visible' })
 })
 
-test('createLogger binds initial context during creation', () => {
+test('Logger binds initial context during creation', () => {
   const entry = join(import.meta.dir, '../../src/hedra.ts')
   const output = captureScript(`
-    import { Config, createLogger } from ${JSON.stringify(entry)}
-    const logger = createLogger(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), { instanceId: 'test-instance' })
+    import { Config, Logger } from ${JSON.stringify(entry)}
+    const logger = new Logger(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), undefined, { instanceId: 'test-instance' })
     logger.info('Ready')
   `)
 
   expect(JSON.parse(output)).toMatchObject({ msg: 'Ready', instanceId: 'test-instance' })
 })
 
-test('createLogger honors explicit library, format and level settings', () => {
+test('Logger honors explicit library, format and level settings', () => {
   const entry = join(import.meta.dir, '../../src/hedra.ts')
   const output = captureScript(`
-    import { Config, createLogger } from ${JSON.stringify(entry)}
-    const logger = createLogger(new Config({
+    import { Config, Logger } from ${JSON.stringify(entry)}
+    const logger = new Logger(new Config({
       HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LIBRARY: 'pino',
       HEDRA_SERVER_LOG_FORMAT: 'pretty', HEDRA_SERVER_LOG_LEVEL: 'warn'
     }))
@@ -103,20 +126,20 @@ test('Hedra selects its logger library from the environment', () => {
   }
 })
 
-test('PinoLogger emits message-first structured JSON', () => {
+test('Logger emits message-first structured JSON', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
-  const logger = new PinoLogger(config, captured.destination)
+  const logger = new Logger(config, captured.destination)
 
   logger.info('Server started', { port: 8080 })
 
   expect(JSON.parse(captured.text())).toMatchObject({ msg: 'Server started', port: 8080 })
 })
 
-test('PinoLogger emits each level and filters below the configured threshold', () => {
+test('Logger emits each level and filters below the configured threshold', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'trace' })
-  const logger = new PinoLogger(config, captured.destination, { instanceId: 'test-instance' })
+  const logger = new Logger(config, captured.destination, { instanceId: 'test-instance' })
 
   logger.trace('trace')
   logger.debug('debug')
@@ -136,27 +159,27 @@ test('PinoLogger emits each level and filters below the configured threshold', (
 
   const filtered = captureDestination()
   const warningConfig = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'warn' })
-  const warnings = new PinoLogger(warningConfig, filtered.destination)
+  const warnings = new Logger(warningConfig, filtered.destination)
 
   warnings.info('hidden')
   warnings.warn('visible')
   expect(JSON.parse(filtered.text()).msg).toBe('visible')
 })
 
-test('PinoLogger writes nothing at silent level', () => {
+test('Logger writes nothing at silent level', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' })
-  const logger = new PinoLogger(config, captured.destination)
+  const logger = new Logger(config, captured.destination)
 
   logger.fatal('hidden')
 
   expect(captured.text()).toBe('')
 })
 
-test('PinoLogger writes a readable line in pretty format', () => {
+test('Logger writes a readable line in pretty format', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_FORMAT: 'pretty' })
-  const logger = new PinoLogger(config, captured.destination)
+  const logger = new Logger(config, captured.destination)
 
   logger.info('Server started')
 
@@ -164,11 +187,11 @@ test('PinoLogger writes a readable line in pretty format', () => {
   expect(captured.text()).not.toContain('"msg"')
 })
 
-test('PinoLogger copies initial context and per-call fields take precedence', () => {
+test('Logger copies initial context and per-call fields take precedence', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
   const bindings = { shared: 'initial', site: 'north' }
-  const logger = new PinoLogger(config, captured.destination, bindings)
+  const logger = new Logger(config, captured.destination, bindings)
 
   bindings.site = 'south'
   logger.info('first', { shared: 'call' })
@@ -190,10 +213,10 @@ test('PinoLogger copies initial context and per-call fields take precedence', ()
   expect(records[1]).toMatchObject({ msg: 'second', shared: 'initial', site: 'north' })
 })
 
-test('PinoLogger preserves error messages and stacks', () => {
+test('Logger preserves error messages and stacks', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
-  const logger = new PinoLogger(config, captured.destination)
+  const logger = new Logger(config, captured.destination)
 
   logger.error('Database failed', { err: new Error('disk unavailable') })
 
@@ -203,15 +226,13 @@ test('PinoLogger preserves error messages and stacks', () => {
   expect(record.err.stack).toContain('disk unavailable')
 })
 
-test('PinoLogger rejects structured fields that are not a string-keyed record', () => {
+test('Logger rejects structured fields that are not a string-keyed record', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
-  const logger = new PinoLogger(config, captured.destination)
+  const logger = new Logger(config, captured.destination)
 
   expect(() => logger.info('Invalid fields', [] as never)).toThrow()
-  expect(() => new PinoLogger(config, captured.destination, null as never)).toThrow()
-  expect(() => new PinoLogger(config, captured.destination, [] as never)).toThrow()
-  expect(() => createLogger(config, null as never)).toThrow()
-  expect(() => createLogger(config, [] as never)).toThrow()
+  expect(() => new Logger(config, captured.destination, null as never)).toThrow()
+  expect(() => new Logger(config, captured.destination, [] as never)).toThrow()
   expect(captured.text()).toBe('')
 })

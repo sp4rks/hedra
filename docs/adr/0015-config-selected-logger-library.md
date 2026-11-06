@@ -11,3 +11,5 @@ This extends [ADR 0005](0005-backend-independent-logging.md). Library selection 
 The supplied-logger and contextual-child clauses are superseded by [ADR 0016](0016-app-owned-logger.md).
 
 The consumer-revalidation clause is superseded by [ADR 0017](0017-validate-config-on-load.md).
+
+The factory-selection clause is superseded by [ADR 0018](0018-class-based-logger.md), which provides the default `Logger` class and accepts custom implementations through `LoggerInterface`.

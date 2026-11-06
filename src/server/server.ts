@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
-import type { Logger } from '#server/logging/logging.ts'
+import type { LoggerInterface } from '#server/logging/logging.ts'
 import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
@@ -12,16 +12,17 @@ import { ConnectionError } from '#errors'
 import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
-import { createLogger } from '#server/logging/create-logger.ts'
+import { Logger } from '#server/logging/logger.ts'
 
 export type HedraOptions = {
   config?: Config
   backend?: Backend
+  logger?: LoggerInterface
 }
 
 export class Hedra extends Hono {
   readonly config: Config
-  readonly log: Logger
+  readonly log: LoggerInterface
   readonly instanceId: string
   readonly port: number
   readonly hostname: string
@@ -34,15 +35,15 @@ export class Hedra extends Hono {
   /** Loads configuration and a logger and sets the listen address. */
   constructor(options: HedraOptions = {}) {
     super()
-
-    const config = options.config ?? new Config()
-
-    this.config = config
     this.instanceId = crypto.randomUUID()
-    this.log = createLogger(config, { instanceId: this.instanceId })
-    this.port = config.serverListenPort
-    this.hostname = config.serverListenIp
+
+    this.config = options.config ?? new Config()
+    this.log = options.logger ?? new Logger(this.config, undefined, { instanceId: this.instanceId })
+
+    this.port = this.config.serverListenPort
+    this.hostname = this.config.serverListenIp
     this.backend = options.backend
+
     this.associations = new AssociationOperations(
       () => {
         if (this.closed) throw new ConnectionError('Hedra is closed')

@@ -4,7 +4,7 @@ export const LogFields = z.record(z.string(), z.unknown())
 
 export type LogFields = z.infer<typeof LogFields>
 
-export interface Logger {
+export interface LoggerInterface {
   trace(message: string, fields?: LogFields): void
   debug(message: string, fields?: LogFields): void
   info(message: string, fields?: LogFields): void

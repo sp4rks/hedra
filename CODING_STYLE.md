@@ -20,7 +20,7 @@ Biome and its runtime types are pinned while the plugin API is in developer prev
 
 Use Zod for "in plane" object definitions: models of data the application works with, such as resources, embedded resources, associations, configuration values and request, response or storage data. Their schemas are the single source of truth for types and validation.
 
-Routine options and dependency wiring, such as `HedraOptions`, `Logger` and `Backend`, use plain TypeScript types or interfaces. They do not need a Zod schema solely to describe their shape. Configuration values and other application data still require validation at their trust boundaries.
+Routine options and dependency wiring, such as `HedraOptions`, `LoggerInterface` and `Backend`, use plain TypeScript types or interfaces. They do not need a Zod schema solely to describe their shape. Configuration values and other application data still require validation at their trust boundaries.
 
 - For application models, define the schema, then derive the type from it. Give both the same name. Never hand-write a type for a shape a schema describes.
 - Derive variants from the model schema (`.pick`, `.omit`, `.partial`, `.extend`) rather than declaring parallel ones.
@@ -58,7 +58,7 @@ tests/          mirrors src/
 
 - Prefer straightforward control flow. Separate logical steps with blank lines, and name intermediate values when it clarifies intent.
 - Give every named function and method a doc comment saying what it does. Other comments explain intent, constraints or surprising decisions, in complete sentences.
-- Log through Hedra's `Logger` interface, never `console`, and never log secrets or tenant data. Pino is the default adapter.
+- Log through Hedra's `LoggerInterface`, never `console`, and never log secrets or tenant data. Pino is the default adapter.
 
 ## Tests
 
