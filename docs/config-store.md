@@ -47,7 +47,7 @@ It uses an in-memory database and should exit successfully without output or a d
 
 ## Programmatic operations
 
-All methods return promises. `ResourceOperations<T>` accepts a collection/table name and backend; it has no resource schema or HTTP context.
+All methods return promises. `ResourceOperations<T>` accepts a collection/table name and backend; it has no resource schema or HTTP context. `T` can describe plain data without declaring the shared `Resource` metadata fields. UUID and timestamp handling still runs independently of that type parameter.
 
 | Method | Behaviour | Result |
 | --- | --- | --- |
