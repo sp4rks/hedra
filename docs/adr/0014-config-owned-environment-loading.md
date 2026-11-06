@@ -9,3 +9,5 @@ Hedra constructs `Config()` when no configuration is supplied, letting that clas
 This supersedes the environment-option clause of [ADR 0013](0013-application-models-and-routine-types.md). The distinction between application models and routine wiring, including ignoring unknown option properties at runtime, remains in effect. Existing callers using the removed shortcut must construct a `Config` explicitly or rely on normal process environment loading.
 
 The supplied-logger clause is superseded by [ADR 0016](0016-app-owned-logger.md).
+
+The consumer-revalidation clause is superseded by [ADR 0017](0017-validate-config-on-load.md).
