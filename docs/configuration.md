@@ -20,15 +20,15 @@ The imports above use this repository's package entry alias. Run examples from t
 
 `new Hedra()` creates a `Config` that loads `process.env`, environment files and defaults, then creates a default logger. Configure the process environment before constructing the app; no environment argument is needed.
 
-The options are `config`, `logger` and `backend`. To share a configuration instance or use a subclass, pass `new Hedra({ config })`; the app retains that instance. For isolated tests or an explicit environment snapshot, construct the dependency with `new Config(environment)` and pass it as `config`.
+The options are `config` and `backend`. To share a configuration instance or use a subclass, pass `new Hedra({ config })`; the app retains that instance. For isolated tests or an explicit environment snapshot, construct the dependency with `new Config(environment)` and pass it as `config`.
 
 Supply `backend` to borrow an existing storage backend shared with other apps or configuration stores; otherwise Hedra lazily creates and owns its default SQLite backend. See [backend ownership](backends.md#connection-ownership).
 
-`HedraOptions` is a plain TypeScript type for these options and their dependencies. Unknown option properties are ignored at runtime. The constructor relies on callers to supply implementations of the `Logger` and `Backend` interfaces; it does not check their methods or a custom logger's returned child at runtime.
+`HedraOptions` is a plain TypeScript type for these options and their dependencies. Unknown option properties are ignored at runtime. The constructor relies on callers to supply an implementation of the `Backend` interface; it does not check its methods at runtime.
 
 Invalid configuration throws before server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
 
-Configuration is fully validated before Hedra creates its default logger or opens a database. Supplied configuration is checked again, including values overridden by subclasses. Each app has its own `instanceId`, even when configuration or a parent logger is shared. See [logging](logging.md) for custom backends and app-bound context.
+Configuration is fully validated before Hedra creates its logger or opens a database. Supplied configuration is checked again, including values overridden by subclasses. Each app creates its own logger with its `instanceId` bound during construction. See [logging](logging.md) for the generic interface and app context.
 
 `Config` and `Logger` can also be used independently of Hedra. Supply them to controllers through their constructors, as in the [controller example](../examples/03-controller.ts). A controller can then use `this.config` and `this.log` without importing the HTTP app.
 
@@ -57,7 +57,7 @@ Environment values are strings. Hedra trims them, applies defaults for unset or 
 
 Set `serverPrintRoutes` through `HEDRA_SERVER_PRINT_ROUTES=true` to log collection registration messages at level `info`. These messages follow the logger's configured filtering; `silent` suppresses them.
 
-`HEDRA_SERVER_LOG_LIBRARY` selects the logging implementation; `pino` is currently the only accepted value. Unsupported values prevent startup, including when a logger is supplied directly. Output format and minimum level remain separate settings. See [logging](logging.md#select-the-logging-library) for the generic interface and factory.
+`HEDRA_SERVER_LOG_LIBRARY` selects the logging implementation; `pino` is currently the only accepted value. Unsupported values prevent startup. Output format and minimum level remain separate settings. See [logging](logging.md#select-the-logging-library) for the generic interface and factory.
 
 ## Environment files and reporting
 
@@ -90,5 +90,7 @@ Read-only properties are a TypeScript guarantee. The object is not frozen at run
 | `HEDRA_SERVER_LOG_TYPE=pino-pretty` or `dev` | `HEDRA_SERVER_LOG_FORMAT=pretty` |
 
 If a caller previously supplied an explicit environment snapshot, preserve it with `new Hedra({ config: new Config(env) })`. Hedra no longer reads an `env` option; like other unknown properties, it is ignored at runtime.
+
+Hedra also no longer accepts a `logger` option. Configure its owned logger through the environment or supplied `Config`, and pass `app.log` to code that needs logging. The retired option is ignored at runtime; TypeScript rejects it in a fresh options literal.
 
 The old log-type setting and values are no longer supported. Remove old names when migrating. Select the library with `HEDRA_SERVER_LOG_LIBRARY` and the output format with `HEDRA_SERVER_LOG_FORMAT`; the old `HEDRA_SERVER_LOG_TYPE` variable is ignored.
