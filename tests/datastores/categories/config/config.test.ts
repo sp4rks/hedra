@@ -61,9 +61,13 @@ test('ConfigStore instances share tenant storage and remain separate from app re
 
   try {
     app.register(cars)
-    app.post('/cars', async (context) => context.json(await cars.controller.create(context, cars, { make: 'Toyota' })))
+    app.post('/manual/cars', async (context) =>
+      context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
+    )
     const tenant = await first.tenants.create({ name: 'Acme' })
-    const car = Car.parse(JsonApiResponse.parse(await (await app.request('/cars', { method: 'POST' })).json()).data)
+    const car = Car.parse(
+      JsonApiResponse.parse(await (await app.request('/manual/cars', { method: 'POST' })).json()).data,
+    )
 
     expect(await second.tenants.list()).toEqual([tenant])
     expect(await backend.select('cars')).toEqual([car])
@@ -98,13 +102,15 @@ test('closing a shared backend ends access for every store using it', async () =
   const cars = new Collection('cars', Resource.extend({ make: z.string() }))
 
   app.register(cars)
-  app.post('/cars', async (context) => context.json(await cars.controller.create(context, cars, { make: 'Toyota' })))
+  app.post('/manual/cars', async (context) =>
+    context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
+  )
   app.onError((_error, context) => context.text('closed', 500))
   backend.close()
 
   try {
     await expect(config.tenants.create({ name: 'Acme' })).rejects.toThrow()
-    expect((await app.request('/cars', { method: 'POST' })).status).toBe(500)
+    expect((await app.request('/manual/cars', { method: 'POST' })).status).toBe(500)
   } finally {
     app.close()
   }

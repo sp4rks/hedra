@@ -3,7 +3,13 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { z } from 'zod'
 
-import type { Backend, DatabaseFilter, DatabaseRecord, RecordModifier } from '#datastores/backend.ts'
+import type {
+  Backend,
+  BackendTransaction,
+  DatabaseFilter,
+  DatabaseRecord,
+  RecordModifier,
+} from '#datastores/backend.ts'
 import {
   DatabaseFilter as FilterSchema,
   DatabaseRecord as RecordSchema,
@@ -40,6 +46,7 @@ function parseRecord(value: unknown): DatabaseRecord {
 
 export class SqliteBackend implements Backend {
   private readonly db: Database
+  private inTransaction = false
 
   /** Opens the database for generic collection storage. */
   constructor(path: string) {
@@ -61,7 +68,7 @@ export class SqliteBackend implements Backend {
   }
 
   /** Inserts one JSON record without replacing an existing ID. */
-  async insert(table: string, record: DatabaseRecord): Promise<void> {
+  private insertRecord(table: string, record: DatabaseRecord): void {
     const data = jsonString(record)
     const parsed = parseRecord(JSON.parse(data))
     const name = this.table(table)
@@ -70,7 +77,7 @@ export class SqliteBackend implements Backend {
   }
 
   /** Reads matching JSON records in insertion order. */
-  async select(table: string, filter: DatabaseFilter = {}): Promise<DatabaseRecord[]> {
+  private selectRecords(table: string, filter: DatabaseFilter = {}): DatabaseRecord[] {
     if (Object.getOwnPropertySymbols(filter).length) throw new Error('Filter keys must be strings')
     FilterSchema.parse(filter)
     const entries = Object.entries(filter).map(([key, value]) => [key, ScalarSchema.parse(value)] as const)
@@ -84,34 +91,103 @@ export class SqliteBackend implements Backend {
   }
 
   /** Atomically modifies one record without allowing its ID to change. */
-  async update(table: string, id: string, modify: RecordModifier): Promise<DatabaseRecord | null> {
+  private updateRecord(table: string, id: string, modify: RecordModifier): DatabaseRecord | null {
     const key = z.string().parse(id)
     const name = this.table(table)
 
-    return this.db
-      .transaction(() => {
-        const row = this.db.query<{ data: string }, [string]>(`SELECT data FROM ${name} WHERE id = ?`).get(key)
+    const row = this.db.query<{ data: string }, [string]>(`SELECT data FROM ${name} WHERE id = ?`).get(key)
 
-        if (!row) return null
-        const current = parseRecord(JSON.parse(row.data))
-        const updated = modify(current)
-        const data = jsonString(updated)
-        const parsed = parseRecord(JSON.parse(data))
+    if (!row) return null
+    const current = parseRecord(JSON.parse(row.data))
+    const updated = modify(current)
+    const data = jsonString(updated)
+    const parsed = parseRecord(JSON.parse(data))
 
-        if (parsed.id !== key) throw new Error('Record ID cannot change')
-        this.db.run(`UPDATE ${name} SET data = ? WHERE id = ?`, [data, key])
+    if (parsed.id !== key) throw new Error('Record ID cannot change')
+    this.db.run(`UPDATE ${name} SET data = ? WHERE id = ?`, [data, key])
 
-        return parsed
-      })
-      .immediate()
+    return parsed
   }
 
   /** Deletes one record and reports whether it existed. */
-  async delete(table: string, id: string): Promise<boolean> {
+  private deleteRecord(table: string, id: string): boolean {
     const key = z.string().parse(id)
     const name = this.table(table)
 
     return this.db.run(`DELETE FROM ${name} WHERE id = ?`, [key]).changes > 0
+  }
+
+  /** Inserts a record without replacing an existing key. */
+  async insert(table: string, record: DatabaseRecord): Promise<void> {
+    this.insertRecord(table, record)
+  }
+
+  /** Selects matching records. */
+  async select(table: string, filter: DatabaseFilter = {}): Promise<DatabaseRecord[]> {
+    return this.selectRecords(table, filter)
+  }
+
+  /** Atomically modifies one record. */
+  async update(table: string, id: string, modify: RecordModifier): Promise<DatabaseRecord | null> {
+    return this.db.transaction(() => this.updateRecord(table, id, modify)).immediate()
+  }
+
+  /** Deletes one record. */
+  async delete(table: string, id: string): Promise<boolean> {
+    return this.deleteRecord(table, id)
+  }
+
+  /** Runs synchronous record operations in one immediate transaction. */
+  async transaction<T>(work: (transaction: BackendTransaction) => T): Promise<T> {
+    if (this.inTransaction) throw new Error('Nested transactions are not supported')
+    this.inTransaction = true
+    let active = true
+    const check = () => {
+      if (!active) throw new Error('Transaction is no longer active')
+    }
+    const transaction: BackendTransaction = {
+      insert: (table, record) => {
+        check()
+        this.insertRecord(table, record)
+      },
+      select: (table, filter) => {
+        check()
+
+        return this.selectRecords(table, filter)
+      },
+      update: (table, id, modify) => {
+        check()
+
+        return this.updateRecord(table, id, modify)
+      },
+      delete: (table, id) => {
+        check()
+
+        return this.deleteRecord(table, id)
+      },
+    }
+
+    try {
+      return this.db
+        .transaction(() => {
+          const result = work(transaction)
+
+          if (
+            result !== null &&
+            (typeof result === 'object' || typeof result === 'function') &&
+            typeof Reflect.get(result, 'then') === 'function'
+          ) {
+            Promise.resolve(result).catch(() => {})
+            throw new Error('Transaction callbacks must be synchronous')
+          }
+
+          return result
+        })
+        .immediate()
+    } finally {
+      active = false
+      this.inTransaction = false
+    }
   }
 
   /** Closes the database after all stores have finished using it. */

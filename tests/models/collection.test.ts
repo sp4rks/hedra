@@ -3,7 +3,15 @@ import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import type { Backend, ControllerInterface } from '#hedra.ts'
-import { BaseController, Collection, Hedra, JsonApiListResponse, JsonApiResponse, Resource } from '#hedra.ts'
+import {
+  BaseController,
+  Collection,
+  EmbeddedResource,
+  Hedra,
+  JsonApiListResponse,
+  JsonApiResponse,
+  Resource,
+} from '#hedra.ts'
 
 const Car = Resource.extend({ make: z.string() })
 const quiet = {
@@ -43,6 +51,18 @@ test('Collection binds metadata, a public validator and rejects invalid definiti
   ).toBeInstanceOf(Collection)
 })
 
+test('collections reject embedded resource definitions in unsupported wrapper shapes', () => {
+  const Note = EmbeddedResource.extend({ text: z.string(), password: z.string() })
+  const models = [
+    Resource.extend({ profile: z.object({ note: Note }) }),
+    Resource.extend({ notes: z.array(z.array(Note)) }),
+    Resource.extend({ note: z.union([Note, z.string()]) }),
+    Resource.extend({ note: z.lazy(() => Note) }),
+  ]
+
+  for (const model of models) expect(() => new Collection('cars', model)).toThrow('Unsupported embedded')
+})
+
 test('registration constructs the default independent controller', async () => {
   const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', Car)
@@ -51,15 +71,17 @@ test('registration constructs the default independent controller', async () => {
   try {
     app.register(cars)
     app.register(bikes)
-    app.post('/cars', async (context) => context.json(await cars.controller.create(context, cars, { make: 'Toyota' })))
-    app.get('/bikes', async (context) =>
+    app.post('/manual/cars', async (context) =>
+      context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
+    )
+    app.get('/manual/bikes', async (context) =>
       context.json(await bikes.controller.list(context, bikes, 'http://localhost/bikes')),
     )
-    const created = JsonApiResponse.parse(await (await app.request('/cars', { method: 'POST' })).json())
+    const created = JsonApiResponse.parse(await (await app.request('/manual/cars', { method: 'POST' })).json())
 
     expect(cars.controller).toBeInstanceOf(BaseController)
     expect(created.data.make).toBe('Toyota')
-    expect(JsonApiListResponse.parse(await (await app.request('/bikes')).json()).data).toEqual([])
+    expect(JsonApiListResponse.parse(await (await app.request('/manual/bikes')).json()).data).toEqual([])
   } finally {
     app.close()
   }
@@ -116,12 +138,14 @@ test('registration preserves a custom independent controller and its extra metho
 
   try {
     app.register(cars)
-    app.post('/cars', async (context) => context.json(await cars.controller.create(context, cars, { make: 'Toyota' })))
-    app.get('/cars', async (context) => context.json(await cars.controller.byMake(context, cars, 'Toyota')))
-    const created = JsonApiResponse.parse(await (await app.request('/cars', { method: 'POST' })).json())
+    app.post('/manual/cars', async (context) =>
+      context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
+    )
+    app.get('/manual/cars', async (context) => context.json(await cars.controller.byMake(context, cars, 'Toyota')))
+    const created = JsonApiResponse.parse(await (await app.request('/manual/cars', { method: 'POST' })).json())
 
     expect(cars.controller).toBeInstanceOf(CustomController)
-    expect(JsonApiListResponse.parse(await (await app.request('/cars')).json()).data).toEqual([created.data])
+    expect(JsonApiListResponse.parse(await (await app.request('/manual/cars')).json()).data).toEqual([created.data])
   } finally {
     app.close()
   }
