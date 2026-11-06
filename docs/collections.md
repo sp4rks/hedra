@@ -1,12 +1,12 @@
-# Collections and resource controllers
+# Collections and REST controllers
 
-A collection defines a resource's model, storage name, endpoint metadata and controller. Register it with Hedra to construct its controller, then await operations through `collection.controller`.
-
-Resource models extend the shared `Resource` Zod schema, which defines the UUID `id`. The default controller generates a fresh ID on creation. Create, update and replacement inputs must omit `id`; supplying one, even the current ID, rejects.
-
-The [model example](../examples/02-models.ts) exports a `CarModel` schema and its inferred TypeScript type, a `cars` collection, and the default Hedra app:
+A collection defines a resource model, storage name, endpoint metadata and controller. Register it with Hedra to construct its controller. `new Collection('cars', CarModel)` uses the shared `BaseController` implementation; a Car-specific class is unnecessary.
 
 ```ts
+import { z } from 'zod'
+
+import { Collection, Hedra, Resource } from '#hedra.ts'
+
 const CarModel = Resource.extend({
   make: z.string(),
   model: z.string(),
@@ -20,106 +20,96 @@ const hedra = new Hedra()
 hedra.register(cars)
 ```
 
-Collection names start with a lower-case letter and contain lower-case letters, digits, underscores or hyphens. The supplied name selects the literal SQLite table, without pluralisation or case conversion. `cars.endpoint` is `/cars`; it is metadata for the future Web layer. Registration adds no resource HTTP routes. Importing the example registers its collection without inserting resources.
+The common `Resource` schema defines UUID `id` and ISO `createdAt`/`updatedAt` timestamps. Other attributes belong to the resource model. Models supply pure validators and inferred data types; controllers are independent types with no resource or schema type parameter.
 
-## Controller operations
+Collection names start with a lower-case letter and contain lower-case letters, digits, underscores or hyphens. The name selects the literal SQLite table. `cars.endpoint` is `/cars`; registration adds no resource HTTP routes. The [model example](../examples/02-models.ts) registers a collection without inserting resources.
 
-Controller inputs and results use plain resource data types. A collection infers that type from its model's output; the controller receives only a name and backend. All operations return promises. TypeScript checks resource attributes at compile time; runtime checks protect server-owned IDs and generic object/JSON integrity.
+## REST operations
+
+`ControllerInterface` defines five asynchronous methods. Every call receives a Hono `Context` and a `Collection`; `BaseController` receives only the shared `Backend` at construction. One instance can serve different collections.
 
 | Method | Behaviour | Result |
 | --- | --- | --- |
-| `create(input)` | Generate a fresh UUID and insert the supplied resource attributes. | The resource, including its generated ID. |
-| `get(id)` | Read one resource with its ID checks. | The resource, or `null`. |
-| `list(filter?)` | Read every match in insertion order. Omit the filter or use `{}` for all resources. | An array, or `[]`. |
-| `update(id, changes)` | Shallow-merge attributes into one resource, preserving its ID. | The updated resource, or `null`. |
-| `replace(id, input)` | Replace one resource's attributes, preserving its ID. | The replacement resource, or `null`. |
-| `delete(id)` | Remove one resource. | `true` when removed, otherwise `false`. |
+| `create(context, collection, input)` | Insert attributes with a fresh UUID and current audit timestamps. | `JsonApiResponse` |
+| `id(context, collection, id)` | Read one resource by UUID. | `JsonApiResponse` |
+| `list(context, collection, baseUrl, queryParams?)` | Read resources matching scalar equality filters. | `JsonApiListResponse` |
+| `update(context, collection, input, id)` | Shallowly update one resource by UUID. | `JsonApiResponse` |
+| `delete(context, collection, id)` | Remove one resource by UUID. | `void` |
 
-IDs are immutable. Update and replacement retain the addressed ID; they do not insert missing resources. Replacement removes omitted optional attributes. Update preserves unspecified attributes and replaces a supplied nested object or array as a whole. An empty changes object leaves the resource's attributes unchanged.
+Single-resource responses contain flat attributes in `data` and a `links.self` URL. Lists contain an array in `data` and use `baseUrl` for their self link. The exported Zod response schemas describe these Multi21-style envelopes. An absent resource on `id`, `update` or `delete` throws the existing 404 error. Routes choose HTTP status codes, headers and error handling.
 
-Update reads, applies its guards and writes inside one backend transaction. A failed guard, unsupported JSON value or storage failure leaves the resource unchanged. Custom controllers can enforce resource-specific sensitive-field and business rules explicitly. The controller returns domain data and leaves HTTP response formatting to the future Web layer.
+Create and update ignore caller-supplied `id`, `createdAt` and `updatedAt`. Creation assigns the same current timestamp to both audit fields. Update uses the explicit path ID, preserves the stored ID and creation time, and refreshes `updatedAt` inside the backend transaction. Unspecified attributes remain; a supplied nested object or array replaces that attribute as a whole. Guards or storage failures abort the update.
 
-## Filters and validation
+The REST contract has no separate `get` or `replace` method. For context-free operations with null/boolean absence results, use the [programmatic resource operations](config-store.md#programmatic-operations).
 
-`list` supports equality filters on top-level scalar fields. TypeScript restricts the declared fields and their value types. Runtime checks require strings, finite numbers, booleans or null; every supplied field must match:
+## Input validation and filters
 
-```ts
-const toyotas = await cars.controller.list({ make: 'Toyota', year: 2024 })
-```
-
-Nested-object/array filters, undefined values and non-object filters reject before selection. Boolean, string and numeric values remain distinct. Null matches an explicit null field, rather than an absent optional field. Field names containing punctuation are matched literally. A controller has no model for checking resource-specific query rules at runtime; the future request validator owns those rules.
-
-Models are pure validation and type sources. Their refinements, defaults, normalisation and unknown-property handling run when a caller invokes the validator. Give each schema and its inferred TypeScript type the same name. The future Web layer will derive public-input validators from a resource model; programmatic callers can use the same composition now:
+The route or caller validates domain input before invoking the controller. Derive a pure subset from the model, omitting server-owned metadata:
 
 ```ts
-const CreateCar = CarModel.omit({ id: true }).strict()
-const input = CreateCar.parse({ make: 'Toyota', model: 'Corolla', year: 2024 })
-const car = await cars.controller.create(input)
+const CreateCar = CarModel.omit({ id: true, createdAt: true, updatedAt: true }).strict()
+const UpdateCar = CreateCar.partial()
+
+hedra.post('/cars', async (context) => {
+  const input = CreateCar.parse(await context.req.json())
+
+  return context.json(await cars.controller.create(context, cars, input), 201)
+})
 ```
 
-Controllers accept the prepared output type, rather than the validator's raw input type. If validation supplies a default, call the validator first or provide that field explicitly. The controller preserves supplied attributes and does not reapply model parsing. See the [tenant example](../examples/04-config-store.ts) for caller-side trimming and validation.
+Defaults, normalisation and domain refinements run in the pure validator. The controller accepts plain JSON attributes and independently handles managed fields and generic JSON integrity. It does not repeat domain input parsing. Explicit undefined values, non-finite numbers, bigint, special objects and cycles reject before persistence.
 
-Resources must be JSON-compatible objects. Omitted optional attributes are supported; explicit undefined values, non-finite numbers, bigint, special objects and cycles are rejected before persistence.
+`QueryParams` supports only `filter`, a dictionary of top-level scalar equality criteria:
 
-Controllers do not parse stored resources through a resource model. Callers that need model validation on reads apply their validator explicitly. There is no automatic repair, migration, pagination, sorting option or comparison query language.
+```ts
+const result = await cars.controller.list(context, cars, 'https://example.test/cars', {
+  filter: { make: 'Toyota', year: 2024 },
+})
+```
 
-## Controller selection
+All criteria must match. String, number and boolean values remain distinct; null matches an explicit null field rather than an absent field. Field names are literal. Nested-object/array filters, undefined values and unsupported query options reject. Pagination, sorting and comparison operators are deferred.
 
-`new Collection('cars', CarModel)` automatically uses the generic controller. A Car-specific controller class is unnecessary. The model stays on the collection and supplies the inferred plain data type; it is not passed to the controller.
+## Public output
 
-The same generic implementation can be constructed directly as `new Controller<CarModel>('cars', backend)` for use without a collection or HTTP server. `CarModel` in that type argument is the inferred data type, rather than `typeof CarModel`, the schema type. See the [standalone generic controller example](../examples/05-resource-controller.ts).
+Every returned resource passes through `collection.outputValidator`: create, lookup, update and each list item. The default projection includes the model's declared fields, omits a top-level `password` field and strips unknown fields, even when the resource model allows extra properties. Private attributes remain stored. A failed output validator throws rather than falling back to raw data.
 
-If resource-specific behaviour is needed, the third collection argument can select a custom controller class. It inherits the `(name, backend)` construction contract and retains its extra method types.
+Set an explicit public validator in collection options to omit other sensitive attributes:
 
-## Registration and lifecycle
+```ts
+const Account = Resource.extend({ email: z.email(), password: z.string(), token: z.string() })
+const accounts = new Collection('accounts', Account, {
+  outputValidator: Account.omit({ password: true, token: true }).strip(),
+})
+```
 
-Accessing `collection.controller` before registration throws. Registration rejects invalid definitions, duplicate names and reusing one collection instance across apps. The internal `hedra_config_tenants` table name is reserved for configuration and cannot be registered as an application collection. Construct a fresh collection from the schema for a new app. A failed registration does not leave a partially bound controller.
+The output validator defines the public fields. The default projection uses declared field validators without carrying object-level refinements that may depend on omitted private fields. Supply output-specific refinements explicitly when needed. Identify nested secrets in your output schema too.
 
-By default, Hedra opens its owned SQLite backend on the first registration, using `HEDRA_SQLITE_PATH`. See [server configuration](configuration.md) for resolution and defaults, and [backend storage](backends.md#sqlite-storage) for file layout and persistence. Construction of an app alone opens no default database.
+## Controller selection and lifecycle
 
-An application can instead pass `new Hedra({ backend })` to borrow an existing backend. `hedra.close()` ends all its registered controllers' access, including saved references. It closes its owned backend, while a borrowed backend remains available to other apps and configuration stores. Close is idempotent; registration after closure rejects. The creator of a shared backend closes it after its users finish.
+The optional collection options object accepts a `controller` class implementing `ControllerInterface`, constructed with `(backend)`, and/or an `outputValidator`. Custom controllers retain their own extra method types and remain independent of resource models.
 
-## Run the model example
+Accessing `collection.controller` before registration throws. Registration rejects invalid definitions, duplicate names and reusing one collection instance across apps. The internal `hedra_config_tenants` table name is reserved for configuration. Failed registration leaves no partially bound controller.
 
-From the repository root with Bun and the project's dependencies installed, run:
+`new Hedra()` lazily opens its default SQLite backend on first registration using `HEDRA_SQLITE_PATH`. An app can borrow a backend with `new Hedra({ backend })`. Closing the app ends access through its controllers, including saved references. It closes an owned backend; a borrowed backend stays available to other apps and configuration stores. Close is idempotent and registration after closure rejects. See [connection ownership](backends.md#connection-ownership) and [server configuration](configuration.md).
+
+## Run the REST example
+
+From the repository root with Bun and the project's dependencies installed:
 
 ```sh
-HEDRA_SQLITE_PATH=:memory: HEDRA_SERVER_SILENT_STARTUP=true HEDRA_SERVER_LOG_LEVEL=silent bun run - <<'TS'
-import assert from 'node:assert/strict'
-
-import hedra, { cars } from './examples/02-models.ts'
-
-try {
-  const controller = cars.controller
-  assert.deepEqual(await controller.list(), [])
-
-  const car = await controller.create({ make: 'Toyota', model: 'Corolla', year: 2024 })
-  assert.deepEqual(await controller.get(car.id), car)
-  assert.deepEqual(await controller.list({ make: 'Toyota' }), [car])
-
-  const replacement = { id: car.id, make: 'Toyota', model: 'Yaris', year: 2025 }
-  assert.deepEqual(await controller.replace(car.id, { make: 'Toyota', model: 'Yaris', year: 2025 }), replacement)
-  assert.deepEqual(await controller.update(car.id, { year: 2026 }), { ...replacement, year: 2026 })
-
-  assert.equal(await controller.delete(car.id), true)
-  assert.equal(await controller.get(car.id), null)
-  assert.deepEqual(await controller.list(), [])
-} finally {
-  hedra.close()
-}
-TS
+bun run examples/05-resource-controller.ts
 ```
 
-The command uses in-memory storage and should exit with status `0` and no output. Importing and calling the example this way starts no HTTP server.
+The example derives Car input validators, registers the generic controller and explicitly wires five routes. It exercises them through `app.request`, uses in-memory SQLite and exits successfully without opening a listener or leaving a database file. Route generation remains future Web-layer work.
 
 ## Updating existing callers
 
-| Previous call | Current call |
+| Previous controller call | REST controller call |
 | --- | --- |
-| `cars.post(input)` | `await cars.controller.create(input)` |
-| `cars.get(filter)` | `await cars.controller.list(filter)` |
-| `cars.put(filter, input)` | `await cars.controller.replace(id, input)` |
-| `cars.patch(filter, changes)` | `await cars.controller.update(id, changes)` |
-| `cars.delete(filter)` | `await cars.controller.delete(id)` |
+| `create(input)` | `create(context, collection, input)` |
+| `get(id)` | `id(context, collection, id)` |
+| `list(filter)` | `list(context, collection, baseUrl, { filter })` |
+| `update(id, input)` | `update(context, collection, input, id)` |
+| `delete(id)` | `delete(context, collection, id)` |
 
-Mutations now address one ID instead of every filter match. Old synchronous methods and bulk mutations are removed. Existing resources in the previous shared `hedra_records` table are not imported. This change adds no authentication or tenant isolation.
+Callers now receive response envelopes; missing resources throw and deletion resolves without a value. The old resource-parameterized `Controller<T>` export is removed. Existing databases are not migrated. This change adds no authentication or tenant isolation. See the [REST controller decision](adr/0009-rest-controller-interface.md).
