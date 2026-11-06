@@ -28,7 +28,6 @@ interface Logger {
   warn(message: string, fields?: LogFields): void
   error(message: string, fields?: LogFields): void
   fatal(message: string, fields?: LogFields): void
-  child(fields: LogFields): Logger
 }
 ```
 
@@ -36,7 +35,7 @@ There is no Pino type in this contract. Logging methods return `void`; implement
 
 ## Context and controller access
 
-Hedra creates a child logger bound to its `instanceId`, keeping the supplied parent logger unchanged. Pass `app.log` to controllers and other application objects to retain that identity. The parent logger supplied to Hedra does not acquire the app's bindings.
+Hedra creates one logger with its `instanceId` bound during construction. Pass `app.log` to controllers and other application objects to retain that identity.
 
 The [controller example](../examples/03-controller.ts) accepts `Config` and `Logger` in its constructor. It uses `this.config` and `this.log` without depending on Hedra, an HTTP context or process-global services.
 
@@ -61,45 +60,40 @@ TS
 
 The command exits with status `0` and no output. Assertion failures or configuration errors exit with an error.
 
-Use `child(fields)` for additional context. A child inherits its parent's fields without mutating the parent or its siblings. New child fields override matching inherited fields; fields on an individual logging call override matching bindings. Avoid overriding `instanceId` when retaining app identity.
+Pass additional context as the second argument to a logging call. Initial field records are copied during construction; per-call fields override matching initial fields. Avoid overriding `instanceId` when retaining app identity.
 
 Pino uses `level`, `time` and `msg` for record metadata. Supplying these names as structured fields can produce duplicate JSON keys. Use application-specific field names for portable context; the generic `LogFields` interface does not reserve backend-specific names.
 
-Children retain the implementation's output behaviour. If an application subclasses an adapter and overrides its logging behaviour, its `child` implementation must preserve that behaviour too.
-
 ## Select the logging library
 
-Hedra obtains its logger through `createLogger(config, logger?)`, which returns the generic `Logger` interface. The factory validates configuration and uses `config.serverLogLibrary` to select the implementation. Unsupported library values throw a `ConfigurationError`; they do not fall back to Pino. A supplied logger is returned unchanged, and configuration is still validated.
+Hedra creates its logger through `createLogger(config, bindings?)`, which returns the generic `Logger` interface. The factory validates configuration and uses `config.serverLogLibrary` to select the implementation. Unsupported library values throw a `ConfigurationError`; they do not fall back to Pino. Hedra supplies its instance ID as the initial bindings.
 
 Use the same factory to construct a logger independently of Hedra:
 
 ```ts
 import { Config, createLogger } from '#hedra.ts'
 
-const logger = createLogger(new Config())
+const logger = createLogger(new Config(), { service: 'worker' })
 
 logger.info('Logger configured')
 ```
 
 `Config()` loads the process environment, environment files and defaults. Library selection is separate from output format: `HEDRA_SERVER_LOG_LIBRARY=pino` works with either `json` or `pretty` output. `pretty` is not a valid library name.
 
-## Destinations and supplied implementations
+## Standalone destinations
 
-`PinoLogger` accepts a `Config` and an optional standard writable destination. For example, this sends application logs to stderr:
+For standalone logging, `PinoLogger` accepts a `Config`, an optional standard writable destination and optional initial fields. For example, this creates a logger that writes to stderr:
 
 ```ts
-import { Config, Hedra, PinoLogger } from '#hedra.ts'
+import { Config, PinoLogger } from '#hedra.ts'
 
 const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
-const logger = new PinoLogger(config, process.stderr)
-const app = new Hedra({ config, logger })
+const logger = new PinoLogger(config, process.stderr, { service: 'worker' })
 
-app.log.info('Application configured')
+logger.info('Worker configured')
 ```
 
-To supply a custom logging implementation, implement `Logger` and pass its instance through the `logger` option. Hedra uses that interface and adds app context through `child`; it does not inspect a native library object or reconfigure a shared logger globally. This dependency override does not register another environment-selectable library; `pino` remains the only accepted configuration value.
-
-Configuration level and format settings configure the default Pino adapter. A supplied implementation owns its output policy and can consume `Config` when constructed. Its `child` method must provide independent bindings and retain that policy.
+The logging library, level and format for `app.log` come from Hedra's configuration. The standalone constructor does not reconfigure an existing app logger.
 
 The native Pino object is private. Pino-specific methods such as `bindings()` and its mutable `level` property are not available through `app.log`. Inspect emitted records when testing logging behaviour.
 
@@ -115,4 +109,6 @@ app.log.error('Database operation failed', { err: error })
 
 The example above assumes an `error` from application error handling. See the configuration reference for the log-format environment-variable migration.
 
-`PinoLogger.create(config, logger)` becomes `createLogger(config, logger)`. The `PinoLogger` constructor remains available for callers that explicitly need its writable-destination option.
+`PinoLogger.create(config)` becomes `createLogger(config)`. The factory's optional second argument now contains initial fields rather than a prebuilt logger. The `PinoLogger` constructor retains its writable-destination argument and accepts initial fields as a third argument.
+
+Remove the `logger` option from `new Hedra({ logger })` and use `app.log`. Logger injection and `child()` have been removed. Replace `logger.child(fields).info(message)` with `logger.info(message, fields)` when adding context to a message.
