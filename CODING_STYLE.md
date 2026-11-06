@@ -46,7 +46,7 @@ src/
 tests/          mirrors src/
 ```
 
-- Routes parse requests and shape responses, controllers decide, datastores persist. Controllers work without HTTP.
+- Routes validate public input and handle HTTP transport. REST controllers implement resource actions, protect server-owned fields and shape resource responses. Programmatic datastore operations stay independent of HTTP and persist through generic backends.
 - Name every file for what it holds, never `index.ts`, so open tabs stay distinguishable. A module that grows into its own directory names its main file after the directory, as in `tenancy/tenancy.ts`.
 - Expose the public interface through deliberate exports from `src/hedra.ts`, the package entry point; everything else is internal. Write no barrel files that only re-export.
 - Import Hedra modules through a `#` alias from `src/` and from `tests/`, including within the same area. A `#` path maps to `src/`. Config is `#config` and `#config/*`. Errors are `#errors`.
