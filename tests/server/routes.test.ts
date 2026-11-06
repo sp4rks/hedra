@@ -558,13 +558,8 @@ test('candidate validation cannot alter server-owned resource metadata', async (
       body: JSON.stringify({ make: 'Toyota' }),
     })
 
-    expect(created.status).toBe(201)
-    const car = ((await created.json()) as { data: { id: string; createdAt: string; updatedAt: string } }).data
-
-    expect(car.id).not.toBe(spoofId)
-    expect(car.createdAt).toBe('2026-01-01T00:00:00.000Z')
-    expect(car.updatedAt).toBe(car.createdAt)
-    expect((await backend.select('cars'))[0]).toMatchObject(car)
+    expect(created.status).toBe(422)
+    expect(await backend.select('cars')).toEqual([])
   } finally {
     setSystemTime()
     app.close()
@@ -597,11 +592,8 @@ test('embedded model transforms cannot change server-owned identity or audit tim
       body: JSON.stringify({ notes: [{ text: 'one' }] }),
     })
 
-    expect(created.status).toBe(201)
-    const car = ((await created.json()) as { data: { notes: Array<{ createdAt: string; updatedAt: string }> } }).data
-
-    expect(car.notes[0]?.createdAt).toBe('2026-01-01T00:00:00.000Z')
-    expect(car.notes[0]?.updatedAt).toBe('2026-01-01T00:00:00.000Z')
+    expect(created.status).toBe(422)
+    expect(await backend.select('cars')).toEqual([])
     const unsafe = await app.request('/unsafe', {
       method: 'POST',
       headers,
@@ -610,6 +602,32 @@ test('embedded model transforms cannot change server-owned identity or audit tim
 
     expect(unsafe.status).toBe(422)
     expect(await backend.select('unsafe')).toEqual([])
+  } finally {
+    setSystemTime()
+    app.close()
+    backend.close()
+  }
+})
+
+test('candidate validation rejects transformations that alter managed timestamps', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ env: quiet, backend })
+  const spoofTime = '2000-01-01T00:00:00.000Z'
+  const Car = Resource.extend({ make: z.string(), createdAt: z.iso.datetime().transform(() => spoofTime) }).refine(
+    (value) => value.createdAt === spoofTime,
+  )
+
+  try {
+    setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+    app.register(new Collection('cars', Car))
+    const created = await app.request('/cars', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ make: 'Toyota' }),
+    })
+
+    expect(created.status).toBe(422)
+    expect(await backend.select('cars')).toEqual([])
   } finally {
     setSystemTime()
     app.close()

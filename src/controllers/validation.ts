@@ -34,11 +34,14 @@ function declared(model: z.ZodObject, record: ObjectValue): ObjectValue {
   return result
 }
 
-/** Restores controller-owned metadata while retaining parsed ordinary attributes. */
+/** Rejects model changes to managed metadata and restores undeclared audit fields. */
 function restore(model: z.ZodObject, original: ObjectValue, validated: ObjectValue): ObjectValue {
   const result = { ...validated }
 
   for (const key of metadata) {
+    if (Object.hasOwn(model.shape, key) && (!Object.hasOwn(validated, key) || validated[key] !== original[key])) {
+      throw new InputValidationError(422, 'model changed managed metadata')
+    }
     if (Object.hasOwn(original, key))
       Object.defineProperty(result, key, { value: original[key], enumerable: true, writable: true, configurable: true })
   }
