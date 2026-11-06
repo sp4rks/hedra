@@ -35,15 +35,15 @@ export class Hedra extends Hono {
   /** Loads configuration and a logger and sets the listen address. */
   constructor(options: HedraOptions = {}) {
     super()
-
-    const config = options.config ?? new Config()
-
-    this.config = config
     this.instanceId = crypto.randomUUID()
-    this.log = options.logger ?? new Logger(config, undefined, { instanceId: this.instanceId })
-    this.port = config.serverListenPort
-    this.hostname = config.serverListenIp
+
+    this.config = options.config ?? new Config()
+    this.log = options.logger ?? new Logger(this.config, undefined, { instanceId: this.instanceId })
+
+    this.port = this.config.serverListenPort
+    this.hostname = this.config.serverListenIp
     this.backend = options.backend
+
     this.associations = new AssociationOperations(
       () => {
         if (this.closed) throw new ConnectionError('Hedra is closed')
