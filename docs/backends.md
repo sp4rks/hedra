@@ -45,11 +45,13 @@ A file path is relative to the working directory unless absolute. Missing parent
 
 File-backed data survives closing and reopening the backend. For a container, supply a path such as `/data/hedra.sqlite` and mount a persistent volume at `/data`. Persist the containing directory so SQLite's accompanying files stay with the database.
 
-The backend receives its path explicitly. `Hedra` uses the resolved `HEDRA_SQLITE_PATH` setting when creating its default backend; see [server configuration](configuration.md). Legacy table layouts are not migrated or imported.
+The backend receives its path explicitly. `Hedra` uses the resolved `HEDRA_SQLITE_PATH` setting when creating its application backend, while `ConfigStore` uses it when creating configuration storage; see [server configuration](configuration.md). Legacy table layouts are not migrated or imported.
 
 ## Connection ownership
 
 `new Hedra()` opens an app-owned default SQLite backend on the first collection registration. `hedra.close()` closes it and ends its registered controllers' lifecycle.
+
+The configuration datastore has a separate lifetime. First access to `app.configDatastore` creates the default `ConfigStore`, which opens its own connection to the configured path. App closure closes that owned store too. An injected `configDatastore` is borrowed and remains usable by its creator after app closure; see [configuration datastore ownership](config-store.md#configure-storage-and-ownership).
 
 An injected backend is borrowed. Sharing one instance permits configuration and application resources to use the same connection:
 
@@ -57,18 +59,18 @@ An injected backend is borrowed. Sharing one instance permits configuration and 
 import { ConfigStore, Hedra, SqliteBackend } from '#hedra.ts'
 
 const backend = new SqliteBackend(':memory:')
-const config = new ConfigStore(backend)
-const app = new Hedra({ backend })
+const configDatastore = new ConfigStore({ backend })
+const app = new Hedra({ backend, configDatastore })
 
 try {
-  const tenant = await config.tenants.create({ name: 'Acme' })
+  const tenant = await app.configDatastore.tenants.create({ name: 'Acme' })
 
   app.close()
-  await config.tenants.get(tenant.id)
+  await configDatastore.tenants.get(tenant.id)
 } finally {
   app.close()
   backend.close()
 }
 ```
 
-Await outstanding work before closing the shared backend. App closure invalidates its controllers, including saved references, without closing a borrowed backend still used elsewhere. `ConfigStore` has no connection lifecycle methods. The creator closes the concrete backend once all users finish. See the [REST controller contract](adr/0009-rest-controller-interface.md).
+Await outstanding work before closing the shared backend. App closure invalidates its controllers, including saved references, without closing a borrowed backend still used elsewhere. `ConfigStore.close()` closes only a backend that store creates; here it leaves the injected backend open. The creator closes the concrete backend once all users finish. See the [REST controller contract](adr/0009-rest-controller-interface.md).

@@ -20,13 +20,15 @@ The imports above use this repository's package entry alias. Run examples from t
 
 `new Hedra()` creates a `Config` that loads `process.env`, environment files and defaults, then creates a default logger. Configure the process environment before constructing the app; no environment argument is needed.
 
-The options are `config`, `logger` and `backend`. To share a configuration instance or use a subclass, pass `new Hedra({ config })`; the app retains that instance. For isolated tests or an explicit environment snapshot, construct the dependency with `new Config(environment)` and pass it as `config`.
+The options are `config`, `logger`, `configDatastore` and `backend`. To share a configuration instance or use a subclass, pass `new Hedra({ config })`; the app retains that instance. For isolated tests or an explicit environment snapshot, construct the dependency with `new Config(environment)` and pass it as `config`.
 
 Supply `logger` to use any implementation of `LoggerInterface`; Hedra retains the supplied instance and the implementation controls its own context and output. Otherwise Hedra creates `new Logger(config, undefined, { instanceId })`. See [supplying a logger](logging.md#supply-a-logger).
 
-Supply `backend` to borrow an existing storage backend shared with other apps or configuration stores; otherwise Hedra lazily creates and owns its default SQLite backend. See [backend ownership](backends.md#connection-ownership).
+Supply `configDatastore` to borrow any implementation of `ConfigDatastore`; Hedra exposes that same instance through `app.configDatastore`. Otherwise, the first access constructs a default `ConfigStore` using `app.config`. Backend setup belongs to that store. Hedra closes its default store on app closure and leaves supplied stores open. See the [configuration datastore](config-store.md).
 
-`HedraOptions` is a plain TypeScript type for these options and their dependencies. Unknown option properties are ignored at runtime. The constructor relies on callers to supply implementations of `Backend` and `LoggerInterface`; it does not check their methods at runtime.
+Supply `backend` to borrow the storage backend for application collections and associations; otherwise Hedra lazily creates and owns their default SQLite backend on registration. This option does not configure `app.configDatastore`. See [backend ownership](backends.md#connection-ownership).
+
+`HedraOptions` is a plain TypeScript type for these options and their dependencies. Unknown option properties are ignored at runtime. The constructor relies on callers to supply implementations of `ConfigDatastore`, `Backend` and `LoggerInterface`; it does not check their methods at runtime.
 
 Invalid configuration throws before server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
 
@@ -56,6 +58,8 @@ Environment values are strings. Hedra trims them, applies defaults for unset or 
 | `HEDRA_SERVER_REQUEST_TIMEOUT` | `serverRequestTimeout` | Integer from 1 through 300000, in milliseconds | `30000` |
 
 `serverHttpLogEnabled` retains its configuration meaning; this change does not add HTTP logging middleware. Connection ownership and persistent-volume requirements are described in [storage backends](backends.md).
+
+`HEDRA_SQLITE_PATH` selects the default path for both configuration storage and application collections. They open independent connections; using `:memory:` gives each independent storage. To share a connection explicitly, supply both dependencies as described under [sharing a backend](config-store.md#share-a-backend-with-application-resources).
 
 Set `serverPrintRoutes` through `HEDRA_SERVER_PRINT_ROUTES=true` to log collection registration messages at level `info`. These messages follow the logger's configured filtering; `silent` suppresses them.
 
