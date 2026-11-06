@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { Writable } from 'node:stream'
 
 import { ConfigurationError } from '#errors'
-import { Config, PinoLogger } from '#hedra.ts'
+import { Config, createLogger, PinoLogger } from '#hedra.ts'
 
 /** Collects logger output through its public destination. */
 function captureDestination(): { destination: Writable; text: () => string } {
@@ -40,6 +40,17 @@ test('createLogger emits configured default JSON/info output', () => {
   `)
 
   expect(JSON.parse(output)).toMatchObject({ msg: 'visible' })
+})
+
+test('createLogger binds initial context during creation', () => {
+  const entry = join(import.meta.dir, '../../src/hedra.ts')
+  const output = captureScript(`
+    import { Config, createLogger } from ${JSON.stringify(entry)}
+    const logger = createLogger(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), { instanceId: 'test-instance' })
+    logger.info('Ready')
+  `)
+
+  expect(JSON.parse(output)).toMatchObject({ msg: 'Ready', instanceId: 'test-instance' })
 })
 
 test('createLogger honors explicit library, format and level settings', () => {
@@ -106,7 +117,7 @@ test('PinoLogger emits message-first structured JSON', () => {
 test('PinoLogger emits each level and filters below the configured threshold', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'trace' })
-  const logger = new PinoLogger(config, captured.destination)
+  const logger = new PinoLogger(config, captured.destination, { instanceId: 'test-instance' })
 
   logger.trace('trace')
   logger.debug('debug')
@@ -122,6 +133,7 @@ test('PinoLogger emits each level and filters below the configured threshold', (
     .map((line) => JSON.parse(line))
 
   expect(records.map((record) => record.msg)).toEqual(['trace', 'debug', 'info', 'warn', 'error', 'fatal'])
+  expect(records.map((record) => record.instanceId)).toEqual(Array(6).fill('test-instance'))
 
   const filtered = captureDestination()
   const warningConfig = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'warn' })
@@ -153,18 +165,15 @@ test('PinoLogger writes a readable line in pretty format', () => {
   expect(captured.text()).not.toContain('"msg"')
 })
 
-test('PinoLogger children isolate bindings and per-call fields take precedence', () => {
+test('PinoLogger copies initial context and per-call fields take precedence', () => {
   const captured = captureDestination()
   const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
-  const parent = new PinoLogger(config, captured.destination)
-  const first = parent.child({ shared: 'parent', site: 'north' })
-  const nested = first.child({ shared: 'child', depth: 2 })
-  const sibling = parent.child({ site: 'south' })
+  const bindings = { shared: 'initial', site: 'north' }
+  const logger = new PinoLogger(config, captured.destination, bindings)
 
-  nested.info('nested', { shared: 'call' })
-  first.info('first')
-  sibling.info('sibling')
-  parent.info('parent')
+  bindings.site = 'south'
+  logger.info('first', { shared: 'call' })
+  logger.warn('second')
 
   const records = captured
     .text()
@@ -172,18 +181,14 @@ test('PinoLogger children isolate bindings and per-call fields take precedence',
     .split('\n')
     .map((line) => JSON.parse(line))
 
-  expect(records[0]).toMatchObject({ msg: 'nested', shared: 'call', site: 'north', depth: 2 })
+  expect(records[0]).toMatchObject({ msg: 'first', shared: 'call', site: 'north' })
   expect(
     captured
       .text()
       .split('\n')[0]
       ?.match(/"shared":/g),
   ).toHaveLength(1)
-  expect(records[1]).toMatchObject({ msg: 'first', shared: 'parent', site: 'north' })
-  expect(records[2]).toMatchObject({ msg: 'sibling', site: 'south' })
-  expect(records[2]).not.toHaveProperty('shared')
-  expect(records[3]).toMatchObject({ msg: 'parent' })
-  expect(records[3]).not.toHaveProperty('site')
+  expect(records[1]).toMatchObject({ msg: 'second', shared: 'initial', site: 'north' })
 })
 
 test('PinoLogger preserves error messages and stacks', () => {
@@ -205,7 +210,10 @@ test('PinoLogger rejects structured fields that are not a string-keyed record', 
   const logger = new PinoLogger(config, captured.destination)
 
   expect(() => logger.info('Invalid fields', [] as never)).toThrow()
-  expect(() => logger.child(null as never)).toThrow()
+  expect(() => new PinoLogger(config, captured.destination, null as never)).toThrow()
+  expect(() => new PinoLogger(config, captured.destination, [] as never)).toThrow()
+  expect(() => createLogger(config, null as never)).toThrow()
+  expect(() => createLogger(config, [] as never)).toThrow()
   expect(captured.text()).toBe('')
 })
 

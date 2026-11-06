@@ -9,12 +9,24 @@ import type { Logger } from '#server/logging/logging.ts'
 import { validateConfig } from '#config'
 import { LogFields } from '#server/logging/logging.ts'
 
-class PinoAdapter implements Logger {
-  /** Wraps a Pino logger with independently owned context. */
-  constructor(
-    private readonly logger: NativePinoLogger,
-    private readonly bindings: LogFields = {},
-  ) {}
+/** Creates the default logging adapter. */
+export class PinoLogger implements Logger {
+  private readonly logger: NativePinoLogger
+  private readonly bindings: LogFields
+
+  /** Uses the configured level and format with initial context and an optional destination. */
+  constructor(config: Config, destination?: Writable, bindings: LogFields = {}) {
+    const values = validateConfig(config)
+    const initial = LogFields.parse(bindings)
+    const options = { level: values.serverLogLevel, base: {} }
+    const stream =
+      values.serverLogFormat === 'pretty'
+        ? pretty({ colorize: true, translateTime: 'SYS:standard', sync: true, destination })
+        : destination
+
+    this.bindings = initial
+    this.logger = stream ? pino(options, stream) : pino(options)
+  }
 
   /** Combines inherited context with the record's validated fields. */
   private fields(fields?: LogFields): LogFields {
@@ -49,25 +61,5 @@ class PinoAdapter implements Logger {
   /** Writes a fatal record. */
   fatal(message: string, fields?: LogFields): void {
     this.logger.fatal(this.fields(fields), message)
-  }
-
-  /** Returns an independently bound logger sharing the same destination. */
-  child(fields: LogFields): Logger {
-    return new PinoAdapter(this.logger, { ...this.bindings, ...LogFields.parse(fields) })
-  }
-}
-
-/** Creates the default logging adapter. */
-export class PinoLogger extends PinoAdapter {
-  /** Uses the configured level and format with an optional writable destination. */
-  constructor(config: Config, destination?: Writable) {
-    const values = validateConfig(config)
-    const options = { level: values.serverLogLevel, base: {} }
-    const stream =
-      values.serverLogFormat === 'pretty'
-        ? pretty({ colorize: true, translateTime: 'SYS:standard', sync: true, destination })
-        : destination
-
-    super(stream ? pino(options, stream) : pino(options))
   }
 }

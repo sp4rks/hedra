@@ -16,7 +16,6 @@ import { createLogger } from '#server/logging/create-logger.ts'
 
 export type HedraOptions = {
   config?: Config
-  logger?: Logger
   backend?: Backend
 }
 
@@ -41,7 +40,7 @@ export class Hedra extends Hono {
 
     this.config = config
     this.instanceId = crypto.randomUUID()
-    this.log = createLogger(config, options.logger).child({ instanceId: this.instanceId })
+    this.log = createLogger(config, { instanceId: this.instanceId })
     this.port = values.serverListenPort
     this.hostname = values.serverListenIp
     this.backend = options.backend

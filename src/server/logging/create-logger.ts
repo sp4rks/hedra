@@ -1,16 +1,14 @@
 import type { Config } from '#config'
-import type { Logger } from '#server/logging/logging.ts'
+import type { LogFields, Logger } from '#server/logging/logging.ts'
 import { validateConfig } from '#config'
 import { PinoLogger } from '#server/logging/pino.ts'
 
-/** Uses a supplied logger or creates the configured implementation. */
-export function createLogger(config: Config, logger?: Logger): Logger {
+/** Creates the configured implementation with initial context. */
+export function createLogger(config: Config, bindings?: LogFields): Logger {
   const values = validateConfig(config)
-
-  if (logger !== undefined && logger !== null) return logger
 
   switch (values.serverLogLibrary) {
     case 'pino':
-      return new PinoLogger(config)
+      return new PinoLogger(config, undefined, bindings)
   }
 }

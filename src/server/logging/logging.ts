@@ -11,5 +11,4 @@ export interface Logger {
   warn(message: string, fields?: LogFields): void
   error(message: string, fields?: LogFields): void
   fatal(message: string, fields?: LogFields): void
-  child(fields: LogFields): Logger
 }
