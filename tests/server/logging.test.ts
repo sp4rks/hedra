@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
 
-import { ConfigurationError } from '#errors'
 import { Config, createLogger, PinoLogger } from '#hedra.ts'
 
 /** Collects logger output through its public destination. */
@@ -214,17 +213,5 @@ test('PinoLogger rejects structured fields that are not a string-keyed record', 
   expect(() => new PinoLogger(config, captured.destination, [] as never)).toThrow()
   expect(() => createLogger(config, null as never)).toThrow()
   expect(() => createLogger(config, [] as never)).toThrow()
-  expect(captured.text()).toBe('')
-})
-
-test('PinoLogger rejects invalid configuration supplied by a subclass', () => {
-  class InvalidConfig extends Config {
-    override readonly serverListenPort = 0
-  }
-
-  const captured = captureDestination()
-  const config = new InvalidConfig({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
-
-  expect(() => new PinoLogger(config, captured.destination)).toThrow(ConfigurationError)
   expect(captured.text()).toBe('')
 })

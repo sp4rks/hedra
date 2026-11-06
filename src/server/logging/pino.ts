@@ -6,7 +6,6 @@ import pretty from 'pino-pretty'
 
 import type { Config } from '#config'
 import type { Logger } from '#server/logging/logging.ts'
-import { validateConfig } from '#config'
 import { LogFields } from '#server/logging/logging.ts'
 
 /** Creates the default logging adapter. */
@@ -16,11 +15,10 @@ export class PinoLogger implements Logger {
 
   /** Uses the configured level and format with initial context and an optional destination. */
   constructor(config: Config, destination?: Writable, bindings: LogFields = {}) {
-    const values = validateConfig(config)
     const initial = LogFields.parse(bindings)
-    const options = { level: values.serverLogLevel, base: {} }
+    const options = { level: config.serverLogLevel, base: {} }
     const stream =
-      values.serverLogFormat === 'pretty'
+      config.serverLogFormat === 'pretty'
         ? pretty({ colorize: true, translateTime: 'SYS:standard', sync: true, destination })
         : destination
 

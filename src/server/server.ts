@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import type { Logger } from '#server/logging/logging.ts'
-import { Config, validateConfig } from '#config'
+import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { tenantTable } from '#datastores/categories/config/config.ts'
@@ -36,13 +36,12 @@ export class Hedra extends Hono {
     super()
 
     const config = options.config ?? new Config()
-    const values = validateConfig(config)
 
     this.config = config
     this.instanceId = crypto.randomUUID()
     this.log = createLogger(config, { instanceId: this.instanceId })
-    this.port = values.serverListenPort
-    this.hostname = values.serverListenIp
+    this.port = config.serverListenPort
+    this.hostname = config.serverListenIp
     this.backend = options.backend
     this.associations = new AssociationOperations(
       () => {
