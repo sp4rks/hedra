@@ -1,7 +1,8 @@
 import { z } from 'zod'
 
 export const ResourceId = z.uuid()
-export const Resource = z.object({ id: ResourceId })
+export const ResourceTimestamp = z.iso.datetime()
+export const Resource = z.object({ id: ResourceId, createdAt: ResourceTimestamp, updatedAt: ResourceTimestamp })
 
 export type Resource = z.infer<typeof Resource>
 

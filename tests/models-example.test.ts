@@ -9,18 +9,31 @@ test('models example supports the full controller method lifecycle', async () =>
     import assert from 'node:assert/strict'
     import hedra, { CarModel, cars } from './examples/02-models.ts'
 
+    hedra.post('/test/cars', async context => context.json(await cars.controller.create(context, cars, {
+      make: 'Toyota', model: 'Corolla', year: 2024,
+    })))
+    hedra.get('/test/cars', async context => context.json(await cars.controller.list(context, cars, 'http://localhost/test/cars', {
+      filter: { make: 'Toyota' },
+    })))
+    hedra.get('/test/cars/:id', async context => context.json(await cars.controller.id(context, cars, context.req.param('id'))))
+    hedra.patch('/test/cars/:id', async context => context.json(await cars.controller.update(context, cars, {
+      model: 'Yaris', year: 2026,
+    }, context.req.param('id'))))
+    hedra.delete('/test/cars/:id', async context => {
+      await cars.controller.delete(context, cars, context.req.param('id'))
+      return context.body(null, 204)
+    })
+
     try {
-      assert.deepEqual(await cars.controller.list(), [])
-      const car = await cars.controller.create({ make: 'Toyota', model: 'Corolla', year: 2024 })
+      assert.deepEqual((await (await hedra.request('/test/cars')).json()).data, [])
+      const car = (await (await hedra.request('/test/cars', { method: 'POST' })).json()).data
       assert.deepEqual(CarModel.parse(car), car)
-      assert.deepEqual(await cars.controller.get(car.id), car)
-      assert.deepEqual(await cars.controller.list({ make: 'Toyota' }), [car])
-      assert.deepEqual(await cars.controller.replace(car.id, { make: 'Toyota', model: 'Yaris', year: 2025 }),
-        { id: car.id, make: 'Toyota', model: 'Yaris', year: 2025 })
-      assert.deepEqual(await cars.controller.update(car.id, { year: 2026 }),
-        { id: car.id, make: 'Toyota', model: 'Yaris', year: 2026 })
-      assert.equal(await cars.controller.delete(car.id), true)
-      assert.deepEqual(await cars.controller.list(), [])
+      assert.deepEqual((await (await hedra.request('/test/cars/' + car.id)).json()).data, car)
+      assert.deepEqual((await (await hedra.request('/test/cars')).json()).data, [car])
+      const updated = (await (await hedra.request('/test/cars/' + car.id, { method: 'PATCH' })).json()).data
+      assert.deepEqual(updated, { ...car, model: 'Yaris', year: 2026, updatedAt: updated.updatedAt })
+      assert.equal((await hedra.request('/test/cars/' + car.id, { method: 'DELETE' })).status, 204)
+      assert.deepEqual((await (await hedra.request('/test/cars')).json()).data, [])
     } finally {
       hedra.close()
     }

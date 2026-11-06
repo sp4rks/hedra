@@ -19,6 +19,6 @@ hedra.get('/health', (context) => context.text('Hello Hedra!'))
 // Registration constructs the controller using Hedra's shared backend.
 hedra.register(cars)
 
-// Import cars to use its async controller methods. See docs/collections.md.
+// The future Web layer will wire routes to this controller. See docs/collections.md.
 export { CarModel, cars }
 export default hedra

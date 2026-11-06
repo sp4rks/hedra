@@ -1,10 +1,10 @@
 # Storage backends
 
-The `Backend` interface persists generic JSON records in named tables. Controllers accept typed data and explicitly protect sensitive fields; callers run resource-model validators when needed. A backend knows a string primary-key ID and JSON data, with no resource-specific schema or UUID generation.
+The `Backend` interface persists generic JSON records in named tables. REST controllers manage resource metadata and public output; programmatic resource operations serve ConfigStore without HTTP. Callers validate domain input with pure model-derived validators. A backend knows a string primary-key ID and JSON data, with no resource-specific schema, UUID generation or response formatting.
 
 ## Operations
 
-All operations return promises. Storage data and filter types derive from the generic storage schemas; concrete resource types remain the responsibility of the controller.
+All operations return promises. Storage data and filter types derive from the generic storage schemas; resource models stay outside the backend.
 
 | Method | Behaviour | Result |
 | --- | --- | --- |
@@ -53,4 +53,4 @@ try {
 }
 ```
 
-Await outstanding work before closing the shared backend. App closure invalidates its controllers, including saved references, without closing a borrowed backend still used elsewhere. `ConfigStore` has no connection lifecycle methods. The creator closes the concrete backend once all users finish. See the [controller data contract](adr/0008-controller-data-contracts.md).
+Await outstanding work before closing the shared backend. App closure invalidates its controllers, including saved references, without closing a borrowed backend still used elsewhere. `ConfigStore` has no connection lifecycle methods. The creator closes the concrete backend once all users finish. See the [REST controller contract](adr/0009-rest-controller-interface.md).

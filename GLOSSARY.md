@@ -15,7 +15,7 @@ An identifiable item governed by a model, such as one car or tenant.
 _Avoid_: Record when referring to the application-facing item.
 
 **Controller**:
-The operations and rules for one resource type, independent of its web representation.
+A reusable handler for a collection's REST operations, including server-owned attributes and public output filtering.
 
 **Consuming application**:
 An application built with Hedra that defines its own resource models and collections.
