@@ -32,3 +32,6 @@ A distinct party served by a consuming application, with its own configuration a
 
 **Configuration**:
 Definitions, settings and policies that govern how a tenant or environment behaves.
+
+**Configuration datastore**:
+The persistent catalogue of configuration resources, beginning with tenant definitions, used by a consuming application.
