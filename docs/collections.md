@@ -57,6 +57,8 @@ const prepared = CreateCar.parse({ make: 'Toyota', model: 'Corolla', year: 2024 
 
 The controller accepts prepared JSON attributes and combines them with current state and managed metadata. Inside the storage transaction it validates the complete proposed resource, including cross-field model rules, before saving. A failed candidate returns 422 without writes; an output-projection failure is an internal 500. Embedded mutations validate the containing document too. The controller stays non-generic and obtains the validator from its per-call collection. ConfigStore's programmatic operations remain model-independent. See the [validation decision](adr/0012-atomic-candidate-validation.md).
 
+Model validators must be synchronous and describe the [stable stored representation](adr/0003-models-describe-stored-records.md). Parsed values must remain valid under the same model; transformations between incompatible request and stored representations belong in separate input/controller code. Models cannot replace server-managed identity or timestamps.
+
 `QueryParams` supports only `filter`, a dictionary of top-level scalar equality criteria:
 
 ```ts
