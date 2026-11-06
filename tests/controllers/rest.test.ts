@@ -160,6 +160,8 @@ test('list retains equality filters and correct response links', async () => {
     params = { filter: JSON.parse('{"__proto__":"literal"}') }
     response = await app.request('http://localhost/cars')
     expect(JsonApiListResponse.parse(await response.json()).data).toEqual([special])
+    params = null as never
+    expect((await app.request('http://localhost/cars')).status).toBe(400)
     params = { sort: 'make' } as never
     expect((await app.request('http://localhost/cars')).status).toBe(400)
     params = { filter: { make: { nested: true } } } as never
@@ -390,6 +392,91 @@ test('output validator failures never return unfiltered resources', async () => 
     expect(await backend.select('users')).toEqual([
       { id, name: 'Alice', password: 'private', createdAt: timestamp, updatedAt: timestamp },
     ])
+  } finally {
+    backend.close()
+  }
+})
+
+test('output transforms cannot mutate nested attributes persisted by create or update', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const controller = new BaseController(backend)
+  const Model = Resource.extend({ profile: z.unknown() })
+  const outputValidator = z.object({
+    id: z.uuid(),
+    profile: z.unknown().transform((value) => {
+      const profile = value as { visible: string; secret?: string }
+
+      delete profile.secret
+
+      return profile
+    }),
+  })
+  const users = new Collection('users', Model, { outputValidator })
+  const app = new Hono()
+
+  app.post('/users', async (context) => context.json(await controller.create(context, users, await context.req.json())))
+  app.patch('/users/:id', async (context) =>
+    context.json(await controller.update(context, users, await context.req.json(), context.req.param('id'))),
+  )
+
+  try {
+    const initial = { visible: 'Alice', secret: 'create secret' }
+    const response = await app.request('http://localhost/users', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ profile: initial }),
+    })
+    const created = JsonApiResponse.parse(await response.json())
+    const id = z.uuid().parse(created.data.id)
+
+    expect(created.data.profile).toEqual({ visible: 'Alice' })
+    expect((await backend.select('users', { id }))[0]?.profile).toEqual(initial)
+    const changed = { visible: 'Bob', secret: 'update secret' }
+    const update = await app.request(`http://localhost/users/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ profile: changed }),
+    })
+    const updated = JsonApiResponse.parse(await update.json())
+
+    expect(updated.data.profile).toEqual({ visible: 'Bob' })
+    expect((await backend.select('users', { id }))[0]?.profile).toEqual(changed)
+  } finally {
+    backend.close()
+  }
+})
+
+test('output transforms cannot mutate an existing nested attribute during update', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const controller = new BaseController(backend)
+  const Model = Resource.extend({ profile: z.unknown(), name: z.string() })
+  const outputValidator = z.object({
+    id: z.uuid(),
+    profile: z.unknown().transform((value) => {
+      const profile = value as { visible: string; secret?: string }
+
+      delete profile.secret
+
+      return profile
+    }),
+  })
+  const users = new Collection('users', Model, { outputValidator })
+  const app = new Hono()
+  const id = crypto.randomUUID()
+  const timestamp = '2026-01-02T03:04:05.000Z'
+  const profile = { visible: 'Alice', secret: 'private' }
+
+  app.patch('/users/:id', async (context) =>
+    context.json(await controller.update(context, users, { name: 'Bob' }, context.req.param('id'))),
+  )
+
+  try {
+    await backend.insert('users', { id, name: 'Alice', profile, createdAt: timestamp, updatedAt: timestamp })
+    const response = await app.request(`http://localhost/users/${id}`, { method: 'PATCH' })
+    const updated = JsonApiResponse.parse(await response.json())
+
+    expect(updated.data.profile).toEqual({ visible: 'Alice' })
+    expect((await backend.select('users', { id }))[0]?.profile).toEqual(profile)
   } finally {
     backend.close()
   }

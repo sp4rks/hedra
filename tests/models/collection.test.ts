@@ -34,6 +34,7 @@ test('Collection binds metadata, a public validator and rejects invalid definiti
   ).toThrow()
   expect(() => new Collection('cars', Car, { controller: {} } as never)).toThrow()
   expect(() => new Collection('cars', Car, { unsupported: true } as never)).toThrow()
+  expect(() => new Collection('cars', Car, null as never)).toThrow()
   expect(
     new Collection(
       'cars-v2_archive',

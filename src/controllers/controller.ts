@@ -51,7 +51,7 @@ function attributes(input: ResourceInput): ResourceInput {
 function project(collection: Collection, record: DatabaseRecord): ResourceInput {
   const keys = Object.keys(collection.outputValidator.shape)
   const input = Object.fromEntries(keys.filter((key) => Object.hasOwn(record, key)).map((key) => [key, record[key]]))
-  const parsed = collection.outputValidator.parse(input)
+  const parsed = collection.outputValidator.parse(structuredClone(input))
   const output = Object.fromEntries(keys.filter((key) => Object.hasOwn(parsed, key)).map((key) => [key, parsed[key]]))
   const stored: unknown = JSON.parse(jsonString(output))
   const validated = InputSchema.parse(stored)
@@ -108,7 +108,7 @@ export class BaseController implements ControllerInterface {
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
-    const options = queryParams ?? {}
+    const options = queryParams === undefined ? {} : queryParams
 
     if (Object.getOwnPropertySymbols(options).length) throw new Error('Query parameter keys must be strings')
     QuerySchema.parse(options)

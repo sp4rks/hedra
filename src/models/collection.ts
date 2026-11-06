@@ -50,7 +50,7 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
         controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
         outputValidator: z.instanceof(z.ZodObject).optional(),
       })
-      .parse(options ?? {})
+      .parse(options === undefined ? {} : options)
     const shape = Object.fromEntries(Object.entries(model.shape).filter(([key]) => key !== 'password'))
     const selected = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
 
