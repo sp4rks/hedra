@@ -13,6 +13,8 @@ const CarModel = Resource.extend({
   year: z.number().int(),
 })
 
+type CarModel = z.infer<typeof CarModel>
+
 const cars = new Collection('cars', CarModel)
 const hedra = new Hedra()
 hedra.register(cars)
@@ -22,54 +24,52 @@ Collection names start with a lower-case letter and contain lower-case letters, 
 
 ## Controller operations
 
-Inputs and results derive from the resource model. All operations return promises, and resource data is validated at runtime.
+Controller inputs and results use plain resource data types. A collection infers that type from its model's output; the controller receives only a name and backend. All operations return promises. TypeScript checks resource attributes at compile time; runtime checks protect server-owned IDs and generic object/JSON integrity.
 
 | Method | Behaviour | Result |
 | --- | --- | --- |
-| `create(input)` | Generate a fresh UUID, validate and insert a complete resource. | The parsed resource, including its ID, defaults and normalisation. |
-| `get(id)` | Read and validate one resource. | The resource, or `null`. |
-| `list(filter?)` | Read and validate every match in insertion order. Omit the filter or use `{}` for all resources. | An array, or `[]`. |
-| `update(id, changes)` | Shallow-merge attributes into one resource and validate the complete result. | The updated resource, or `null`. |
-| `replace(id, input)` | Replace one resource's attributes using the complete model. | The replacement resource, or `null`. |
+| `create(input)` | Generate a fresh UUID and insert the supplied resource attributes. | The resource, including its generated ID. |
+| `get(id)` | Read one resource with its ID checks. | The resource, or `null`. |
+| `list(filter?)` | Read every match in insertion order. Omit the filter or use `{}` for all resources. | An array, or `[]`. |
+| `update(id, changes)` | Shallow-merge attributes into one resource, preserving its ID. | The updated resource, or `null`. |
+| `replace(id, input)` | Replace one resource's attributes, preserving its ID. | The replacement resource, or `null`. |
 | `delete(id)` | Remove one resource. | `true` when removed, otherwise `false`. |
 
-IDs are immutable. Update and replacement retain the addressed ID; they do not insert missing resources. Replacement removes omitted optional attributes and applies model defaults. Update preserves unspecified attributes and replaces a supplied nested object or array as a whole. An empty changes object leaves the resource's attributes unchanged.
+IDs are immutable. Update and replacement retain the addressed ID; they do not insert missing resources. Replacement removes omitted optional attributes. Update preserves unspecified attributes and replaces a supplied nested object or array as a whole. An empty changes object leaves the resource's attributes unchanged.
 
-Update reads, validates and writes inside one backend transaction. Invalid data, a thrown refinement or a storage failure leaves the resource unchanged. The controller returns domain data and leaves HTTP response formatting to the future Web layer.
+Update reads, applies its guards and writes inside one backend transaction. A failed guard, unsupported JSON value or storage failure leaves the resource unchanged. Custom controllers can enforce resource-specific sensitive-field and business rules explicitly. The controller returns domain data and leaves HTTP response formatting to the future Web layer.
 
 ## Filters and validation
 
-`list` supports equality filters on declared top-level scalar fields. Every supplied field must match. Values must be strings, finite numbers, booleans or null:
+`list` supports equality filters on top-level scalar fields. TypeScript restricts the declared fields and their value types. Runtime checks require strings, finite numbers, booleans or null; every supplied field must match:
 
 ```ts
 const toyotas = await cars.controller.list({ make: 'Toyota', year: 2024 })
 ```
 
-Unknown fields, invalid field values, nested-object/array filters, undefined values and non-object filters reject before selection. Boolean, string and numeric values remain distinct. Null matches an explicit null field, rather than an absent optional field. Field names containing punctuation are matched literally.
+Nested-object/array filters, undefined values and non-object filters reject before selection. Boolean, string and numeric values remain distinct. Null matches an explicit null field, rather than an absent optional field. Field names containing punctuation are matched literally. A controller has no model for checking resource-specific query rules at runtime; the future request validator owns those rules.
 
-Models provide synchronous refinements, defaults, normalisation and unknown-property handling. Async controller methods do not enable asynchronous Zod refinements. Give each schema and its inferred TypeScript type the same name.
-
-Resources must be JSON-compatible objects. Omitted optional attributes are supported; explicit undefined values, non-finite numbers, bigint, special objects and cycles are rejected before persistence. Parsing a stored resource again must produce an equivalent resource. Stable defaults and string trimming fit this contract; incompatible or continually changing transformations do not.
-
-Reads validate stored resources against the current model. Changing a model to reject existing data can make reads fail. There is no automatic repair, migration, pagination, sorting option or comparison query language.
-
-## Custom controllers
-
-The third collection argument selects a custom controller class. Its constructor follows the generic controller's `(name, model, backend)` contract. The concrete type is preserved, including additional methods. Replace the default collection definition before registration:
+Models are pure validation and type sources. Their refinements, defaults, normalisation and unknown-property handling run when a caller invokes the validator. Give each schema and its inferred TypeScript type the same name. The future Web layer will derive public-input validators from a resource model; programmatic callers can use the same composition now:
 
 ```ts
-class CarController extends Controller<typeof CarModel> {
-  /** Changes the year through the normal resource validation. */
-  async setYear(id: string, year: number) {
-    return this.update(id, { year })
-  }
-}
-
-const cars = new Collection('cars', CarModel, CarController)
-hedra.register(cars)
+const CreateCar = CarModel.omit({ id: true }).strict()
+const input = CreateCar.parse({ make: 'Toyota', model: 'Corolla', year: 2024 })
+const car = await cars.controller.create(input)
 ```
 
-The generic `Controller` can also be constructed directly with a name, model and backend for use without an HTTP server. See the [controller example](../examples/05-resource-controller.ts), which checks custom-controller registration, generated IDs and updates using an in-memory database.
+Controllers accept the prepared output type, rather than the validator's raw input type. If validation supplies a default, call the validator first or provide that field explicitly. The controller preserves supplied attributes and does not reapply model parsing. See the [tenant example](../examples/04-config-store.ts) for caller-side trimming and validation.
+
+Resources must be JSON-compatible objects. Omitted optional attributes are supported; explicit undefined values, non-finite numbers, bigint, special objects and cycles are rejected before persistence.
+
+Controllers do not parse stored resources through a resource model. Callers that need model validation on reads apply their validator explicitly. There is no automatic repair, migration, pagination, sorting option or comparison query language.
+
+## Controller selection
+
+`new Collection('cars', CarModel)` automatically uses the generic controller. A Car-specific controller class is unnecessary. The model stays on the collection and supplies the inferred plain data type; it is not passed to the controller.
+
+The same generic implementation can be constructed directly as `new Controller<CarModel>('cars', backend)` for use without a collection or HTTP server. `CarModel` in that type argument is the inferred data type, rather than `typeof CarModel`, the schema type. See the [standalone generic controller example](../examples/05-resource-controller.ts).
+
+If resource-specific behaviour is needed, the third collection argument can select a custom controller class. It inherits the `(name, backend)` construction contract and retains its extra method types.
 
 ## Registration and lifecycle
 
