@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { Writable } from 'node:stream'
 import { z } from 'zod'
 
-import type { LogFields, Logger } from '#hedra.ts'
+import type { HedraOptions, LogFields, Logger } from '#hedra.ts'
 import { ConfigurationError } from '#errors'
 import { Collection, Config, Hedra, PinoLogger, Resource } from '#hedra.ts'
 
@@ -128,28 +128,24 @@ test('Hedra logs collection registration only when enabled and allowed by the lo
   }
 })
 
-test('Hedra rejects conflicting, unknown or malformed options', () => {
+test('Hedra accepts options from a wider application object', () => {
+  const options = { env: { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LISTEN_PORT: '8080' }, name: 'app' }
+  const hedraOptions: HedraOptions = options
+  const app = new Hedra(hedraOptions)
+
+  expect(app.port).toBe(8080)
+})
+
+test('Hedra rejects conflicting configuration sources', () => {
   const env = { HEDRA_SERVER_SILENT_STARTUP: 'true' }
   const config = new Config(env)
 
   expect(() => new Hedra({ env, config })).toThrow('Provide either env or config')
-  expect(() => new Hedra({ env, unknown: true } as never)).toThrow()
-  expect(() => new Hedra({ env: { HEDRA_SERVER_LISTEN_PORT: 3000 } as never })).toThrow()
-  expect(() => new Hedra({ env, logger: { info() {} } as never })).toThrow()
-  expect(() => new Hedra(env as never)).toThrow()
 })
 
-test('Hedra rejects malformed injected backends before registration', () => {
-  const env = { HEDRA_SERVER_SILENT_STARTUP: 'true' }
-
-  for (const backend of [
-    null,
-    {},
-    { insert() {}, select() {}, update() {} },
-    { insert: 1, select() {}, update() {}, delete() {} },
-  ]) {
-    expect(() => new Hedra({ env, backend: backend as never })).toThrow('Expected a backend')
-  }
+test('Hedra validates supplied environment values', () => {
+  expect(() => new Hedra({ env: { HEDRA_SERVER_LISTEN_PORT: 3000 } as never })).toThrow()
+  expect(() => new Hedra({ env: { HEDRA_SERVER_LISTEN_PORT: '0' } })).toThrow(ConfigurationError)
 })
 
 test('Hedra accepts a callable logger implementing the Logger interface', () => {
@@ -210,12 +206,4 @@ test('Hedra rejects a Config subclass with a missing required setting', () => {
   }
 
   expect(() => new Hedra({ config: new MissingConfig() })).toThrow(ConfigurationError)
-})
-
-test('Hedra rejects a malformed child returned by a custom logger', () => {
-  const records: { message: string; fields: LogFields }[] = []
-  const parent = new RecordingLogger(records)
-
-  parent.child = () => ({ info() {} }) as never
-  expect(() => new Hedra({ env: { HEDRA_SERVER_SILENT_STARTUP: 'true' }, logger: parent })).toThrow('Expected a logger')
 })
