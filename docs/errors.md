@@ -16,6 +16,8 @@ The title is also the standard `Error.message`. The instance's `name` is its cla
 | `OutputValidationError` | 500 | `output validation error` |
 | `PreconditionFailedError` | 412 | `precondition failed` |
 | `BadRequestError` | 400 | `bad request` |
+| `ConflictError` | 409 | `conflict` |
+| `UnsupportedMediaTypeError` | 415 | `unsupported media type` |
 | `DatastoreError` | 500 | `datastore error` |
 | `ConnectionError` | 500 | `failed to connect to database` |
 | `QueryError` | 500 | `database query failed` |
@@ -48,3 +50,5 @@ assert.equal(defaultTitle.detail, 'A year is required')
 Remove the first numeric argument: `new ConnectionError(500, 'Hedra is closed')` becomes `new ConnectionError('Hedra is closed')`. A title and detail keep their relative order. Use `undefined` as the first argument to keep a class's default title while supplying detail. Numeric status arguments are no longer accepted by the TypeScript constructors.
 
 These errors carry status information; routes still choose how to turn errors into HTTP responses. See [REST controllers](collections.md#rest-operations) and [configuration failures](configuration.md).
+
+Generated resource routes use `ConflictError` for occupied embedded targets and association-blocked deletion, and `UnsupportedMediaTypeError` for a non-JSON request body. Their [public error envelope](web-layer.md#requests-and-responses) preserves client-error statuses while hiding internal failure details.
