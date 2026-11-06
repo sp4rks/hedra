@@ -1,4 +1,4 @@
-import type { Config, Logger } from '#hedra.ts'
+import type { Config, LoggerInterface } from '#hedra.ts'
 import { Hedra } from '#hedra.ts'
 
 /** Reads application information using dependencies supplied at construction. */
@@ -6,7 +6,7 @@ export class EnvironmentController {
   /** Receives configuration and logging without depending on the HTTP app. */
   constructor(
     private readonly config: Config,
-    private readonly log: Logger,
+    private readonly log: LoggerInterface,
   ) {}
 
   /** Reports the configured environment and logs through the supplied logger. */
