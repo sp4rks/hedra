@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0007
+---
+
 # Backends own connections shared by datastore categories
 
 Datastore categories describe responsibilities, while backends provide storage operations and own their connections. A category class accepts the narrow backend interface it needs and handles its domain validation; application startup creates the backend and closes it after all users finish. This allows configuration and application storage to share one backend connection or pool without either category closing a resource still used by another. The initial configuration implementation uses SQLite and explicit construction; existing application collection ownership is unchanged.
