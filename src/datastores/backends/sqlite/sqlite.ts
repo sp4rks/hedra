@@ -4,7 +4,11 @@ import { dirname } from 'node:path'
 import { z } from 'zod'
 
 import type { Backend, DatabaseFilter, DatabaseRecord, RecordModifier } from '#datastores/backend.ts'
-import { DatabaseFilter as FilterSchema, DatabaseRecord as RecordSchema } from '#datastores/backend.ts'
+import {
+  DatabaseFilter as FilterSchema,
+  DatabaseRecord as RecordSchema,
+  DatabaseScalar as ScalarSchema,
+} from '#datastores/backend.ts'
 
 const matches = `NOT EXISTS (
   SELECT 1 FROM json_each(?) AS criterion WHERE NOT EXISTS (
@@ -69,7 +73,8 @@ export class SqliteBackend implements Backend {
   async select(table: string, filter: DatabaseFilter = {}): Promise<DatabaseRecord[]> {
     if (Object.getOwnPropertySymbols(filter).length) throw new Error('Filter keys must be strings')
     FilterSchema.parse(filter)
-    const data = jsonString(filter)
+    const entries = Object.entries(filter).map(([key, value]) => [key, ScalarSchema.parse(value)] as const)
+    const data = jsonString(Object.fromEntries(entries))
     const name = this.table(table)
     const rows = this.db
       .query<{ data: string }, [string]>(`SELECT data FROM ${name} AS records WHERE ${matches} ORDER BY rowid`)

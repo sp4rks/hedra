@@ -166,6 +166,45 @@ test('SqliteBackend treats IDs and filter values as literal data', async () => {
   }
 })
 
+test('SqliteBackend rejects non-scalar criteria under literal property names', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const record = JSON.parse('{"id":"special","__proto__":"literal"}')
+
+  try {
+    await backend.insert('items', record)
+    await expect(backend.select('items', JSON.parse('{"__proto__":{"nested":true}}'))).rejects.toThrow()
+    expect(await backend.select('items', JSON.parse('{"__proto__":"literal"}'))).toEqual([record])
+  } finally {
+    backend.close()
+  }
+})
+
+test('SqliteBackend queries only the validated scalar snapshot of a changing filter', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const record = { id: 'one', name: 'Example' }
+  let reads = 0
+  const filter = {
+    get name() {
+      reads += 1
+
+      return reads === 1 ? 'Example' : { nested: true }
+    },
+  }
+
+  try {
+    await backend.insert('items', record)
+    const outcome = await backend.select('items', filter as never).then(
+      (records) => ({ accepted: true, records }),
+      () => ({ accepted: false, records: [] }),
+    )
+
+    if (outcome.accepted) expect(outcome.records).toEqual([record])
+    else expect(await backend.select('items')).toEqual([record])
+  } finally {
+    backend.close()
+  }
+})
+
 test('SqliteBackend rejects invalid table identifiers without affecting other tables', async () => {
   const backend = new SqliteBackend(':memory:')
 
