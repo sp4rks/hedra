@@ -1,0 +1,236 @@
+import { Database } from 'bun:sqlite'
+import { expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { SqliteBackend } from '#hedra.ts'
+
+test('SqliteBackend stores arbitrary JSON records by table', async () => {
+  const backend = new SqliteBackend(':memory:')
+
+  try {
+    await backend.insert('cars', { id: 'one', make: 'Toyota', nested: { year: 2024 } })
+    await backend.insert('tenants', { id: 'one', name: 'Acme', flags: [true, null] })
+    expect(await backend.select('cars')).toEqual([{ id: 'one', make: 'Toyota', nested: { year: 2024 } }])
+    expect(await backend.select('tenants')).toEqual([{ id: 'one', name: 'Acme', flags: [true, null] }])
+  } finally {
+    backend.close()
+  }
+})
+
+test('SqliteBackend applies an update modifier atomically', async () => {
+  const backend = new SqliteBackend(':memory:')
+
+  try {
+    await backend.insert('cars', { id: 'one', count: 1 })
+    expect(await backend.update('cars', 'one', (record) => ({ ...record, count: 2 }))).toEqual({ id: 'one', count: 2 })
+    await expect(
+      backend.update('cars', 'one', () => {
+        throw new Error('invalid')
+      }),
+    ).rejects.toThrow('invalid')
+    await expect(backend.update('cars', 'one', (record) => ({ ...record, id: 'changed' }))).rejects.toThrow()
+    await expect(
+      backend.update('cars', 'one', (record) => {
+        record.id = 'changed'
+
+        return record
+      }),
+    ).rejects.toThrow()
+    await expect(
+      backend.update('cars', 'one', (record) => ({ ...record, count: undefined }) as never),
+    ).rejects.toThrow()
+    let called = false
+
+    expect(
+      await backend.update('cars', 'missing', (record) => {
+        called = true
+
+        return record
+      }),
+    ).toBeNull()
+    expect(called).toBe(false)
+    expect(await backend.select('cars')).toEqual([{ id: 'one', count: 2 }])
+  } finally {
+    backend.close()
+  }
+})
+
+test('SqliteBackend rejects duplicate primary keys without replacing data', async () => {
+  const backend = new SqliteBackend(':memory:')
+
+  try {
+    await backend.insert('items', { id: 'one', name: 'Original' })
+    await expect(backend.insert('items', { id: 'one', name: 'Replacement' })).rejects.toThrow()
+    expect(await backend.select('items')).toEqual([{ id: 'one', name: 'Original' }])
+  } finally {
+    backend.close()
+  }
+})
+
+test('SqliteBackend treats IDs and filter values as literal data', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const literal = "' OR 1=1 --"
+
+  try {
+    await backend.insert('items', { id: literal, 'a.b': literal, value: 1 })
+    await backend.insert('items', { id: 'string', 'a.b': literal, value: '1' })
+    await backend.insert('items', { id: 'boolean', value: true })
+    await backend.insert('items', { id: 'null', value: null })
+    await backend.insert('items', { id: 'missing' })
+    const special = JSON.parse('{"id":"special","__proto__":"literal"}')
+
+    await backend.insert('items', special)
+    expect(await backend.select('items', { id: literal, 'a.b': literal, value: 1 })).toEqual([
+      { id: literal, 'a.b': literal, value: 1 },
+    ])
+    expect(await backend.select('items', { value: '1' })).toEqual([{ id: 'string', 'a.b': literal, value: '1' }])
+    expect(await backend.select('items', { value: true })).toEqual([{ id: 'boolean', value: true }])
+    expect(await backend.select('items', { value: null })).toEqual([{ id: 'null', value: null }])
+    expect(await backend.select('items', JSON.parse('{"__proto__":"literal"}'))).toEqual([special])
+    expect(await backend.delete('items', literal)).toBe(true)
+    expect(await backend.select('items', { id: literal })).toEqual([])
+  } finally {
+    backend.close()
+  }
+})
+
+test('SqliteBackend rejects invalid table identifiers without affecting other tables', async () => {
+  const backend = new SqliteBackend(':memory:')
+
+  try {
+    await backend.insert('valid-name', { id: 'one' })
+
+    for (const table of ['', 'A', 'name;DROP TABLE valid', 'bad"name', '../x', 7, null]) {
+      await expect(backend.insert(table as never, { id: 'x' })).rejects.toThrow()
+      await expect(backend.select(table as never)).rejects.toThrow()
+      await expect(backend.update(table as never, 'one', (record) => record)).rejects.toThrow()
+      await expect(backend.delete(table as never, 'one')).rejects.toThrow()
+    }
+    expect(await backend.select('valid-name')).toEqual([{ id: 'one' }])
+  } finally {
+    backend.close()
+  }
+})
+
+test('SqliteBackend rejects non-JSON records without writing', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const cycle: { self?: unknown } = {}
+
+  cycle.self = cycle
+
+  try {
+    await backend.insert('items', { id: 'one', name: 'Original' })
+
+    for (const value of [undefined, Infinity, 1n, new Date(), new Map(), cycle, { [Symbol('key')]: 'value' }]) {
+      await expect(backend.insert('items', { id: 'other', value } as never)).rejects.toThrow()
+      await expect(backend.update('items', 'one', (record) => ({ ...record, value }) as never)).rejects.toThrow()
+      expect(await backend.select('items')).toEqual([{ id: 'one', name: 'Original' }])
+    }
+  } finally {
+    backend.close()
+  }
+})
+
+test('SqliteBackend holds its transaction while the modifier runs', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-backend-'))
+  const path = join(dir, 'shared.sqlite')
+  const first = new SqliteBackend(path)
+  const second = new SqliteBackend(path)
+  let competing: Promise<boolean> | undefined
+
+  try {
+    await first.insert('items', { id: 'one', count: 0 })
+    await first.update('items', 'one', (record) => {
+      competing = second
+        .update('items', 'one', (other) => ({ ...other, count: Number(other.count) + 10 }))
+        .then(
+          () => true,
+          () => false,
+        )
+
+      return { ...record, count: Number(record.count) + 1 }
+    })
+    const committed = await competing
+
+    expect(await first.select('items')).toEqual([{ id: 'one', count: committed ? 11 : 1 }])
+  } finally {
+    first.close()
+    second.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('SqliteBackend persists records across reopening a nested path', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-backend-'))
+  const path = join(dir, 'nested', 'db.sqlite')
+  let backend: SqliteBackend | undefined
+
+  try {
+    backend = new SqliteBackend(path)
+    await backend.insert('items', { id: 'non-uuid', name: 'Saved' })
+    backend.close()
+    backend = new SqliteBackend(path)
+    expect(await backend.select('items')).toEqual([{ id: 'non-uuid', name: 'Saved' }])
+  } finally {
+    backend?.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('SqliteBackend gives in-memory instances independent storage', async () => {
+  const first = new SqliteBackend(':memory:')
+  const second = new SqliteBackend(':memory:')
+
+  try {
+    await first.insert('items', { id: 'one' })
+    expect(await second.select('items')).toEqual([])
+  } finally {
+    first.close()
+    second.close()
+  }
+})
+
+test('SqliteBackend rejects an unusable path and access after close', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-backend-'))
+
+  try {
+    expect(() => new SqliteBackend(dir)).toThrow()
+    const backend = new SqliteBackend(':memory:')
+
+    backend.close()
+    await expect(backend.insert('items', { id: 'one' })).rejects.toThrow()
+    await expect(backend.select('items')).rejects.toThrow()
+    await expect(backend.update('items', 'one', (record) => record)).rejects.toThrow()
+    await expect(backend.delete('items', 'one')).rejects.toThrow()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('SqliteBackend creates the requested physical tables', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-backend-'))
+  const path = join(dir, 'db.sqlite')
+  const backend = new SqliteBackend(path)
+
+  try {
+    await backend.insert('cars-test', { id: 'one', make: 'Toyota' })
+    const observer = new Database(path, { readonly: true })
+
+    try {
+      expect(observer.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'").all()).toEqual(
+        [{ name: 'cars-test' }],
+      )
+      expect(observer.query<{ name: string }, []>("SELECT name FROM pragma_table_info('cars-test')").all()).toEqual([
+        { name: 'id' },
+        { name: 'data' },
+      ])
+    } finally {
+      observer.close()
+    }
+  } finally {
+    backend.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

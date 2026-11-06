@@ -3,23 +3,24 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-test('models example supports the full collection method lifecycle', async () => {
+test('models example supports the full controller method lifecycle', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'hedra-example-'))
   const script = `
     import assert from 'node:assert/strict'
     import hedra, { CarModel, cars } from './examples/02-models.ts'
 
     try {
-      assert.deepEqual(cars.get(), [])
-      const car = { make: 'Toyota', model: 'Corolla', year: 2024 }
+      assert.deepEqual(await cars.controller.list(), [])
+      const car = await cars.controller.create({ make: 'Toyota', model: 'Corolla', year: 2024 })
       assert.deepEqual(CarModel.parse(car), car)
-      assert.deepEqual(cars.post(car), car)
-      assert.deepEqual(cars.get({ make: 'Toyota' }), [car])
-      assert.equal(cars.put({ make: 'Toyota' }, { make: 'Toyota', model: 'Yaris', year: 2025 }), 1)
-      assert.equal(cars.patch({ model: 'Yaris' }, { year: 2026 }), 1)
-      assert.deepEqual(cars.get(), [{ make: 'Toyota', model: 'Yaris', year: 2026 }])
-      assert.equal(cars.delete({ make: 'Toyota' }), 1)
-      assert.deepEqual(cars.get(), [])
+      assert.deepEqual(await cars.controller.get(car.id), car)
+      assert.deepEqual(await cars.controller.list({ make: 'Toyota' }), [car])
+      assert.deepEqual(await cars.controller.replace(car.id, { make: 'Toyota', model: 'Yaris', year: 2025 }),
+        { id: car.id, make: 'Toyota', model: 'Yaris', year: 2025 })
+      assert.deepEqual(await cars.controller.update(car.id, { year: 2026 }),
+        { id: car.id, make: 'Toyota', model: 'Yaris', year: 2026 })
+      assert.equal(await cars.controller.delete(car.id), true)
+      assert.deepEqual(await cars.controller.list(), [])
     } finally {
       hedra.close()
     }

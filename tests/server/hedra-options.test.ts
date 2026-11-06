@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 import type { LogFields, Logger } from '#hedra.ts'
 import { ConfigurationError } from '#errors'
-import { Collection, Config, Hedra, PinoLogger } from '#hedra.ts'
+import { Collection, Config, Hedra, PinoLogger, Resource } from '#hedra.ts'
 
 class RecordingLogger implements Logger {
   /** Shares captured records while keeping this logger's bindings separate. */
@@ -117,7 +117,7 @@ test('Hedra logs collection registration only when enabled and allowed by the lo
     const app = new Hedra({ config, logger: new PinoLogger(config, destination) })
 
     try {
-      app.register(new Collection('cars', z.object({ make: z.string() })))
+      app.register(new Collection('cars', Resource.extend({ make: z.string() })))
 
       expect(output.includes('Registering collection: cars')).toBe(expected)
       if (expected)
@@ -137,6 +137,19 @@ test('Hedra rejects conflicting, unknown or malformed options', () => {
   expect(() => new Hedra({ env: { HEDRA_SERVER_LISTEN_PORT: 3000 } as never })).toThrow()
   expect(() => new Hedra({ env, logger: { info() {} } as never })).toThrow()
   expect(() => new Hedra(env as never)).toThrow()
+})
+
+test('Hedra rejects malformed injected backends before registration', () => {
+  const env = { HEDRA_SERVER_SILENT_STARTUP: 'true' }
+
+  for (const backend of [
+    null,
+    {},
+    { insert() {}, select() {}, update() {} },
+    { insert: 1, select() {}, update() {}, delete() {} },
+  ]) {
+    expect(() => new Hedra({ env, backend: backend as never })).toThrow('Expected a backend')
+  }
 })
 
 test('Hedra accepts a callable logger implementing the Logger interface', () => {
