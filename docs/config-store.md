@@ -1,28 +1,29 @@
-# Configuration store
+# Configuration datastore
 
-`ConfigStore` exposes tenant configuration through `config.tenants: ResourceOperations<Tenant>`, using a supplied backend. These programmatic operations require no Hono context and return resource data directly. [REST controllers](collections.md) have a separate interface and response envelopes.
+`ConfigDatastore` defines the operations for persisted configuration resources. Its `tenants` member exposes create/get/list/update/replace/delete operations that require no Hono context and return tenant data directly. `ConfigStore` is the default implementation; it chooses and configures its backend internally. [REST controllers](collections.md) have a separate interface and response envelopes.
 
-This store persists tenant configuration. Process settings and `Hedra.config` remain the responsibility of [server configuration](configuration.md).
+Access it through `app.configDatastore`. Process settings remain available through `app.config`; see [server configuration](configuration.md).
 
 ## Create and retrieve a tenant
 
 From the repository root with Bun and the project's dependencies installed, use the public exports:
 
 ```ts
-import { ConfigStore, SqliteBackend, Tenant } from '#hedra.ts'
+import { Config, Hedra, Tenant } from '#hedra.ts'
 
-const backend = new SqliteBackend(':memory:')
-const config = new ConfigStore(backend)
+const app = new Hedra({
+  config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SQLITE_PATH: ':memory:' }),
+})
 const CreateTenant = Tenant.omit({ id: true, createdAt: true, updatedAt: true }).strict()
 
 try {
   const input = CreateTenant.parse({ name: ' Acme ' })
-  const tenant = await config.tenants.create(input)
-  const stored = await config.tenants.get(tenant.id)
+  const tenant = await app.configDatastore.tenants.create(input)
+  const stored = await app.configDatastore.tenants.get(tenant.id)
 
   // Both resources contain the generated metadata and name 'Acme'.
 } finally {
-  backend.close()
+  app.close()
 }
 ```
 
@@ -45,9 +46,58 @@ bun run examples/04-config-store.ts
 
 It uses an in-memory database and should exit successfully without output or a database file.
 
+## Configure storage and ownership
+
+Hedra constructs its default `ConfigStore` on the first `app.configDatastore` access and retains that instance. The store receives `app.config` and opens SQLite at `config.sqlitePath`, selected by `HEDRA_SQLITE_PATH`. Construction errors propagate from that first access. A failed open is not cached, so access may be retried after correcting the underlying problem.
+
+`app.close()` closes its default configuration store if created. Saved tenant operations from that store then reject. Accessing `app.configDatastore` after closure also rejects, including when the store was never used; closing an unused app creates no configuration database.
+
+Use `ConfigStore` independently when no Hedra app is needed:
+
+```ts
+import { Config, ConfigStore } from '#hedra.ts'
+
+const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SQLITE_PATH: ':memory:' })
+const store = new ConfigStore({ config })
+
+try {
+  await store.tenants.create({ name: 'Acme' })
+} finally {
+  store.close()
+}
+```
+
+`ConfigStoreOptions` accepts optional `config` and `backend` properties. Without either, `new ConfigStore()` loads a `Config` and opens its configured SQLite path immediately. A supplied backend takes precedence over configuration and is borrowed. The existing direct form, `new ConfigStore(backend)`, remains supported and borrows that backend too. `store.close()` is idempotent and closes only a backend created by that store; with a borrowed backend, it leaves the store's operations usable. Await outstanding operations before closing an owned connection.
+
+The default configuration store and application collections open separate connections to `HEDRA_SQLITE_PATH`. File-backed connections share that file; separate `:memory:` connections have independent data. Supplying Hedra's application `backend` does not configure its configuration datastore.
+
+## Supply a configuration datastore
+
+Pass any implementation of the exported `ConfigDatastore` interface as `new Hedra({ configDatastore })`. Its readonly `tenants` member supplies the six operations below, with signatures derived from `ResourceOperations<Tenant>`. The contract requires no table name, backend methods, base class or `close()` method.
+
+Hedra retains the supplied object unchanged and borrows it. Closing the app leaves that datastore usable by its creator and other apps; the creator manages its lifetime. The default implementation can also be supplied explicitly:
+
+```ts
+import { Config, ConfigStore, Hedra } from '#hedra.ts'
+
+const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SQLITE_PATH: ':memory:' })
+const store = new ConfigStore({ config })
+const configDatastore = { tenants: store.tenants }
+const app = new Hedra({ config, configDatastore })
+
+try {
+  await app.configDatastore.tenants.create({ name: 'Acme' })
+  app.close()
+  await configDatastore.tenants.list()
+} finally {
+  app.close()
+  store.close()
+}
+```
+
 ## Programmatic operations
 
-All methods return promises. `ResourceOperations<T>` accepts a collection/table name and backend; it has no resource schema or HTTP context. `T` can describe plain data without declaring the shared `Resource` metadata fields. UUID and timestamp handling still runs independently of that type parameter.
+All methods return promises. The default implementation uses `ResourceOperations<Tenant>` without a resource schema or HTTP context. `ResourceOperations<T>` also remains available independently: it accepts a collection/table name and backend, and `T` can describe plain data without declaring the shared `Resource` metadata fields. UUID and timestamp handling runs independently of that type parameter.
 
 | Method | Behaviour | Result |
 | --- | --- | --- |
@@ -62,11 +112,11 @@ Update and replacement are atomic and never insert a missing resource. Replaceme
 
 ## Share a backend with application resources
 
-Pass the same backend to `ConfigStore` and `new Hedra({ backend })`. Multiple configuration stores sharing it see the same tenant catalogue. Application collections use their own named tables; the internal tenant collection uses `hedra_config_tenants`. Application registration reserves that exact name to prevent overlap.
+Construct `const configDatastore = new ConfigStore({ backend })`, then pass both dependencies as `new Hedra({ backend, configDatastore })`. Multiple configuration stores sharing that backend see the same tenant catalogue. Application collections use their own named tables; the internal tenant collection uses `hedra_config_tenants`. Application registration reserves that exact name to prevent overlap.
 
-`ConfigStore` neither opens nor closes connections. Closing an app ends that app's controllers, while the borrowed backend and configuration store remain usable. The caller closes the backend after all its users finish. See [connection ownership](backends.md#connection-ownership).
+Both dependencies are borrowed. Closing an app ends that app's controllers, while the backend and configuration store remain usable. The caller closes the backend after all its users finish. See the complete [shared backend example](backends.md#connection-ownership).
 
-For persistence, construct the SQLite backend with a file path such as `.runtime/config.sqlite`. It does not resolve `HEDRA_SQLITE_PATH` itself. [SQLite storage](backends.md#sqlite-storage) describes paths, parent directories and container volumes.
+For separate persistent configuration storage, pass a `Config` with the desired `HEDRA_SQLITE_PATH` to `ConfigStore`, or inject a backend configured for that storage. [SQLite storage](backends.md#sqlite-storage) describes paths, parent directories and container volumes.
 
 ## Validation and scope
 

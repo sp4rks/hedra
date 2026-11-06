@@ -98,6 +98,8 @@ Accessing `collection.controller` before registration throws. Registration inclu
 
 `new Hedra()` lazily opens its default SQLite backend on first registration using `HEDRA_SQLITE_PATH`. An app can borrow a backend with `new Hedra({ backend })`. Closing the app ends access through its controllers, including saved references. It closes an owned backend; a borrowed backend stays available to other apps and configuration stores. Close is idempotent and registration after closure rejects. See [connection ownership](backends.md#connection-ownership) and [server configuration](configuration.md).
 
+The [configuration datastore](config-store.md) is a separate dependency exposed through `app.configDatastore`. Supplying an application backend does not select configuration storage; inject both dependencies to share one connection.
+
 ## Run the REST example
 
 From the repository root with Bun and the project's dependencies installed:
