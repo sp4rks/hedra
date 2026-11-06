@@ -28,13 +28,14 @@ export class Hedra extends Hono {
   readonly instanceId: string
   readonly port: number
   readonly hostname: string
+  readonly associations: AssociationOperations
+
   private backend?: Backend
   private datastore?: ConfigDatastore
   private closeConfigDatastore?: () => void
   private closeBackend?: () => void
   private readonly collections = new Map<string, Collection>()
   private closed = false
-  readonly associations: AssociationOperations
 
   /** Loads configuration and a logger and sets the listen address. */
   constructor(options: HedraOptions = {}) {
