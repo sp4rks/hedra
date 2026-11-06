@@ -15,3 +15,9 @@ An individual item in a collection that conforms to its model.
 
 **Consuming application**:
 An application built with Hedra that defines its own models and collections.
+
+**Tenant**:
+A distinct party served by a consuming application, with its own configuration and application records.
+
+**Configuration**:
+Definitions, settings and policies that govern how a tenant or environment behaves.

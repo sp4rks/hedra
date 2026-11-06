@@ -2,6 +2,8 @@
 
 `Config` loads and validates a snapshot of Hedra's settings. Its properties are directly accessible and read-only in TypeScript. Ports and timeouts are numbers; flags are booleans.
 
+For persisted tenant definitions, see the separate [configuration store](config-store.md).
+
 ```ts
 import { Config, Hedra } from '#hedra.ts'
 
