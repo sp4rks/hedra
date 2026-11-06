@@ -28,7 +28,7 @@ Supply `backend` to borrow an existing storage backend shared with other apps or
 
 Invalid configuration throws before server startup. Embedded applications can catch construction errors; an uncaught error during Bun startup exits with a nonzero status. Library construction does not terminate the host process itself.
 
-Configuration is fully validated before Hedra creates its logger or opens a database. Supplied configuration is checked again, including values overridden by subclasses. Each app creates its own logger with its `instanceId` bound during construction. See [logging](logging.md) for the generic interface and app context.
+`Config` validates environment input and resolved settings during construction, before reporting success. Hedra and its logger consume the loaded instance directly. Invalid settings fail configuration loading before logger creation or database access. Each app creates its own logger with its `instanceId` bound during construction. See [logging](logging.md) for the generic interface and app context.
 
 `Config` and `Logger` can also be used independently of Hedra. Supply them to controllers through their constructors, as in the [controller example](../examples/03-controller.ts). A controller can then use `this.config` and `this.log` without importing the HTTP app.
 
@@ -73,9 +73,9 @@ After successful validation, startup prints the settings, their values and wheth
 
 Zod schemas provide the property types and validation. `Config` stores validated properties directly; there is no public `values` object. The class is not generic.
 
-Read-only properties are a TypeScript guarantee. The object is not frozen at runtime, allowing subclasses to initialize additional fields. Runtime mutation and live configuration reload are not supported configuration APIs.
+Read-only properties are a TypeScript guarantee. The object is not frozen at runtime, allowing subclasses to initialize additional fields. Subclasses supply built-in settings through `super(environment)` so they are validated while loading; additional application fields need their own validation. Overriding built-in fields after loading, runtime mutation and live configuration reload are not supported configuration APIs. Consumers trust the loaded instance and do not revalidate it.
 
-`app.config` exposes the built-in `Config` properties. If a subclass adds application-specific fields, keep a reference to that subclass instance to access them with their concrete types. Custom fields need their own application validation.
+`app.config` exposes the built-in `Config` properties. If a subclass adds application-specific fields, keep a reference to that subclass instance to access them with their concrete types.
 
 ## Migrating existing callers
 

@@ -9,3 +9,5 @@ Zod defines "in plane" objects: models of data the application works with, inclu
 The environment-option clause is superseded by [ADR 0014](0014-config-owned-environment-loading.md).
 
 The supplied-logger clause is superseded by [ADR 0016](0016-app-owned-logger.md).
+
+The consumer-revalidation clause is superseded by [ADR 0017](0017-validate-config-on-load.md).

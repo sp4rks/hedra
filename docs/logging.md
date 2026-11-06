@@ -66,7 +66,7 @@ Pino uses `level`, `time` and `msg` for record metadata. Supplying these names a
 
 ## Select the logging library
 
-Hedra creates its logger through `createLogger(config, bindings?)`, which returns the generic `Logger` interface. The factory validates configuration and uses `config.serverLogLibrary` to select the implementation. Unsupported library values throw a `ConfigurationError`; they do not fall back to Pino. Hedra supplies its instance ID as the initial bindings.
+Hedra creates its logger through `createLogger(config, bindings?)`, which returns the generic `Logger` interface. The factory uses the loaded `config.serverLogLibrary` to select the implementation. Unsupported library values throw a `ConfigurationError` when `Config` loads them. Hedra supplies its instance ID as the initial bindings. Initial and per-call log fields are validated separately by the logging implementation.
 
 Use the same factory to construct a logger independently of Hedra:
 
