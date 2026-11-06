@@ -1,7 +1,8 @@
 import { z } from 'zod'
 
-export const Tenant = z.object({
-  id: z.string().trim().min(1),
+import { Resource } from '#models/resource.ts'
+
+export const Tenant = Resource.extend({
   name: z.string().trim().min(1),
 })
 

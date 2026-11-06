@@ -7,11 +7,11 @@ const config = new ConfigStore(backend)
 
 try {
   const tenant = await config.tenants.create({
-    id: ' acme ',
     name: ' Acme ',
   })
 
-  assert.deepEqual(tenant, { id: 'acme', name: 'Acme' })
+  assert.equal(tenant.name, 'Acme')
+  assert.deepEqual(await config.tenants.get(tenant.id), tenant)
 } finally {
   backend.close()
 }
