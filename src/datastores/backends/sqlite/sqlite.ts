@@ -59,7 +59,7 @@ export class SqliteBackend implements Backend {
   /** Inserts one JSON record without replacing an existing ID. */
   async insert(table: string, record: DatabaseRecord): Promise<void> {
     const data = jsonString(record)
-    const parsed = parseRecord(record)
+    const parsed = parseRecord(JSON.parse(data))
     const name = this.table(table)
 
     this.db.run(`INSERT INTO ${name} (id, data) VALUES (?, ?)`, [parsed.id, data])
@@ -91,7 +91,7 @@ export class SqliteBackend implements Backend {
         const current = parseRecord(JSON.parse(row.data))
         const updated = modify(current)
         const data = jsonString(updated)
-        const parsed = parseRecord(updated)
+        const parsed = parseRecord(JSON.parse(data))
 
         if (parsed.id !== key) throw new Error('Record ID cannot change')
         this.db.run(`UPDATE ${name} SET data = ? WHERE id = ?`, [data, key])

@@ -69,6 +69,76 @@ test('SqliteBackend rejects duplicate primary keys without replacing data', asyn
   }
 })
 
+test('SqliteBackend keeps a mutable input record key consistent with its stored ID', async () => {
+  const backend = new SqliteBackend(':memory:')
+  let reads = 0
+  const input = {
+    get id() {
+      reads += 1
+
+      return reads <= 3 ? 'serialized-id' : 'later-id'
+    },
+    name: 'Example',
+  }
+
+  try {
+    const accepted = await backend.insert('items', input).then(
+      () => true,
+      () => false,
+    )
+    const selected = await backend.select('items')
+
+    if (!accepted) {
+      expect(selected).toEqual([])
+
+      return
+    }
+    expect(selected).toHaveLength(1)
+    const stored = selected[0]
+
+    if (!stored) throw new Error('Expected one stored record')
+    expect(await backend.delete('items', stored.id)).toBe(true)
+    expect(await backend.select('items')).toEqual([])
+  } finally {
+    backend.close()
+  }
+})
+
+test('SqliteBackend cannot bypass immutable IDs with a mutable modifier result', async () => {
+  const backend = new SqliteBackend(':memory:')
+  let reads = 0
+  const modified = {
+    get id() {
+      reads += 1
+
+      return reads <= 3 ? 'changed' : 'one'
+    },
+    name: 'Changed',
+  }
+
+  try {
+    const original = { id: 'one', name: 'Original' }
+
+    await backend.insert('items', original)
+    const outcome = await backend
+      .update('items', 'one', () => modified)
+      .then(
+        (record) => ({ accepted: true, record }),
+        () => ({ accepted: false, record: null }),
+      )
+    const selected = await backend.select('items')
+
+    expect(selected).toHaveLength(1)
+    expect(selected[0]?.id).toBe('one')
+    if (outcome.accepted) {
+      if (!outcome.record) throw new Error('Expected an updated record')
+      expect(selected).toEqual([outcome.record])
+    } else expect(selected).toEqual([original])
+  } finally {
+    backend.close()
+  }
+})
+
 test('SqliteBackend treats IDs and filter values as literal data', async () => {
   const backend = new SqliteBackend(':memory:')
   const literal = "' OR 1=1 --"
