@@ -286,7 +286,7 @@ test('Hedra.close invalidates saved controller references without closing a borr
   }
 })
 
-test('collection registration records endpoint metadata without adding HTTP routes', async () => {
+test('collection registration adds HTTP routes and retains custom routes', async () => {
   const app = new Hedra({ env: { ...quiet, HEDRA_SQLITE_PATH: ':memory:' } })
   const cars = new Collection('cars', Resource.extend({ make: z.string() }))
 
@@ -294,10 +294,37 @@ test('collection registration records endpoint metadata without adding HTTP rout
   app.register(cars)
   try {
     expect(cars.endpoint).toBe('/cars')
-    expect((await app.request('/cars')).status).toBe(404)
-    expect((await app.request('/cars', { method: 'POST' })).status).toBe(404)
+    expect((await app.request('/cars')).status).toBe(200)
+    expect((await app.request('/cars', { method: 'POST' })).status).toBe(415)
     expect((await app.request('/existing')).status).toBe(200)
+    app.register(new Collection('bikes', Resource.extend({ make: z.string() })))
+    expect((await app.request('/bikes')).status).toBe(200)
   } finally {
     app.close()
+  }
+})
+
+test('transaction sessions honor app closure without closing a borrowed backend', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ env: quiet, backend })
+
+  class CloseDuringTransaction extends BaseController {
+    /** Attempts to write after the app has closed within a transaction. */
+    async writeAfterClose(): Promise<void> {
+      await this.backend.transaction((transaction) => {
+        app.close()
+        transaction.insert('items', { id: 'should-not-commit' })
+      })
+    }
+  }
+  const cars = new Collection('cars', Resource.extend({ make: z.string() }), { controller: CloseDuringTransaction })
+
+  try {
+    app.register(cars)
+    await expect(cars.controller.writeAfterClose()).rejects.toThrow('closed')
+    expect(await backend.select('items')).toEqual([])
+  } finally {
+    app.close()
+    backend.close()
   }
 })

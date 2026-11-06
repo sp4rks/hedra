@@ -11,8 +11,15 @@ The definition of the shape and validity of a resource type.
 A named set of one resource type, associating its model, storage name, endpoint and controller.
 
 **Resource**:
-An identifiable item governed by a model, such as one car or tenant.
+An independently stored, identifiable item governed by a model, such as one car or tenant. A resource has its own lifetime and can be associated with other resources.
 _Avoid_: Record when referring to the application-facing item.
+
+**EmbeddedResource**:
+An identifiable item contained within another resource and sharing its lifetime. Embedded resources can themselves contain embedded resources.
+_Avoid_: ChildResource, SecondaryResource
+
+**Association**:
+A link between independently stored resources that retain their own lifetimes.
 
 **Controller**:
 A reusable handler for a collection's REST operations, including server-owned attributes and public output filtering.

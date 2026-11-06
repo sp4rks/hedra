@@ -3,6 +3,7 @@ import { expect, expectTypeOf, test } from 'bun:test'
 import {
   BadRequestError,
   ConfigurationError,
+  ConflictError,
   ConnectionError,
   ConstraintViolationError,
   DatastoreError,
@@ -14,7 +15,15 @@ import {
   RecordNotFoundError,
   TransactionError,
   UniqueViolationError,
+  UnsupportedMediaTypeError,
 } from '#errors'
+import { ErrorResponse } from '#hedra.ts'
+
+test('generated error response has a public Zod schema', () => {
+  expect(ErrorResponse.parse({ errors: [{ status: 404, title: 'record not found' }] })).toEqual({
+    errors: [{ status: 404, title: 'record not found' }],
+  })
+})
 
 test('HedraError uses status 500 and preserves its title and detail', () => {
   const detail = { reason: 'unavailable' }
@@ -31,6 +40,8 @@ const specializedErrors = [
   [OutputValidationError, 500, 'output validation error', false],
   [PreconditionFailedError, 412, 'precondition failed', false],
   [BadRequestError, 400, 'bad request', false],
+  [ConflictError, 409, 'conflict', false],
+  [UnsupportedMediaTypeError, 415, 'unsupported media type', false],
   [DatastoreError, 500, 'datastore error', true],
   [ConnectionError, 500, 'failed to connect to database', true],
   [QueryError, 500, 'database query failed', true],

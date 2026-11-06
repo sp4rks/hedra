@@ -87,6 +87,26 @@ export class BadRequestError extends HedraError {
   }
 }
 
+/** Thrown when the request conflicts with the current resource state. */
+export class ConflictError extends HedraError {
+  override status = 409
+
+  /** Creates a conflict error with the supplied title and optional detail. */
+  constructor(title = 'conflict', detail?: string | object) {
+    super(title, detail)
+  }
+}
+
+/** Thrown when a request uses an unsupported media type. */
+export class UnsupportedMediaTypeError extends HedraError {
+  override status = 415
+
+  /** Creates an unsupported media type error with the supplied title and optional detail. */
+  constructor(title = 'unsupported media type', detail?: string | object) {
+    super(title, detail)
+  }
+}
+
 /**
  * Base class for all database-related errors.
  */

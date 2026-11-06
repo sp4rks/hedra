@@ -3,10 +3,15 @@ import { z } from 'zod'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import { BaseController } from '#controllers/controller.ts'
+import { publicModel } from '#models/embedded.ts'
 import { assertResourceModel } from '#models/resource.ts'
 
 type ControllerConstructor<C extends ControllerInterface> = new (backend: Backend) => C
-type Options<C extends ControllerInterface> = { controller?: ControllerConstructor<C>; outputValidator?: z.ZodObject }
+type Options<C extends ControllerInterface> = {
+  controller?: ControllerConstructor<C>
+  outputValidator?: z.ZodObject
+  associations?: Collection[]
+}
 
 const factories = new WeakMap<object, (backend: Backend) => unknown>()
 const controllers = new WeakMap<object, unknown>()
@@ -18,10 +23,21 @@ export function isAttached(collection: object): boolean {
 
 /** Constructs and attaches the collection's selected controller. */
 export function attachCollection(collection: object, backend: Backend): void {
+  bindCollection(collection, createCollectionController(collection, backend))
+}
+
+/** Constructs a controller before any collection is attached. */
+export function createCollectionController(collection: object, backend: Backend): unknown {
   const create = factories.get(collection)
 
   if (!create) throw new TypeError('Expected a Collection')
-  controllers.set(collection, create(backend))
+
+  return create(backend)
+}
+
+/** Attaches a successfully constructed controller. */
+export function bindCollection(collection: object, controller: unknown): void {
+  controllers.set(collection, controller)
 }
 
 export class Collection<S extends z.ZodObject = z.ZodObject, C extends ControllerInterface = ControllerInterface> {
@@ -29,6 +45,7 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
   readonly model: S
   readonly endpoint: string
   readonly outputValidator: z.ZodObject
+  readonly associations: readonly Collection[]
 
   /** Defines a named resource collection and selects its controller and public output. */
   constructor(
@@ -49,12 +66,13 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
       .strictObject({
         controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
         outputValidator: z.instanceof(z.ZodObject).optional(),
+        associations: z.array(z.instanceof(Collection)).optional(),
       })
       .parse(options === undefined ? {} : options)
-    const shape = Object.fromEntries(Object.entries(model.shape).filter(([key]) => key !== 'password'))
     const selected = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
 
-    this.outputValidator = parsed.outputValidator ?? z.object(shape)
+    this.outputValidator = parsed.outputValidator ?? publicModel(model)
+    this.associations = Object.freeze(parsed.associations ?? [])
     factories.set(this, (backend) => new selected(backend))
   }
 

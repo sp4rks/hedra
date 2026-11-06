@@ -16,6 +16,17 @@ export const JsonApiResponse = z.object({ data: ResourceInput, links: ResponseLi
 
 export type JsonApiResponse = z.infer<typeof JsonApiResponse>
 
-export const JsonApiListResponse = z.object({ data: z.array(ResourceInput), links: ResponseLinks })
+export const JsonApiListResponse = z.object({
+  data: z.union([z.array(ResourceInput), z.record(z.string(), ResourceInput)]),
+  links: ResponseLinks,
+})
 
 export type JsonApiListResponse = z.infer<typeof JsonApiListResponse>
+
+export const ErrorResponse = z.object({
+  errors: z.array(
+    z.object({ status: z.number().int().min(400).max(599), title: z.string(), detail: z.json().optional() }),
+  ),
+})
+
+export type ErrorResponse = z.infer<typeof ErrorResponse>
