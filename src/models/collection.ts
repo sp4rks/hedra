@@ -1,12 +1,13 @@
 import { z } from 'zod'
 
 import type { Backend } from '#datastores/backend.ts'
+import type { Resource } from '#models/resource.ts'
 import { Controller } from '#controllers/controller.ts'
 import { assertResourceModel } from '#models/resource.ts'
 
-type ControllerConstructor<S extends z.ZodObject, C extends Controller<S>> = new (
+type ResourceData<S extends z.ZodObject> = z.output<S> & Resource
+type ControllerConstructor<S extends z.ZodObject, C extends Controller<ResourceData<S>>> = new (
   name: string,
-  model: S,
   backend: Backend,
 ) => C
 
@@ -26,7 +27,7 @@ export function attachCollection(collection: object, backend: Backend): void {
   controllers.set(collection, create(backend))
 }
 
-export class Collection<S extends z.ZodObject, C extends Controller<S> = Controller<S>> {
+export class Collection<S extends z.ZodObject, C extends Controller<ResourceData<S>> = Controller<ResourceData<S>>> {
   readonly name: string
   readonly model: S
   readonly endpoint: string
@@ -35,7 +36,7 @@ export class Collection<S extends z.ZodObject, C extends Controller<S> = Control
   constructor(
     name: string,
     model: S,
-    ...[controller]: Controller<S> extends C
+    ...[controller]: Controller<ResourceData<S>> extends C
       ? [controller?: ControllerConstructor<S, C>]
       : [controller: ControllerConstructor<S, C>]
   ) {
@@ -49,7 +50,7 @@ export class Collection<S extends z.ZodObject, C extends Controller<S> = Control
     if (controller !== undefined && typeof controller !== 'function') throw new TypeError('Expected a controller class')
     const selected = controller ?? (Controller as unknown as ControllerConstructor<S, C>)
 
-    factories.set(this, (backend) => new selected(this.name, this.model, backend))
+    factories.set(this, (backend) => new selected(this.name, backend))
   }
 
   /** Returns the controller created during registration. */

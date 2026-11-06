@@ -6,7 +6,7 @@ import { Tenant } from '#models/tenant.ts'
 export const tenantTable = 'hedra_config_tenants'
 
 export class ConfigStore {
-  readonly tenants: Controller<typeof Tenant>
+  readonly tenants: Controller<Tenant>
 
   /** Binds tenant operations to the supplied backend. */
   constructor(backend: Backend) {

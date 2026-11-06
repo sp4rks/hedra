@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0008
 ---
 
 # Resource controllers own behaviour and backends provide generic persistence

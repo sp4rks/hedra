@@ -176,10 +176,10 @@ test('a throwing controller constructor leaves the collection available for regi
   const model = Resource.extend({ make: z.string() })
   let failing = true
 
-  class CustomController extends Controller<typeof model> {
+  class CustomController extends Controller<z.output<typeof model>> {
     /** Deliberately fails the first construction. */
-    constructor(name: string, schema: typeof model, backend: Backend) {
-      super(name, schema, backend)
+    constructor(name: string, backend: Backend) {
+      super(name, backend)
       if (failing) throw new Error('constructor failed')
     }
   }

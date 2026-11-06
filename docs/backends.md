@@ -1,6 +1,6 @@
 # Storage backends
 
-The `Backend` interface persists generic JSON records in named tables. Resource controllers own Car, Tenant and other model rules. A backend knows a string primary-key ID and JSON data, with no resource-specific schema or UUID generation.
+The `Backend` interface persists generic JSON records in named tables. Controllers accept typed data and explicitly protect sensitive fields; callers run resource-model validators when needed. A backend knows a string primary-key ID and JSON data, with no resource-specific schema or UUID generation.
 
 ## Operations
 
@@ -15,7 +15,7 @@ All operations return promises. Storage data and filter types derive from the ge
 
 Tables have independent primary keys. Table names use the collection-name grammar and are validated before interpolation as quoted SQL identifiers. IDs, filter values and resource data use bound parameters. Invalid JSON and unsupported filter values reject without altering stored resources.
 
-An update modifier receives the current generic record and returns its replacement. It may not change the primary key. The modifier is not invoked when the ID is absent. A thrown error, invalid output or failed write aborts the transaction. This allows a controller to validate the complete result between reading and writing while keeping the backend model agnostic.
+An update modifier receives the current generic record and returns its replacement. It may not change the primary key. The modifier is not invoked when the ID is absent. A thrown error, invalid output or failed write aborts the transaction. This allows a controller to apply its explicit guards and business rules between reading and writing while keeping the backend model agnostic; it does not imply resource-model parsing.
 
 There are no bulk mutation, pagination, schema-migration or model-specific operations. SQLite storage errors propagate in their native form; applications decide how to handle or present them.
 
@@ -53,4 +53,4 @@ try {
 }
 ```
 
-Await outstanding work before closing the shared backend. App closure invalidates its controllers, including saved references, without closing a borrowed backend still used elsewhere. `ConfigStore` has no connection lifecycle methods. The creator closes the concrete backend once all users finish. See the [architecture decision](adr/0007-resource-controllers-and-generic-backends.md).
+Await outstanding work before closing the shared backend. App closure invalidates its controllers, including saved references, without closing a borrowed backend still used elsewhere. `ConfigStore` has no connection lifecycle methods. The creator closes the concrete backend once all users finish. See the [controller data contract](adr/0008-controller-data-contracts.md).
