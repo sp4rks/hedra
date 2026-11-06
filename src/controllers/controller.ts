@@ -4,7 +4,9 @@ import type { Backend, DatabaseRecord, DatabaseScalar } from '#datastores/backen
 import { DatabaseFilter, DatabaseRecord as RecordSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
 import { assertResourceModel, Resource } from '#models/resource.ts'
 
-type Attributes<S extends z.ZodObject> = Omit<z.input<S>, 'id'> & { id?: never }
+type Attributes<S extends z.ZodObject> = {
+  [K in keyof z.input<S> as K extends 'id' ? never : K]: z.input<S>[K]
+} & { id?: never }
 type Filter<S extends z.ZodObject> = Partial<{
   [K in keyof z.output<S> as Exclude<z.output<S>[K], undefined> extends DatabaseScalar ? K : never]: z.output<S>[K]
 }>

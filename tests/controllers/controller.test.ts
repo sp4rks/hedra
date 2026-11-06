@@ -293,6 +293,47 @@ test('resource models retain their unknown-property policy', async () => {
   }
 })
 
+test('loose and catchall models retain required input attributes', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const Loose = Resource.extend({ name: z.string() }).loose()
+  const Catchall = Resource.extend({ name: z.string() }).catchall(z.union([z.string(), z.number()]))
+  const loose = new Controller('loose-input', Loose, backend)
+  const catchall = new Controller('catchall-input', Catchall, backend)
+
+  try {
+    // @ts-expect-error Loose models still require their declared name field.
+    await expect(loose.create({})).rejects.toThrow()
+    // @ts-expect-error Catchall models still require their declared name field.
+    await expect(catchall.create({})).rejects.toThrow()
+    const first = await loose.create({ name: 'Loose', extra: { enabled: true } })
+    const second = await catchall.create({ name: 'Catchall', extra: 42 })
+
+    expect(first).toEqual({ id: first.id, name: 'Loose', extra: { enabled: true } })
+    expect(second).toEqual({ id: second.id, name: 'Catchall', extra: 42 })
+    // @ts-expect-error Replacement still requires the declared name field.
+    await expect(loose.replace(first.id, {})).rejects.toThrow()
+    // @ts-expect-error Replacement still requires the declared name field.
+    await expect(catchall.replace(second.id, {})).rejects.toThrow()
+    // @ts-expect-error The controller owns the ID even with an open model.
+    await expect(loose.create({ id: crypto.randomUUID(), name: 'Other' })).rejects.toThrow()
+    // @ts-expect-error A catchall model does not permit a caller-supplied ID.
+    await expect(catchall.create({ id: crypto.randomUUID(), name: 'Other' })).rejects.toThrow()
+    // @ts-expect-error A catchall model cannot change a resource ID.
+    await expect(catchall.update(second.id, { id: second.id })).rejects.toThrow()
+    // @ts-expect-error An open-model replacement cannot supply a resource ID.
+    await expect(loose.replace(first.id, { id: first.id, name: 'Other' })).rejects.toThrow()
+    // @ts-expect-error Catchall values must match the catchall schema.
+    await expect(catchall.create({ name: 'Other', extra: true })).rejects.toThrow()
+    expect(await loose.replace(first.id, { name: 'Loose', extra: { enabled: true } })).toEqual(first)
+    expect(await catchall.replace(second.id, { name: 'Catchall', extra: 42 })).toEqual(second)
+    expect(await catchall.update(second.id, { extra: 42 })).toEqual(second)
+    expect(await loose.get(first.id)).toEqual(first)
+    expect(await catchall.get(second.id)).toEqual(second)
+  } finally {
+    backend.close()
+  }
+})
+
 test('resource filters distinguish scalar types, null and literal punctuation', async () => {
   const backend = new SqliteBackend(':memory:')
   const Model = Resource.extend({

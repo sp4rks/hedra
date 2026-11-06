@@ -32,7 +32,13 @@ export class Collection<S extends z.ZodObject, C extends Controller<S> = Control
   readonly endpoint: string
 
   /** Defines a named resource collection and selects its controller. */
-  constructor(name: string, model: S, controller?: ControllerConstructor<S, C>) {
+  constructor(
+    name: string,
+    model: S,
+    ...[controller]: Controller<S> extends C
+      ? [controller?: ControllerConstructor<S, C>]
+      : [controller: ControllerConstructor<S, C>]
+  ) {
     this.name = z
       .string()
       .regex(/^[a-z][a-z0-9_-]*$/)

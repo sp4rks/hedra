@@ -62,6 +62,17 @@ class CarController extends Controller<typeof Car> {
   }
 }
 
+test('an explicitly typed custom controller requires its constructor', () => {
+  // @ts-expect-error A custom controller type requires the matching constructor.
+  const cars = new Collection<typeof Car, CarController>('cars', Car)
+  const base = new Collection<typeof Car, Controller<typeof Car>>('cars', Car)
+  const custom = new Collection<typeof Car, CarController>('cars', Car, CarController)
+
+  expect(() => cars.controller).toThrow('registered')
+  expect(() => base.controller).toThrow('registered')
+  expect(() => custom.controller).toThrow('registered')
+})
+
 test('registration preserves a custom controller and its additional operations', async () => {
   const app = new Hedra({ env: quiet })
   const cars = new Collection('cars', Car, CarController)
