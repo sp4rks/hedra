@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import { BaseController } from '#controllers/controller.ts'
+import { ConfigurationError, hedraError } from '#errors'
 import { publicModel } from '#models/embedded.ts'
 import { assertResourceModel } from '#models/resource.ts'
 
@@ -30,7 +31,7 @@ export function attachCollection(collection: object, backend: Backend): void {
 export function createCollectionController(collection: object, backend: Backend): unknown {
   const create = factories.get(collection)
 
-  if (!create) throw new TypeError('Expected a Collection')
+  if (!create) throw new ConfigurationError('Expected a Collection')
 
   return create(backend)
 }
@@ -55,32 +56,36 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
       ? [options?: Options<C>]
       : [options: Options<C> & { controller: ControllerConstructor<C> }]
   ) {
-    this.name = z
-      .string()
-      .regex(/^[a-z][a-z0-9_-]*$/)
-      .parse(name)
-    assertResourceModel(model)
-    this.model = model
-    this.endpoint = `/${this.name}`
-    const parsed = z
-      .strictObject({
-        controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
-        outputValidator: z.instanceof(z.ZodObject).optional(),
-        associations: z.array(z.instanceof(Collection)).optional(),
-      })
-      .parse(options === undefined ? {} : options)
-    const selected = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
+    try {
+      this.name = z
+        .string()
+        .regex(/^[a-z][a-z0-9_-]*$/)
+        .parse(name)
+      assertResourceModel(model)
+      this.model = model
+      this.endpoint = `/${this.name}`
+      const parsed = z
+        .strictObject({
+          controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
+          outputValidator: z.instanceof(z.ZodObject).optional(),
+          associations: z.array(z.instanceof(Collection)).optional(),
+        })
+        .parse(options === undefined ? {} : options)
+      const selected = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
 
-    this.outputValidator = parsed.outputValidator ?? publicModel(model)
-    this.associations = Object.freeze(parsed.associations ?? [])
-    factories.set(this, (backend) => new selected(backend))
+      this.outputValidator = parsed.outputValidator ?? publicModel(model)
+      this.associations = Object.freeze(parsed.associations ?? [])
+      factories.set(this, (backend) => new selected(backend))
+    } catch (error) {
+      throw hedraError(error, ConfigurationError)
+    }
   }
 
   /** Returns the controller created during registration. */
   get controller(): C {
     const controller = controllers.get(this)
 
-    if (!controller) throw new Error('Collection must be registered before use')
+    if (!controller) throw new ConfigurationError('Collection must be registered before use')
 
     return controller as C
   }

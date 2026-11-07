@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import { deploymentVariables } from '#config/categories/deployment.ts'
 import { serverVariables } from '#config/categories/server.ts'
-import { ConfigurationError } from '#errors'
+import { ConfigurationError, hedraError } from '#errors'
 
 const ConfigEntry = z.object({
   name: z.string(),
@@ -69,7 +69,7 @@ function overlayEnvFile(env: typeof Bun.env, path: string): boolean {
   } catch (error) {
     if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false
 
-    throw error
+    throw hedraError(error, ConfigurationError)
   }
 
   const parsed = parseEnv(content)
@@ -124,50 +124,54 @@ export class Config {
 
   /** Resolves explicit settings, an env file and defaults, in that order. */
   constructor(env: typeof Bun.env = process.env) {
-    const resolved = Environment.parse(env)
-    const envFile = resolved.HEDRA_ENV_FILE?.trim()
+    try {
+      const resolved = Environment.parse(env)
+      const envFile = resolved.HEDRA_ENV_FILE?.trim()
 
-    if (envFile) {
-      const loaded = overlayEnvFile(resolved, envFile)
+      if (envFile) {
+        const loaded = overlayEnvFile(resolved, envFile)
 
-      if (!loaded && env === process.env) overlayEnvFile(resolved, '.env')
-    } else if (env === process.env) {
-      overlayEnvFile(resolved, '.env')
-    }
-
-    const input: Record<string, string | number | boolean> = {}
-    const displayValues: Record<string, string> = {}
-    const sources: Record<string, 'environ' | 'default'> = {}
-
-    for (const [variable, entry] of Object.entries(defaults)) {
-      const environmentValue = resolved[variable]?.trim()
-      const fromEnvironment = environmentValue !== undefined && environmentValue !== ''
-      const raw = fromEnvironment ? environmentValue : entry.default
-      let value: string | number | boolean = raw
-
-      if (fromEnvironment && typeof entry.default === 'number') value = Number(raw)
-      if (fromEnvironment && typeof entry.default === 'boolean') {
-        if (raw === 'true') value = true
-        else if (raw === 'false') value = false
+        if (!loaded && env === process.env) overlayEnvFile(resolved, '.env')
+      } else if (env === process.env) {
+        overlayEnvFile(resolved, '.env')
       }
 
-      input[entry.name] = value
-      displayValues[entry.name] = String(raw)
-      sources[entry.name] = fromEnvironment ? 'environ' : 'default'
-    }
-
-    const values = validateConfig(input, displayValues)
-
-    Object.assign(this, values)
-
-    if (!values.serverSilentStartup) {
-      printConfigHeader()
+      const input: Record<string, string | number | boolean> = {}
+      const displayValues: Record<string, string> = {}
+      const sources: Record<string, 'environ' | 'default'> = {}
 
       for (const [variable, entry] of Object.entries(defaults)) {
-        printConfigRow(variable, String(Reflect.get(values, entry.name)), sources[entry.name] ?? 'default')
+        const environmentValue = resolved[variable]?.trim()
+        const fromEnvironment = environmentValue !== undefined && environmentValue !== ''
+        const raw = fromEnvironment ? environmentValue : entry.default
+        let value: string | number | boolean = raw
+
+        if (fromEnvironment && typeof entry.default === 'number') value = Number(raw)
+        if (fromEnvironment && typeof entry.default === 'boolean') {
+          if (raw === 'true') value = true
+          else if (raw === 'false') value = false
+        }
+
+        input[entry.name] = value
+        displayValues[entry.name] = String(raw)
+        sources[entry.name] = fromEnvironment ? 'environ' : 'default'
       }
 
-      process.stdout.write('\nSee src/server/config/categories/ for defaults and descriptions.\n\n')
+      const values = validateConfig(input, displayValues)
+
+      Object.assign(this, values)
+
+      if (!values.serverSilentStartup) {
+        printConfigHeader()
+
+        for (const [variable, entry] of Object.entries(defaults)) {
+          printConfigRow(variable, String(Reflect.get(values, entry.name)), sources[entry.name] ?? 'default')
+        }
+
+        process.stdout.write('\nSee src/server/config/categories/ for defaults and descriptions.\n\n')
+      }
+    } catch (error) {
+      throw hedraError(error, ConfigurationError)
     }
   }
 }

@@ -9,7 +9,7 @@ import type { EmbeddedScope, EmbeddedStep } from '#models/scope.ts'
 import { assertAssociationScope } from '#controllers/associations.ts'
 import { project } from '#controllers/projection.ts'
 import { validateCandidate } from '#controllers/validation.ts'
-import { ConflictError, InputValidationError, RecordNotFoundError } from '#errors'
+import { ConflictError, HedraError, InputValidationError, RecordNotFoundError } from '#errors'
 import { embeddedFields } from '#models/embedded.ts'
 import { ResourceInput as InputSchema } from '#models/rest.ts'
 import { getAssociationScope } from '#models/scope.ts'
@@ -171,7 +171,7 @@ export async function embeddedId(
   const root = await rootRecord(backend, collection, context, scope)
   const step = scope.steps.at(-1)
 
-  if (!step) throw new Error('Missing embedded route')
+  if (!step) throw new HedraError('Missing embedded route')
   selected(parentOf(root, scope.steps).parent, step)
   const visible = project(collection, root)
   const data = InputSchema.parse(selected(parentOf(visible, scope.steps).parent, step))
@@ -191,7 +191,7 @@ export async function embeddedList(
   const root = await rootRecord(backend, collection, context, scope)
   const step = scope.steps.at(-1)
 
-  if (!step) throw new Error('Missing embedded route')
+  if (!step) throw new HedraError('Missing embedded route')
   const stored = parentOf(root, scope.steps).parent[step.field.name]
   const visible = parentOf(project(collection, root), scope.steps).parent[step.field.name]
   const matches = (item: unknown) => Object.entries(filter).every(([key, value]) => object(item)[key] === value)
@@ -228,7 +228,7 @@ export async function embeddedMutate(
 ): Promise<JsonApiResponse | undefined> {
   const step = scope.steps.at(-1)
 
-  if (!step) throw new Error('Missing embedded route')
+  if (!step) throw new HedraError('Missing embedded route')
   let data: ResourceInput | undefined
   let selector = step.selector
   const modify = (record: DatabaseRecord): DatabaseRecord => {
@@ -243,7 +243,7 @@ export async function embeddedMutate(
 
       if (step.field.kind === 'array') {
         if (current !== undefined && current !== null && !Array.isArray(current))
-          throw new Error('Invalid embedded array')
+          throw new HedraError('Invalid embedded array')
         set(parent, step.field.name, [...(Array.isArray(current) ? current : []), created])
         selector = created.id
       } else if (step.field.kind === 'dictionary') {
@@ -314,7 +314,7 @@ export async function embeddedMutate(
 
   if (!result) throw new RecordNotFoundError()
   if (operation === 'delete') return undefined
-  if (!data) throw new Error('Embedded update did not return public data')
+  if (!data) throw new HedraError('Embedded update did not return public data')
 
   return { data, links: { self: itemLink(context, step.field, operation === 'create' ? selector : undefined) } }
 }
