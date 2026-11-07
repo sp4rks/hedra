@@ -92,11 +92,13 @@ export class Hedra extends Hono {
    * also blocks subsequent session operations.
    */
   private guard(backend: Backend): Backend {
+    /** Blocks operations after closure while keeping transaction sessions synchronous. */
     const guarded = <T>(operation: () => T): T => {
       if (this.closed) throw new ConnectionError('Datastore connection is closed')
 
       return operation()
     }
+    /** Turns synchronous guard and dependency failures into rejected backend promises. */
     const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> => guarded(operation)
 
     return {
