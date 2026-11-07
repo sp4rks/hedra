@@ -162,32 +162,38 @@ export class SqliteBackend implements Backend {
     return this.deleteRecord(table, id)
   }
 
-  /** Runs synchronous record operations in one immediate transaction. */
+  /**
+   * Runs synchronous record operations atomically in one immediate transaction.
+   * The backend API returns a promise, but callbacks and session methods must stay
+   * synchronous. SQLite commits on success and rolls back on failure; saved sessions
+   * expire when the transaction finishes.
+   */
   async transaction<T>(work: (transaction: BackendTransaction) => T): Promise<T> {
     try {
       if (this.inTransaction) throw new TransactionError('Nested transactions are not supported')
       this.inTransaction = true
-      let active = true
-      const check = () => {
-        if (!active) throw new TransactionError('Transaction is no longer active')
+      let sessionActive = true
+      /** Rejects session operations after the transaction finishes. */
+      const assertSessionActive = () => {
+        if (!sessionActive) throw new TransactionError('Transaction is no longer active')
       }
-      const transaction: BackendTransaction = {
+      const session: BackendTransaction = {
         insert: (table, record) => {
-          check()
+          assertSessionActive()
           this.insertRecord(table, record)
         },
         select: (table, filter) => {
-          check()
+          assertSessionActive()
 
           return this.selectRecords(table, filter)
         },
         update: (table, id, modify) => {
-          check()
+          assertSessionActive()
 
           return this.updateRecord(table, id, modify)
         },
         delete: (table, id) => {
-          check()
+          assertSessionActive()
 
           return this.deleteRecord(table, id)
         },
@@ -196,13 +202,14 @@ export class SqliteBackend implements Backend {
       try {
         return this.db
           .transaction(() => {
-            const result = work(transaction)
+            const result = work(session)
 
             if (
               result !== null &&
               (typeof result === 'object' || typeof result === 'function') &&
               typeof Reflect.get(result, 'then') === 'function'
             ) {
+              // Consume a later rejection while throwing now to roll back the transaction.
               Promise.resolve(result).catch(() => {})
               throw new TransactionError('Transaction callbacks must be synchronous')
             }
@@ -211,7 +218,7 @@ export class SqliteBackend implements Backend {
           })
           .immediate()
       } finally {
-        active = false
+        sessionActive = false
         this.inTransaction = false
       }
     } catch (error) {

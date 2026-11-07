@@ -56,8 +56,8 @@ tests/          mirrors src/
 
 ## Readability
 
-- Prefer straightforward control flow. Separate logical steps with blank lines, and name intermediate values when it clarifies intent.
-- Give every named function and method a doc comment saying what it does. Other comments explain intent, constraints or surprising decisions, in complete sentences.
+- Prioritise readability, then conciseness. Use names that reveal what values contain. Prefer straightforward control flow, separate logical steps with blank lines and name intermediate values when it clarifies intent.
+- Give named functions and methods, including nested helpers, a purpose comment. Explain non-obvious ordering, ownership, lifecycle and synchronous/asynchronous constraints where relevant, in complete sentences. Keep comments on straightforward functions brief.
 - Log through Hedra's `LoggerInterface`, never `console`, and never log secrets or tenant data. Pino is the default adapter.
 
 ## Tests

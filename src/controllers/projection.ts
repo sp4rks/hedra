@@ -15,7 +15,11 @@ function isObject(value: unknown): value is ObjectValue {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-/** Ensures projected identities still identify the same stored resources. */
+/**
+ * Ensures projected resources keep their stored identities. Output may hide fields
+ * or filter and reorder arrays; each retained dictionary key must still identify
+ * the same resource. Root IDs are checked when exposed; embedded IDs must match.
+ */
 function assertIdentities(model: z.ZodObject, original: ObjectValue, visible: ObjectValue, embedded = false): void {
   if ((embedded || Object.hasOwn(visible, 'id')) && original.id !== visible.id) {
     throw new OutputValidationError('Output changed resource identity')
@@ -30,32 +34,34 @@ function assertIdentities(model: z.ZodObject, original: ObjectValue, visible: Ob
     if (field.kind === 'array') {
       if (!Array.isArray(stored) || !Array.isArray(value))
         throw new OutputValidationError('Output changed embedded identity')
-      const items = new Map<unknown, ObjectValue>()
+      const storedItemsById = new Map<unknown, ObjectValue>()
 
       for (const item of stored) {
-        if (!isObject(item) || typeof item.id !== 'string' || items.has(item.id)) {
+        if (!isObject(item) || typeof item.id !== 'string' || storedItemsById.has(item.id)) {
           throw new OutputValidationError('Invalid stored embedded identity')
         }
-        items.set(item.id, item)
+        storedItemsById.set(item.id, item)
       }
-      const seen = new Set<unknown>()
+      const projectedIds = new Set<unknown>()
 
       for (const item of value) {
-        if (!isObject(item) || seen.has(item.id)) throw new OutputValidationError('Output changed embedded identity')
-        const match = items.get(item.id)
+        if (!isObject(item) || projectedIds.has(item.id))
+          throw new OutputValidationError('Output changed embedded identity')
+        const storedItem = storedItemsById.get(item.id)
 
-        if (!match) throw new OutputValidationError('Output changed embedded identity')
-        seen.add(item.id)
-        assertIdentities(field.model, match, item, true)
+        if (!storedItem) throw new OutputValidationError('Output changed embedded identity')
+        projectedIds.add(item.id)
+        assertIdentities(field.model, storedItem, item, true)
       }
     } else if (field.kind === 'dictionary') {
       if (!isObject(stored) || !isObject(value)) throw new OutputValidationError('Output changed embedded identity')
 
       for (const [key, item] of Object.entries(value)) {
-        const match = Object.hasOwn(stored, key) ? stored[key] : undefined
+        const storedItem = Object.hasOwn(stored, key) ? stored[key] : undefined
 
-        if (!isObject(match) || !isObject(item)) throw new OutputValidationError('Output changed embedded identity')
-        assertIdentities(field.model, match, item, true)
+        if (!isObject(storedItem) || !isObject(item))
+          throw new OutputValidationError('Output changed embedded identity')
+        assertIdentities(field.model, storedItem, item, true)
       }
     } else {
       if (!isObject(stored) || !isObject(value)) throw new OutputValidationError('Output changed embedded identity')
@@ -79,19 +85,28 @@ export function jsonString(value: unknown, ErrorClass: typeof HedraError = Input
   }
 }
 
-/** Applies the collection's validator to declared public keys only. */
+/**
+ * Projects declared public keys through the output validator. The clone protects
+ * stored data from transforms; selecting keys before and after parsing limits exposure.
+ * JSON and identity checks ensure the projected result remains valid and addressable.
+ */
 export function project(collection: Collection, record: DatabaseRecord): ResourceInput {
   try {
-    const keys = Object.keys(collection.outputValidator.shape)
-    const input = Object.fromEntries(keys.filter((key) => Object.hasOwn(record, key)).map((key) => [key, record[key]]))
+    const publicKeys = Object.keys(collection.outputValidator.shape)
+    const input = Object.fromEntries(
+      publicKeys.filter((key) => Object.hasOwn(record, key)).map((key) => [key, record[key]]),
+    )
     const parsed = collection.outputValidator.parse(structuredClone(input))
-    const output = Object.fromEntries(keys.filter((key) => Object.hasOwn(parsed, key)).map((key) => [key, parsed[key]]))
-    const stored: unknown = JSON.parse(jsonString(output, OutputValidationError))
-    const validated = InputSchema.parse(stored)
+    const output = Object.fromEntries(
+      publicKeys.filter((key) => Object.hasOwn(parsed, key)).map((key) => [key, parsed[key]]),
+    )
+    const jsonOutput: unknown = JSON.parse(jsonString(output, OutputValidationError))
+    const validated = InputSchema.parse(jsonOutput)
 
     assertIdentities(collection.model, record, validated)
 
-    return { ...validated, ...(stored as ResourceInput) }
+    // Preserve literal JSON property names that the schema parser may omit.
+    return { ...validated, ...(jsonOutput as ResourceInput) }
   } catch (error) {
     throw hedraError(error, OutputValidationError)
   }
