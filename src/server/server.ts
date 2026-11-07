@@ -78,30 +78,30 @@ export class Hedra extends Hono {
     return this.datastore
   }
 
-  /** Prevents a closed app's controllers from using a borrowed backend. */
+  /**
+   * Wraps the backend so controllers stop using it after this app closes.
+   * Injected backends remain open for their owners, so saved controllers need
+   * this app's closed-state check on every call. Existing Hedra errors are
+   * preserved; other failures become DatastoreError with the original cause.
+   *
+   * Backend calls are asynchronous, but transaction callbacks and session methods
+   * stay synchronous. Guard each layer so closing the app during a transaction
+   * also blocks subsequent session operations.
+   */
   private guard(backend: Backend): Backend {
-    const check = () => {
-      if (this.closed) throw new ConnectionError('Datastore connection is closed')
-    }
-
     const guarded = <T>(operation: () => T): T => {
       try {
-        check()
+        if (this.closed) throw new ConnectionError('Datastore connection is closed')
 
         return operation()
       } catch (error) {
         throw hedraError(error, DatastoreError)
       }
     }
-    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> => {
-      try {
-        check()
-
-        return await operation()
-      } catch (error) {
+    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> =>
+      guarded(operation).catch((error) => {
         throw hedraError(error, DatastoreError)
-      }
-    }
+      })
 
     return {
       insert: (...args) => guardedAsync(() => backend.insert(...args)),
@@ -132,13 +132,21 @@ export class Hedra extends Hono {
       if (this.collections.has(collection.name))
         throw new ConfigurationError(`Collection already registered: ${collection.name}`)
 
-      const names = new Map(this.collections)
+      const collectionsByName = new Map(this.collections)
       const pending: Collection[] = []
       const visiting = new Set<Collection>()
 
+      /**
+       * Validates a collection and its association graph, queuing targets before their source.
+       * This pass only changes local state; controllers and routes are created after
+       * every reachable collection passes validation.
+       *
+       * The visiting set tracks the current recursion chain. Check it before reusing a
+       * known collection so a cycle cannot be mistaken for a shared association target.
+       */
       const visit = (candidate: Collection): void => {
         if (visiting.has(candidate)) throw new ConfigurationError('Cyclic association definitions are not supported')
-        const known = names.get(candidate.name)
+        const known = collectionsByName.get(candidate.name)
 
         if (known && known !== candidate)
           throw new ConfigurationError(`Collection already registered: ${candidate.name}`)
@@ -149,18 +157,18 @@ export class Hedra extends Hono {
 
         checkRoutes(candidate.model, candidate.outputValidator)
 
-        const fields = new Set(embeddedFields(candidate.model).map((field) => field.name))
-        const targets = new Set<string>()
+        const embeddedNames = new Set(embeddedFields(candidate.model).map((field) => field.name))
+        const associationNames = new Set<string>()
 
-        if (candidate.associations.length && fields.has('associations'))
+        if (candidate.associations.length && embeddedNames.has('associations'))
           throw new ConfigurationError('Embedded path is reserved')
 
         for (const target of candidate.associations) {
-          if (fields.has(target.name) || targets.has(target.name))
+          if (embeddedNames.has(target.name) || associationNames.has(target.name))
             throw new ConfigurationError(`Ambiguous association path: ${target.name}`)
-          targets.add(target.name)
+          associationNames.add(target.name)
         }
-        names.set(candidate.name, candidate)
+        collectionsByName.set(candidate.name, candidate)
         visiting.add(candidate)
 
         for (const target of candidate.associations) visit(target)
