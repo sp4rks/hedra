@@ -1,5 +1,7 @@
 # Keep configuration loading inside its concrete class
 
+Status: implemented and independently reviewed; awaiting user approval to merge into `main`.
+
 ## Accepted scope and design
 
 The user requested removing the merged `Config` interface and making `printConfigHeader`, `overlayEnvFile` and `validateConfig` class functions. Category definitions remain the single source of truth, with Zod validation, native values, exact readonly types and `new Config()` retained.
@@ -22,3 +24,12 @@ This changes ADR 0021's interface-merging detail. ADR 0022 supersedes that detai
 The lead owns design, this brief, test boundaries, documentation and acceptance. The configured coder owns `src/server/config.ts`, `tests/server/config.test.ts` and `tests/server/config-class.test.ts` in `.worktrees/config-class-helpers`. No other production callers require changes: the only standalone helper caller outside this module is its direct internal test. The lead updates `docs/` on a separate `feature/config-class-helpers-docs` branch/worktree while implementation proceeds, using the previously established house/docs-style substitute for the unavailable `user-docs` skill.
 
 After implementation, merge docs into the feature branch, verify the result and request the configured reviewer. Any confirmed findings return to the same coder. Leave `main` unchanged until the user approves this completed change.
+
+## Verification results
+
+- The focused configuration baseline passed before editing: 35 tests and 131 assertions. Implementation commit `da8b48e` preserves the constructor's runtime identity and exact inferred readonly types, moves all four helpers into private static methods and removes the interface/lint suppression. The single direct test of the now-private validation helper was removed; constructor validation coverage remains.
+- `bun run check` passed on integrated code/docs revision `b45f779`: TypeScript, Biome and 237 tests with 948 assertions. Existing loopback/subprocess tests ran outside the filesystem sandbox.
+- The lead independently added only a numeric category entry in a disposable source copy. TypeScript and two constructor tests passed default `7`, trimmed override `12`, invalid `0` with the environment-variable name, runtime class identity and an exact readonly number instance property. No temporary setting was committed.
+- Documented construction, Hedra injection and runtime class identity passed. Updated documentation links resolve and `git diff --check` passed.
+- Independent read-only review of `c78145e..b45f779` found no actionable issues, including the local constructor assertion, static helper moves and documentation newcomer pass. The reviewer independently passed TypeScript, Biome, 11 tests with 26 assertions and the documented construction/injection/identity example.
+- `main` remains unchanged at `c78145e` until merge approval. The constructor assertion describes dynamically assigned fields; runtime construction tests cover that initialization, while readonly remains a TypeScript guarantee.
