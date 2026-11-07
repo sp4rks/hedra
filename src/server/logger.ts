@@ -1,13 +1,25 @@
 import type { Writable } from 'node:stream'
 import type { Logger as NativePinoLogger } from 'pino'
 import pino from 'pino'
+import { z } from 'zod'
 
 import pretty from 'pino-pretty'
 
-import type { LoggerInterface } from '#server/logging/logging.ts'
 import { Config } from '#config'
 import { HedraError, hedraError, parseInput } from '#errors'
-import { LogFields } from '#server/logging/logging.ts'
+
+export const LogFields = z.record(z.string(), z.unknown())
+
+export type LogFields = z.infer<typeof LogFields>
+
+export interface LoggerInterface {
+  trace(message: string, fields?: LogFields): void
+  debug(message: string, fields?: LogFields): void
+  info(message: string, fields?: LogFields): void
+  warn(message: string, fields?: LogFields): void
+  error(message: string, fields?: LogFields): void
+  fatal(message: string, fields?: LogFields): void
+}
 
 /** Creates the default logging adapter. */
 export class Logger implements LoggerInterface {
