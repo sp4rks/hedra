@@ -23,10 +23,13 @@ const defaults = {
   ...serverVariables,
 }
 
+// ConfigEntry has a broad string name and generic schema; the category definitions retain
+// literal names and precise schema types.
 type ConfigShape = {
   [Entry in (typeof defaults)[keyof typeof defaults] as Entry['name']]: Entry['schema']
 }
 
+// Object.fromEntries loses the name-to-schema relationship, so ConfigShape restores it from the same definitions.
 export const ConfigValues = z.object(
   Object.fromEntries(Object.values(defaults).map((entry) => [entry.name, entry.schema])) as ConfigShape,
 )
