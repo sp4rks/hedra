@@ -80,7 +80,7 @@ const logger = new Logger()
 logger.info('Logger configured')
 ```
 
-With no configuration argument, `Logger` constructs a `Config` that loads the process environment, environment files and defaults, including the startup report unless suppressed. Supply an existing `Config` to reuse its loaded settings. Library selection is separate from output format: `HEDRA_SERVER_LOG_LIBRARY=pino` works with either `json` or `pretty` output. `pretty` is not a valid library name.
+With no configuration argument, `Logger` constructs a `Config` that reads Bun's already-loaded environment, applies defaults and prints the startup report unless suppressed. Supply an existing `Config` to reuse its loaded settings. Library selection is separate from output format: `HEDRA_SERVER_LOG_LIBRARY=pino` works with either `json` or `pretty` output. `pretty` is not a valid library name.
 
 ## Standalone destinations
 

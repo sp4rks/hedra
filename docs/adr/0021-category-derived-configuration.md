@@ -9,3 +9,5 @@ Category entries already describe each setting, but separately listing their sch
 The generated schema shape needs a local type assertion because `Object.fromEntries` does not retain the relationship between an entry's property name and its schema. Those entries are trusted source code; loaded configuration still passes through Zod during construction. A merged interface carries the inferred class properties, with a local lint suppression documenting that the constructor assigns the complete parsed output. Readonly properties remain a TypeScript guarantee, and subclasses may initialize additional state.
 
 This supersedes the per-property declaration detail of [ADR 0004](0004-schema-derived-config-class.md). Config-owned environment loading and validation during construction remain as recorded in [ADR 0014](0014-config-owned-environment-loading.md) and [ADR 0017](0017-validate-config-on-load.md).
+
+The interface-merging detail is superseded by [ADR 0022](0022-concrete-config-class.md). Category definitions remain the single source of truth.
