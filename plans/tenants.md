@@ -1,5 +1,7 @@
 # Tenant catalogue and REST API
 
+The subsequent [explicit-validation follow-up](explicit-validation-errors.md) revises error handling throughout this feature: expected failures use explicit validation errors, and unexpected failures propagate unchanged. The branch remains unmerged at the user's request.
+
 ## Behaviour and scope
 
 Use the archived Multi21 tenant controller, domain model and collection registration as a design guide. Tenant definitions already live in Hedra's configuration datastore. Expose that catalogue automatically through `GET /tenants`, `POST /tenants`, and `GET`, `PATCH`, `DELETE /tenants/:id` without registering an application collection or opening its backend.
