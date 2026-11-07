@@ -1,7 +1,7 @@
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend, BackendTransaction, RecordModifier } from '#datastores/backend.ts'
 import type { ConfigDatastore, ConfigStoreOptions } from '#datastores/categories/config/config.ts'
-import type { LogFields, LoggerInterface } from '#server/logging/logger.ts'
+import type { LogFields, LoggerInterface } from '#server/logger.ts'
 import type { HedraOptions } from '#server/server.ts'
 import { Config } from '#config'
 import { BaseController } from '#controllers/controller.ts'
@@ -16,7 +16,7 @@ import { EmbeddedResource, Resource } from '#models/resource.ts'
 import { ErrorResponse, JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { AssociationScope, EmbeddedScope, EmbeddedStep, getAssociationScope, getEmbeddedScope } from '#models/scope.ts'
 import { Tenant } from '#models/tenant.ts'
-import { Logger } from '#server/logging/logger.ts'
+import { Logger } from '#server/logger.ts'
 import { Hedra } from '#server/server.ts'
 
 export type {

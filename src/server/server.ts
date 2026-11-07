@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
-import type { LoggerInterface } from '#server/logging/logger.ts'
+import type { LoggerInterface } from '#server/logger.ts'
 import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
@@ -13,7 +13,7 @@ import { ConfigurationError, ConnectionError, DatastoreError, HedraError, hedraE
 import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
-import { Logger } from '#server/logging/logger.ts'
+import { Logger } from '#server/logger.ts'
 
 export type HedraOptions = {
   config?: Config
