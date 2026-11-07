@@ -85,6 +85,8 @@ assert.throws(() => validateTenant({ name: '', tenantDomain: 'acme.hedra.local' 
 
 Do not add a `try/catch` merely to turn every thrown value into a Hedra error. Unexpected failures retain their original identity, type, stack and any native cause. An existing Hedra error also passes through unchanged. A thrown exception inside a custom refinement or transform is unexpected; `safeParse` does not turn that exception into a validation result. Direct programmatic callers handle the errors relevant to their operation and cannot assume every failure is a `HedraError`.
 
+Native JSON serialisation failures also propagate: programmatic values containing cycles or `BigInt` can throw a native `TypeError` before schema validation. They are still rejected before persistence; there is no additional cycle-aware validator.
+
 Keep catches that perform useful recovery, translate malformed JSON into an expected request error, or form a safe HTTP response. Keep transaction rollback, session invalidation and connection cleanup even when removing normalising catches. For example, a callback failure propagates unchanged and rolls back its writes:
 
 ```ts
