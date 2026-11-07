@@ -19,29 +19,21 @@ export type ConfigDefinitions = z.infer<typeof ConfigDefinitions>
 
 export const Environment = z.record(z.string(), z.string().optional())
 
-export const ConfigValues = z.object({
-  deploymentDomain: deploymentVariables.HEDRA_DEPLOYMENT_DOMAIN.schema,
-  deploymentApiDomain: deploymentVariables.HEDRA_DEPLOYMENT_API_DOMAIN.schema,
-  deploymentDocsDomain: deploymentVariables.HEDRA_DEPLOYMENT_DOCS_DOMAIN.schema,
-  sqlitePath: serverVariables.HEDRA_SQLITE_PATH.schema,
-  serverEnv: serverVariables.HEDRA_SERVER_ENV.schema,
-  serverSilentStartup: serverVariables.HEDRA_SERVER_SILENT_STARTUP.schema,
-  serverLogLibrary: serverVariables.HEDRA_SERVER_LOG_LIBRARY.schema,
-  serverLogFormat: serverVariables.HEDRA_SERVER_LOG_FORMAT.schema,
-  serverLogLevel: serverVariables.HEDRA_SERVER_LOG_LEVEL.schema,
-  serverHttpLogEnabled: serverVariables.HEDRA_SERVER_HTTP_LOGGING.schema,
-  serverPrintRoutes: serverVariables.HEDRA_SERVER_PRINT_ROUTES.schema,
-  serverListenIp: serverVariables.HEDRA_SERVER_LISTEN_IP.schema,
-  serverListenPort: serverVariables.HEDRA_SERVER_LISTEN_PORT.schema,
-  serverRequestTimeout: serverVariables.HEDRA_SERVER_REQUEST_TIMEOUT.schema,
-})
-
-export type ConfigValues = z.infer<typeof ConfigValues>
-
-const defaults: ConfigDefinitions = {
+const defaults = {
   ...deploymentVariables,
   ...serverVariables,
 }
+
+type ConfigShape = {
+  [Entry in (typeof defaults)[keyof typeof defaults] as Entry['name']]: Entry['schema']
+}
+
+export const ConfigValues = z.object(
+  Object.fromEntries(Object.values(defaults).map((entry) => [entry.name, entry.schema])) as ConfigShape,
+)
+
+export type ConfigValues = z.infer<typeof ConfigValues>
+
 const columnWidth = 50
 
 /** Prints the startup configuration table heading. */
@@ -105,23 +97,11 @@ export function validateConfig(input: unknown, displayValues?: Record<string, st
   return result.data
 }
 
-/** Loads and validates Hedra's deployment and server configuration. */
-export class Config {
-  declare readonly deploymentDomain: ConfigValues['deploymentDomain']
-  declare readonly deploymentApiDomain: ConfigValues['deploymentApiDomain']
-  declare readonly deploymentDocsDomain: ConfigValues['deploymentDocsDomain']
-  declare readonly sqlitePath: ConfigValues['sqlitePath']
-  declare readonly serverEnv: ConfigValues['serverEnv']
-  declare readonly serverSilentStartup: ConfigValues['serverSilentStartup']
-  declare readonly serverLogLibrary: ConfigValues['serverLogLibrary']
-  declare readonly serverLogFormat: ConfigValues['serverLogFormat']
-  declare readonly serverLogLevel: ConfigValues['serverLogLevel']
-  declare readonly serverHttpLogEnabled: ConfigValues['serverHttpLogEnabled']
-  declare readonly serverPrintRoutes: ConfigValues['serverPrintRoutes']
-  declare readonly serverListenIp: ConfigValues['serverListenIp']
-  declare readonly serverListenPort: ConfigValues['serverListenPort']
-  declare readonly serverRequestTimeout: ConfigValues['serverRequestTimeout']
+export interface Config extends Readonly<ConfigValues> {}
 
+/** Loads and validates Hedra's deployment and server configuration. */
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: The constructor assigns all validated values.
+export class Config {
   /** Resolves explicit settings, an env file and defaults, in that order. */
   constructor(env: typeof Bun.env = process.env) {
     try {

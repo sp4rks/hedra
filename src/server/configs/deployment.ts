@@ -24,4 +24,4 @@ export const deploymentVariables = {
     description: 'The domain name that will be used for the docs API',
     schema: z.string().regex(z.regexes.domain),
   },
-} satisfies ConfigDefinitions
+} as const satisfies ConfigDefinitions
