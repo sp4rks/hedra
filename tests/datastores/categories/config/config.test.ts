@@ -15,7 +15,7 @@ test('ConfigStore uses supplied configuration to persist tenants', async () => {
   let second: ConfigStore | undefined
 
   try {
-    const tenant = await first.tenants.create({ name: 'Acme' })
+    const tenant = await first.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     first.close()
     second = new ConfigStore({ config })
@@ -36,7 +36,7 @@ test('ConfigStore borrows its supplied backend even when the configured path is 
   const app = new Hedra({ config, backend })
 
   try {
-    const tenant = await first.tenants.create({ name: 'Acme' })
+    const tenant = await first.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     first.close()
     first.close()
@@ -62,7 +62,7 @@ test('ConfigStore accepts and borrows a directly supplied backend', async () => 
   process.env.HEDRA_SQLITE_PATH = dir
   try {
     store = new ConfigStore(backend)
-    const tenant = await store.tenants.create({ name: 'Acme' })
+    const tenant = await store.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     store.close()
     expect(await observer.tenants.get(tenant.id)).toEqual(tenant)
@@ -76,19 +76,20 @@ test('ConfigStore accepts and borrows a directly supplied backend', async () => 
   }
 })
 
-test('ConfigStore exposes tenant resource operations through the generic controller', async () => {
+test('ConfigStore exposes validated tenant resource operations', async () => {
   const backend = new SqliteBackend(':memory:')
   const config = new ConfigStore({ backend })
   const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
 
   try {
-    const tenant = await config.tenants.create(TenantInput.parse({ name: ' Acme ' }))
+    const tenant = await config.tenants.create(TenantInput.parse({ name: ' Acme ', tenantDomain: 'acme.hedra.local' }))
 
     expect(Tenant.parse(tenant)).toEqual({
       id: tenant.id,
       createdAt: tenant.createdAt,
       updatedAt: tenant.createdAt,
       name: 'Acme',
+      tenantDomain: 'acme.hedra.local',
     })
     expect(await config.tenants.get(tenant.id)).toEqual(tenant)
     expect(await config.tenants.update(tenant.id, TenantInput.partial().parse({ name: ' New name ' }))).toEqual({
@@ -96,24 +97,26 @@ test('ConfigStore exposes tenant resource operations through the generic control
       createdAt: tenant.createdAt,
       updatedAt: expect.any(String),
       name: 'New name',
+      tenantDomain: 'acme.hedra.local',
     })
-    expect(await config.tenants.replace(tenant.id, { name: 'Replacement' })).toEqual({
+    expect(await config.tenants.replace(tenant.id, { name: 'Replacement', tenantDomain: 'acme.hedra.local' })).toEqual({
       id: tenant.id,
       createdAt: tenant.createdAt,
       updatedAt: expect.any(String),
       name: 'Replacement',
+      tenantDomain: 'acme.hedra.local',
     })
-    const unchecked = await config.tenants.create({ name: ' ' })
-
-    expect(unchecked).toEqual({
-      id: unchecked.id,
-      createdAt: unchecked.createdAt,
-      updatedAt: unchecked.createdAt,
-      name: ' ',
+    await expect(config.tenants.create({ name: ' ', tenantDomain: 'other.hedra.local' })).rejects.toMatchObject({
+      status: 422,
     })
     expect(await config.tenants.list()).toEqual([
-      { id: tenant.id, createdAt: tenant.createdAt, updatedAt: expect.any(String), name: 'Replacement' },
-      unchecked,
+      {
+        id: tenant.id,
+        createdAt: tenant.createdAt,
+        updatedAt: expect.any(String),
+        name: 'Replacement',
+        tenantDomain: 'acme.hedra.local',
+      },
     ])
     expect(await config.tenants.delete(tenant.id)).toBe(true)
     expect(await config.tenants.get(tenant.id)).toBeNull()
@@ -135,7 +138,7 @@ test('ConfigStore instances share tenant storage and remain separate from app re
     app.post('/manual/cars', async (context) =>
       context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
     )
-    const tenant = await first.tenants.create({ name: 'Acme' })
+    const tenant = await first.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
     const car = Car.parse(
       JsonApiResponse.parse(await (await app.request('/manual/cars', { method: 'POST' })).json()).data,
     )
@@ -154,7 +157,7 @@ test('application registration rejects the reserved tenant table without changin
   const app = new Hedra({ config: new Config(quiet), backend })
 
   try {
-    const tenant = await config.tenants.create({ name: 'Acme' })
+    const tenant = await config.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
     const collection = new Collection('hedra_config_tenants', Resource.extend({ name: z.string() }))
 
     expect(() => app.register(collection)).toThrow('reserved')
@@ -180,7 +183,7 @@ test('closing a shared backend ends access for every store using it', async () =
   backend.close()
 
   try {
-    await expect(config.tenants.create({ name: 'Acme' })).rejects.toThrow()
+    await expect(config.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })).rejects.toThrow()
     expect((await app.request('/manual/cars', { method: 'POST' })).status).toBe(500)
   } finally {
     app.close()

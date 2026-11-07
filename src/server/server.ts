@@ -7,11 +7,13 @@ import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
 import type { LoggerInterface } from '#server/logger.ts'
 import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
+import { TenantController } from '#controllers/tenant-controller.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore, tenantTable } from '#datastores/categories/config/config.ts'
 import { ConfigurationError, ConnectionError, DatastoreError, HedraError, hedraError } from '#errors'
 import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
+import { Tenant } from '#models/tenant.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
 import { Logger } from '#server/logger.ts'
 
@@ -50,6 +52,12 @@ export class Hedra extends Hono {
       this.hostname = this.config.serverListenIp
       this.backend = options.backend
       this.datastore = options.configDatastore
+
+      const tenants = new Collection('tenants', Tenant)
+      const tenantController = new TenantController(this.config, () => this.configDatastore)
+
+      bindCollection(tenants, tenantController)
+      registerRoutes(this, tenants, (context) => tenantController.assertHost(context))
 
       this.associations = new AssociationOperations(
         () => {
@@ -151,7 +159,7 @@ export class Hedra extends Hono {
         if (known && known !== candidate)
           throw new ConfigurationError(`Collection already registered: ${candidate.name}`)
         if (known) return
-        if (candidate.name === tenantTable || candidate.name === associationTable)
+        if (candidate.name === tenantTable || candidate.name === associationTable || candidate.name === 'tenants')
           throw new ConfigurationError('Collection name is reserved')
         if (isAttached(candidate)) throw new ConfigurationError('Collection is already attached to an app')
 

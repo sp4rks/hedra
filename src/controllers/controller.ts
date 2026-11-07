@@ -47,7 +47,7 @@ function attributes(input: ResourceInput): ResourceInput {
 }
 
 /** Builds a resource link without carrying query parameters into the path. */
-function resourceLink(context: Context, id: string): string {
+export function resourceLink(context: Context, id: string): string {
   const url = new URL(context.req.url)
 
   url.search = ''

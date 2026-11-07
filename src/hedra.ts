@@ -5,6 +5,7 @@ import type { LogFields, LoggerInterface } from '#server/logger.ts'
 import type { HedraOptions } from '#server/server.ts'
 import { Config } from '#config'
 import { BaseController } from '#controllers/controller.ts'
+import { TenantController } from '#controllers/tenant-controller.ts'
 import { DatabaseFilter, DatabaseRecord, DatabaseScalar } from '#datastores/backend.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore } from '#datastores/categories/config/config.ts'
@@ -58,4 +59,5 @@ export {
   ResourceReference,
   SqliteBackend,
   Tenant,
+  TenantController,
 }
