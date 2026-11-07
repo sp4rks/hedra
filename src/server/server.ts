@@ -78,7 +78,16 @@ export class Hedra extends Hono {
     return this.datastore
   }
 
-  /** Prevents a closed app's controllers from using a borrowed backend. */
+  /**
+   * Wraps the backend so controllers stop using it after this app closes.
+   * Injected backends remain open for their owners, so saved controllers need
+   * this app's closed-state check on every call. Existing Hedra errors are
+   * preserved; other failures become DatastoreError with the original cause.
+   *
+   * Backend calls are asynchronous, but transaction callbacks and session methods
+   * stay synchronous. Guard each layer so closing the app during a transaction
+   * also blocks subsequent session operations.
+   */
   private guard(backend: Backend): Backend {
     const guarded = <T>(operation: () => T): T => {
       try {
