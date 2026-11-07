@@ -163,9 +163,10 @@ export class SqliteBackend implements Backend {
   }
 
   /**
-   * Runs a synchronous callback and session within the asynchronous backend API.
-   * SQLite commits on success and rolls back on failure; saved sessions expire
-   * when the transaction finishes.
+   * Runs synchronous record operations atomically in one immediate transaction.
+   * The backend API returns a promise, but callbacks and session methods must stay
+   * synchronous. SQLite commits on success and rolls back on failure; saved sessions
+   * expire when the transaction finishes.
    */
   async transaction<T>(work: (transaction: BackendTransaction) => T): Promise<T> {
     try {

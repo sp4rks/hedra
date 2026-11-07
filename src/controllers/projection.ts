@@ -16,9 +16,9 @@ function isObject(value: unknown): value is ObjectValue {
 }
 
 /**
- * Ensures retained embedded resources keep their stored identities. Output may hide
- * fields or filter and reorder arrays, but dictionary keys must keep their identities.
- * The root ID is checked if exposed; retained embedded IDs must match their originals.
+ * Ensures projected resources keep their stored identities. Output may hide fields
+ * or filter and reorder arrays; each retained dictionary key must still identify
+ * the same resource. Root IDs are checked when exposed; embedded IDs must match.
  */
 function assertIdentities(model: z.ZodObject, original: ObjectValue, visible: ObjectValue, embedded = false): void {
   if ((embedded || Object.hasOwn(visible, 'id')) && original.id !== visible.id) {
