@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { chmod, mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -191,7 +191,7 @@ test('Config rejects an invalid listen IP', () => {
   }
 })
 
-test('Config reads unset variables from HEDRA_ENV_FILE', async () => {
+test('Config ignores legacy file selection in an explicit environment', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
   const envPath = join(dir, 'app.env')
 
@@ -203,43 +203,13 @@ test('Config reads unset variables from HEDRA_ENV_FILE', async () => {
   try {
     const config = new Config({
       HEDRA_ENV_FILE: envPath,
+      HEDRA_SERVER_ENV: 'prod',
       HEDRA_SERVER_SILENT_STARTUP: 'true',
     })
 
-    expect(config.serverEnv).toBe('nonprod')
-    expect(config.deploymentDomain).toBe('from-file.example')
-    expect(config.sqlitePath).toBe('from-file.sqlite')
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
-})
-
-test('Config uses defaults when HEDRA_ENV_FILE is missing', async () => {
-  const config = new Config({
-    HEDRA_ENV_FILE: '/tmp/hedra-config-missing.env',
-    HEDRA_SERVER_SILENT_STARTUP: 'true',
-  })
-
-  expect(config.serverEnv).toBe('dev')
-  expect(config.deploymentDomain).toBe('hedra.local')
-})
-
-test('Config keeps an explicit value when HEDRA_ENV_FILE sets the same variable', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
-  const envPath = join(dir, 'app.env')
-
-  await Bun.write(envPath, 'HEDRA_SERVER_ENV=prod\nHEDRA_SQLITE_PATH=from-file.sqlite\n')
-
-  try {
-    const config = new Config({
-      HEDRA_ENV_FILE: envPath,
-      HEDRA_SERVER_ENV: 'dev',
-      HEDRA_SQLITE_PATH: 'explicit.sqlite',
-      HEDRA_SERVER_SILENT_STARTUP: 'true',
-    })
-
-    expect(config.serverEnv).toBe('dev')
-    expect(config.sqlitePath).toBe('explicit.sqlite')
+    expect(config.serverEnv).toBe('prod')
+    expect(config.deploymentDomain).toBe('hedra.local')
+    expect(config.sqlitePath).toBe('.runtime/hedra.sqlite')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
@@ -282,77 +252,13 @@ test('Config rejects an invalid logging library, format or level', () => {
   }
 })
 
-test('Config does not mutate its supplied environment', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
-  const envPath = join(dir, 'app.env')
+test('Config does not mutate its supplied environment', () => {
+  const env = Object.freeze({ HEDRA_SERVER_ENV: 'prod', HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const config = new Config(env)
 
-  await Bun.write(envPath, 'HEDRA_SERVER_ENV=prod\n')
-  const env = Object.freeze({ HEDRA_ENV_FILE: envPath, HEDRA_SERVER_SILENT_STARTUP: 'true' })
-
-  try {
-    const config = new Config(env)
-
-    expect(config.serverEnv).toBe('prod')
-    expect(env).toEqual({ HEDRA_ENV_FILE: envPath, HEDRA_SERVER_SILENT_STARTUP: 'true' })
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
+  expect(config.serverEnv).toBe('prod')
+  expect(env).toEqual({ HEDRA_SERVER_ENV: 'prod', HEDRA_SERVER_SILENT_STARTUP: 'true' })
 })
-
-test('Config uses the default when an explicit blank shadows an env file value', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
-  const envPath = join(dir, 'app.env')
-
-  await Bun.write(envPath, 'HEDRA_SERVER_LISTEN_PORT=8080\n')
-
-  try {
-    const config = new Config({
-      HEDRA_ENV_FILE: envPath,
-      HEDRA_SERVER_LISTEN_PORT: '  ',
-      HEDRA_SERVER_SILENT_STARTUP: 'true',
-    })
-
-    expect(config.serverListenPort).toBe(3000)
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
-})
-
-test('Config propagates env-file read failures', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
-
-  try {
-    expect(() => new Config({ HEDRA_ENV_FILE: dir, HEDRA_SERVER_SILENT_STARTUP: 'true' })).toThrow()
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
-})
-
-// Root and Windows do not reliably enforce these directory permissions.
-test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
-  'Config propagates access errors for an env file inside an inaccessible directory',
-  async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
-    const envPath = join(dir, 'app.env')
-
-    try {
-      await Bun.write(envPath, 'HEDRA_SERVER_LISTEN_PORT=8080\n')
-      await chmod(dir, 0)
-      let failure: unknown
-
-      try {
-        new Config({ HEDRA_ENV_FILE: envPath, HEDRA_SERVER_SILENT_STARTUP: 'true' })
-      } catch (error) {
-        failure = error
-      }
-      expect(failure).toBeInstanceOf(ConfigurationError)
-      expect((failure as ConfigurationError).cause).toMatchObject({ code: 'EACCES' })
-    } finally {
-      await chmod(dir, 0o700)
-      await rm(dir, { recursive: true, force: true })
-    }
-  },
-)
 
 test('Config prints no success report when a setting is invalid', () => {
   const output: string[] = []
@@ -372,7 +278,7 @@ test('Config prints no success report when a setting is invalid', () => {
   expect(output.join('')).toBe('')
 })
 
-test('Hedra loads ambient settings and the selected environment file without options', async () => {
+test('Hedra uses Bun selected-file and ambient settings without options', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
   const envPath = join(dir, 'app.env')
   const packageEntry = join(import.meta.dir, '../../src/hedra.ts')
@@ -382,11 +288,10 @@ test('Hedra loads ambient settings and the selected environment file without opt
   await Bun.write(envPath, 'HEDRA_SERVER_LISTEN_PORT=9000\nHEDRA_SERVER_LISTEN_IP=127.0.0.2\n')
 
   try {
-    const result = Bun.spawnSync(['bun', '--no-env-file', '-e', script], {
+    const result = Bun.spawnSync(['bun', `--env-file=${envPath}`, '-e', script], {
       cwd: dir,
       env: {
         ...ambient,
-        HEDRA_ENV_FILE: envPath,
         HEDRA_SERVER_SILENT_STARTUP: 'true',
         HEDRA_SERVER_LISTEN_PORT: '8123',
       },
@@ -407,7 +312,7 @@ test('Hedra loads ambient settings and the selected environment file without opt
   }
 })
 
-test('Hedra loads .env when its selected ambient file is missing', async () => {
+test('Hedra respects Bun disabling environment-file loading', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
   const packageEntry = join(import.meta.dir, '../../src/hedra.ts')
   const ambient = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('HEDRA_')))
@@ -420,7 +325,6 @@ test('Hedra loads .env when its selected ambient file is missing', async () => {
       cwd: dir,
       env: {
         ...ambient,
-        HEDRA_ENV_FILE: join(dir, 'missing.env'),
         HEDRA_SERVER_SILENT_STARTUP: 'true',
         HEDRA_SERVER_LOG_LEVEL: 'silent',
       },
@@ -430,7 +334,35 @@ test('Hedra loads .env when its selected ambient file is missing', async () => {
 
     expect(result.stderr.toString()).toBe('')
     expect(result.exitCode).toBe(0)
-    expect(result.stdout.toString()).toBe('8123')
+    expect(result.stdout.toString()).toBe('3000')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('Hedra uses Bun automatic environment-file loading while explicit Config snapshots stay isolated', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
+  const packageEntry = join(import.meta.dir, '../../src/hedra.ts')
+  const ambient = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('HEDRA_')))
+  const script = `import { Config, Hedra } from ${JSON.stringify(packageEntry)}; const app = new Hedra(); const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }); process.stdout.write(JSON.stringify({ appPort: app.port, snapshotPort: config.serverListenPort }))`
+
+  await Bun.write(join(dir, '.env'), 'HEDRA_SERVER_LISTEN_PORT=8123\n')
+
+  try {
+    const result = Bun.spawnSync(['bun', '-e', script], {
+      cwd: dir,
+      env: {
+        ...ambient,
+        HEDRA_SERVER_SILENT_STARTUP: 'true',
+        HEDRA_SERVER_LOG_LEVEL: 'silent',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+
+    expect(result.stderr.toString()).toBe('')
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout.toString())).toEqual({ appPort: 8123, snapshotPort: 3000 })
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

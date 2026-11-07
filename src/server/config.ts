@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs'
-import { parseEnv, styleText } from 'node:util'
+import { styleText } from 'node:util'
 import { z } from 'zod'
 
 import { deploymentVariables } from '#config/deployment.ts'
@@ -40,19 +39,10 @@ export type Config = Readonly<ConfigValues>
 
 /** Loads and validates Hedra's deployment and server configuration. */
 export const Config = class Config {
-  /** Resolves explicit settings, an env file and defaults, in that order. */
+  /** Resolves environment settings and defaults. */
   constructor(env: typeof Bun.env = process.env) {
     try {
       const resolved = Environment.parse(env)
-      const envFile = resolved.HEDRA_ENV_FILE?.trim()
-
-      if (envFile) {
-        const loaded = Config.overlayEnvFile(resolved, envFile)
-
-        if (!loaded && env === process.env) Config.overlayEnvFile(resolved, '.env')
-      } else if (env === process.env) {
-        Config.overlayEnvFile(resolved, '.env')
-      }
 
       const input: Record<string, string | number | boolean> = {}
       const displayValues: Record<string, string> = {}
@@ -107,27 +97,6 @@ export const Config = class Config {
     process.stdout.write(
       `${styleText('magenta', variable.padEnd(columnWidth))} ${value.padEnd(columnWidth)} ${sourceLabel}\n`,
     )
-  }
-
-  /** Reads an env file and fills keys the caller has not already set. */
-  private static overlayEnvFile(env: typeof Bun.env, path: string): boolean {
-    let content: string
-
-    try {
-      content = readFileSync(path, 'utf8')
-    } catch (error) {
-      if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false
-
-      throw hedraError(error, ConfigurationError)
-    }
-
-    const parsed = parseEnv(content)
-
-    for (const [key, value] of Object.entries(parsed)) {
-      if (env[key] === undefined) env[key] = value
-    }
-
-    return true
   }
 
   /** Validates native configuration values and reports the associated environment variable. */
