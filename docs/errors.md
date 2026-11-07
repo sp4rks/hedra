@@ -26,7 +26,7 @@ The title is also the standard `Error.message`. The instance's `name` is its cla
 | `RecordNotFoundError` | 404 | `record not found` |
 | `TransactionError` | 500 | `database transaction failed` |
 
-The repository's `#errors` alias resolves to `src/server/errors/errors.ts`. With Bun and dependencies installed, this example runs from the repository root:
+The repository's `#errors` alias resolves to `src/server/errors.ts`. With Bun and dependencies installed, this example runs from the repository root:
 
 ```ts
 import assert from 'node:assert/strict'
