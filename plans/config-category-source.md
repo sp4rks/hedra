@@ -1,5 +1,7 @@
 # Category definitions as configuration's single source of truth
 
+Status: implemented and independently reviewed; awaiting user approval to merge into `main`.
+
 ## Scope and accepted design
 
 Each setting is defined once in `src/server/configs/deployment.ts` or `src/server/configs/server.ts`. Its entry supplies the environment-variable key, resolved property name, default, metadata and Zod schema. The merged definitions drive environment loading, the complete values schema, parsed output types and the readonly properties on `new Config()`.
@@ -37,3 +39,13 @@ The temporary category-only experiment is the red/green proof of this structural
 - The lead updates only `docs/` on `feature/config-category-source-docs` in its own worktree while implementation proceeds. Document derivation in the existing configuration reference and record ADR 0021, including a supersession link from ADR 0004. The referenced `user-docs` skill is unavailable; use house documentation standards, docs-style and an independent newcomer review instead.
 - After implementation, merge the documentation branch into the feature branch, run checks and documented examples, then obtain one independent read-only review of the fixed range against this plan. Confirmed findings go back to the same coder and receive focused verification and review.
 - Keep `main` unchanged until the user explicitly approves merging the completed, reviewed branch.
+
+## Verification results
+
+- Implementation commit `dff5399` removes both manual property lists, preserves literal names in category definitions and adds the agreed public enum/no-index type assertions. Documentation was integrated as `d16a182`.
+- The coder's temporary numeric category-only probe failed before implementation: its default was absent, invalid input was accepted and its readonly property type was missing. After implementation it passed for default `17`, trimmed override `23`, named validation errors and the exact readonly number type. The temporary entry and tests were removed before committing.
+- `bun run check` passed on `d16a182`: TypeScript, Biome and 238 tests with 948 assertions. Loopback networking and subprocess execution required running the integration check outside the filesystem sandbox; that complete run passed.
+- The lead independently added only a numeric category entry in a disposable source copy. TypeScript and two public constructor tests passed for default `7`, trimmed override `12`, invalid `0` with its environment-variable name and the readonly number type. No test-only setting remains in the feature branch.
+- Documented `Config` construction and Hedra injection passed. The changed reference/ADR links resolve, and `git diff --check` passed.
+- Independent read-only review of `7a4f21f..d16a182` returned no actionable findings and a ship verdict, including the documentation newcomer pass. The reviewer independently passed TypeScript, Biome on the four changed code/test files, 11 tests with 24 assertions and the documented constructor/injection usage. The local generated-shape assertion and class/interface lint suppression were accepted against the constructor's complete parsed-value assignment.
+- The main checkout remains clean at `7a4f21f`. Runtime freezing and live configuration mutation remain outside the supported interface; readonly is enforced by TypeScript as before.
