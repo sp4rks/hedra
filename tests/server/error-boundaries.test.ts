@@ -15,6 +15,8 @@ import {
   Resource,
   ResourceOperations,
   SqliteBackend,
+  Tenant,
+  TenantController,
 } from '#hedra.ts'
 
 test('invalid collection definitions throw Hedra errors with their validation cause', () => {
@@ -266,5 +268,110 @@ test('a guarded borrowed backend normalizes failures for custom controllers', as
     await collection.controller.transaction()
   } finally {
     app.close()
+  }
+})
+
+test('tenant controller operations normalize injected datastore failures and preserve Hedra errors', async () => {
+  const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const context = new Context(
+    new Request('http://deployment.hedra.local/tenants', {
+      headers: { host: 'deployment.hedra.local' },
+    }),
+  )
+  const collection = new Collection('tenants', Tenant)
+  const id = crypto.randomUUID()
+  const fields = { name: 'Acme', tenantDomain: 'acme.hedra.local' }
+
+  for (const cause of [new Error('datastore unavailable'), new QueryError('existing error')]) {
+    const fail = async () => {
+      throw cause
+    }
+    const controller = new TenantController(config, () => ({
+      tenants: { create: fail, get: fail, list: fail, update: fail, replace: fail, delete: fail },
+    }))
+    const calls = [
+      () => controller.create(context, collection, fields),
+      () => controller.id(context, collection, id),
+      () => controller.list(context, collection, context.req.url),
+      () => controller.update(context, collection, { name: 'Changed' }, id),
+      () => controller.delete(context, collection, id),
+    ]
+
+    for (const call of calls) {
+      let caught: unknown
+
+      try {
+        await call()
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(HedraError)
+      if (cause instanceof HedraError) expect(caught).toBe(cause)
+      else expect((caught as HedraError).cause).toBe(cause)
+    }
+  }
+})
+
+test('tenant datastore writes normalize backend failures and preserve Hedra errors', async () => {
+  const id = crypto.randomUUID()
+  const fields = { name: 'Acme', tenantDomain: 'acme.hedra.local' }
+
+  for (const cause of [new Error('backend unavailable'), new QueryError('existing error')]) {
+    const fail = async () => {
+      throw cause
+    }
+    const backend: Backend = {
+      insert: fail,
+      select: fail,
+      update: fail,
+      delete: fail,
+      transaction: fail,
+    }
+    const store = new ConfigStore({ backend })
+    const calls = [
+      () => store.tenants.create(fields),
+      () => store.tenants.update(id, { name: 'Changed' }),
+      () => store.tenants.replace(id, fields),
+    ]
+
+    for (const call of calls) {
+      let caught: unknown
+
+      try {
+        await call()
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(HedraError)
+      if (cause instanceof HedraError) expect(caught).toBe(cause)
+      else expect((caught as HedraError).cause).toBe(cause)
+    }
+    store.close()
+  }
+})
+
+test('tenant controller wraps invalid list response URLs', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const store = new ConfigStore({ backend })
+  const controller = new TenantController(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), () => store)
+  const context = new Context(
+    new Request('http://deployment.hedra.local/tenants', {
+      headers: { host: 'deployment.hedra.local' },
+    }),
+  )
+
+  try {
+    let caught: unknown
+
+    try {
+      await controller.list(context, new Collection('tenants', Tenant), 'not a URL')
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(HedraError)
+    expect((caught as HedraError).cause).toBeInstanceOf(z.ZodError)
+  } finally {
+    store.close()
+    backend.close()
   }
 })
