@@ -120,6 +120,6 @@ For separate persistent configuration storage, pass a `Config` with the desired 
 
 ## Validation and scope
 
-The caller runs a pure validator for domain rules and for any desired stored-resource validation. The helper does not trim names or rerun domain refinements. Generic JSON, UUID and managed-field guards remain active; failed guards or storage operations leave data unchanged. Errors propagate without constructing HTTP responses or terminating the process.
+The caller runs a pure validator for domain rules and for any desired stored-resource validation. The helper does not trim names or rerun domain refinements. Generic JSON, UUID and managed-field guards remain active; failed guards or storage operations leave data unchanged. Operations report failures through the [Hedra error hierarchy](errors.md#wrapped-failures), without constructing HTTP responses or terminating the process. A pure validator called directly retains its own error contract.
 
 There are no tenant-specific backend methods. The helper supplies the table name and resource data to generic `Backend` operations. Creating a tenant definition does not add application tenant isolation. Environment resources, automatic Web routes, other backends and legacy migration remain outside this increment.
