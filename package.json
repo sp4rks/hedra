@@ -15,8 +15,9 @@
     "dev": "bun --watch src/hedra.ts",
     "start": "bun src/hedra.ts",
     "test": "bun test",
+    "test:coverage": "bun test --coverage",
     "fmt": "biome check --write .",
-    "check": "tsc --noEmit && biome check . && bun test"
+    "check": "tsc --noEmit && biome check . && bun run test:coverage"
   },
   "dependencies": {
     "hono": "^4.13.14",
