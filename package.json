@@ -4,11 +4,11 @@
   "type": "module",
   "private": true,
   "imports": {
-    "#config": "./src/server/config/config.ts",
-    "#config/*": "./src/server/config/*",
+    "#config": "./src/server/config.ts",
+    "#config/*": "./src/server/configs/*",
     "#models": "./src/models/models.ts",
     "#models/*": "./src/models/*",
-    "#errors": "./src/server/errors/errors.ts",
+    "#errors": "./src/server/errors.ts",
     "#*": "./src/*"
   },
   "scripts": {
