@@ -124,38 +124,46 @@ function checkDictionaryKeys(model: z.ZodObject, attributes: Record<string, unkn
   }
 }
 
-/** Locates the public embedded schema and rejects incompatible output shapes. */
+/**
+ * Selects the output schema that controls an embedded field's routes. Omitted
+ * fields have no routes; exposed fields must retain their container kind and UUID.
+ */
 function publicItem(field: EmbeddedField, output: z.ZodObject): z.ZodObject | undefined {
-  const raw = output.shape[field.name]
+  const outputField = output.shape[field.name]
 
-  if (!raw) return undefined
-  const container = unwrap(raw)
-  let item: z.ZodType
+  if (!outputField) return undefined
+  const outputContainer = unwrap(outputField)
+  let itemSchema: z.ZodType
 
-  if (field.kind === 'array' && container instanceof z.ZodArray) item = container.element as z.ZodType
-  else if (field.kind === 'dictionary' && container instanceof z.ZodRecord) item = container.valueType as z.ZodType
-  else if (field.kind === 'single') item = container
+  if (field.kind === 'array' && outputContainer instanceof z.ZodArray) itemSchema = outputContainer.element as z.ZodType
+  else if (field.kind === 'dictionary' && outputContainer instanceof z.ZodRecord)
+    itemSchema = outputContainer.valueType as z.ZodType
+  else if (field.kind === 'single') itemSchema = outputContainer
   else throw new ConfigurationError(`Embedded output shape is incompatible: ${field.name}`)
-  const model = unwrap(item)
+  const itemModel = unwrap(itemSchema)
 
-  if (!(model instanceof z.ZodObject) || !(model.shape.id instanceof z.ZodUUID)) {
+  if (!(itemModel instanceof z.ZodObject) || !(itemModel.shape.id instanceof z.ZodUUID)) {
     throw new ConfigurationError(`Embedded output must retain its UUID: ${field.name}`)
   }
 
-  return model
+  return itemModel
 }
 
-/** Validates embedded route definitions before attaching a collection. */
+/**
+ * Validates embedded route names and output definitions before attaching a collection.
+ * Each branch tracks its own ancestors, allowing sibling schema reuse while rejecting
+ * cycles along a single path.
+ */
 export function checkRoutes(model: z.ZodObject, output: z.ZodObject, ancestors = new Set<z.ZodObject>()): void {
   if (ancestors.has(model)) throw new ConfigurationError('Recursive embedded routes are not supported')
-  const next = new Set(ancestors).add(model)
+  const branchAncestors = new Set(ancestors).add(model)
 
   for (const field of embeddedFields(model)) {
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(field.name))
       throw new ConfigurationError(`Invalid embedded route name: ${field.name}`)
-    const visible = publicItem(field, output)
+    const outputModel = publicItem(field, output)
 
-    if (visible) checkRoutes(field.model, visible, next)
+    if (outputModel) checkRoutes(field.model, outputModel, branchAncestors)
   }
 }
 
