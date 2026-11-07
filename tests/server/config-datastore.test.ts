@@ -28,7 +28,7 @@ test('Hedra accepts a structural configuration datastore and retains its identit
 
   try {
     expect(app.configDatastore).toBe(configDatastore)
-    const tenant = await app.configDatastore.tenants.create({ name: 'Acme' })
+    const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     expect(await app.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
     expect(existsSync(path)).toBe(false)
@@ -54,7 +54,7 @@ test('Hedra borrows a configuration datastore shared by apps', async () => {
   const second = new Hedra({ config, configDatastore })
 
   try {
-    const tenant = await first.configDatastore.tenants.create({ name: 'Acme' })
+    const tenant = await first.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     first.close()
     expect(closed).toBe(false)
@@ -82,7 +82,7 @@ test('Hedra creates configuration storage only when requested', async () => {
 
     expect(app.configDatastore).toBe(store)
     expect(existsSync(path)).toBe(true)
-    const tenant = await store.tenants.create({ name: 'Acme' })
+    const tenant = await store.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     expect(await store.tenants.get(tenant.id)).toEqual(tenant)
   } finally {
@@ -103,7 +103,7 @@ test('Hedra closes its default configuration datastore and retains persisted ten
 
   try {
     const operations = app.configDatastore.tenants
-    const tenant = await operations.create({ name: 'Acme' })
+    const tenant = await operations.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     app.close()
     app.close()
@@ -130,7 +130,7 @@ test('a failed default configuration datastore open can be retried', async () =>
     mkdirSync(path)
     expect(() => app.configDatastore).toThrow()
     rmSync(path, { recursive: true })
-    const tenant = await app.configDatastore.tenants.create({ name: 'Acme' })
+    const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     expect(await app.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
   } finally {
@@ -154,7 +154,7 @@ test('configuration and application data use their own supplied datastores', asy
   try {
     app.register(projects)
     observer.register(new Collection('projects', Resource.extend({ title: z.string() })))
-    const tenant = await app.configDatastore.tenants.create({ name: 'Acme' })
+    const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
     const project = await app.request('/projects', {
       method: 'POST',
       headers,

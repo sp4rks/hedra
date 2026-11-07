@@ -4,6 +4,7 @@ import { Resource } from '#models/resource.ts'
 
 export const Tenant = Resource.extend({
   name: z.string().trim().min(1),
-})
+  tenantDomain: z.string().trim().toLowerCase().regex(z.regexes.domain),
+}).strict()
 
 export type Tenant = z.infer<typeof Tenant>

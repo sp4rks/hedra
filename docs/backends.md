@@ -18,11 +18,11 @@ Tables have independent primary keys. Table names use the collection-name gramma
 
 An update modifier receives the current generic record and returns its replacement. It may not change the primary key. The modifier is not invoked when the ID is absent. A thrown error, invalid output or failed write aborts the transaction. A controller can run pure candidate validation and business rules between reading and writing; the backend itself remains model agnostic.
 
-There are no bulk mutation, pagination, schema-migration or model-specific operations. SQLite failures are wrapped in [Hedra datastore errors](errors.md#wrapped-failures), with the native error retained as `cause`. Applications decide how to handle or present them.
+There are no bulk mutation, pagination, schema-migration or model-specific operations. Expected backend contract violations raise explicit [Hedra datastore errors](errors.md#validation-and-unexpected-failures). Unexpected SQLite, filesystem and callback failures propagate unchanged. Applications decide how to handle or present them.
 
 ## Transactions across records
 
-`Backend.transaction` passes a synchronous `BackendTransaction` to its callback. The session has the same insert/select/update/delete operations without promises. A thrown error, invalid record or failed operation rolls back the transaction. SQLite session failures are Hedra errors even when caught inside the callback; an existing Hedra error retains its identity. Do not use an async callback or retain a session after it returns; both reject with Hedra errors. Await the outer transaction promise.
+`Backend.transaction` passes a synchronous `BackendTransaction` to its callback. The session has the same insert/select/update/delete operations without promises. A thrown error, invalid record or failed operation rolls back the transaction. Session input/contract violations use explicit errors; unexpected session or callback failures propagate unchanged. Do not use an async callback or retain a session after it returns; both reject with Hedra errors. Await the outer transaction promise.
 
 Given an open backend:
 
@@ -51,7 +51,7 @@ The backend receives its path explicitly. `Hedra` uses the resolved `HEDRA_SQLIT
 
 `new Hedra()` opens an app-owned default SQLite backend on the first collection registration. `hedra.close()` closes it and ends its registered controllers' lifecycle.
 
-The configuration datastore has a separate lifetime. First access to `app.configDatastore` creates the default `ConfigStore`, which opens its own connection to the configured path. App closure closes that owned store too. An injected `configDatastore` is borrowed and remains usable by its creator after app closure; see [configuration datastore ownership](config-store.md#configure-storage-and-ownership).
+The configuration datastore has a separate lifetime. First access to `app.configDatastore` or an accepted tenant operation creates the default `ConfigStore`, which opens its own connection to the configured path. App closure closes that owned store too. An injected `configDatastore` is borrowed and remains usable by its creator after app closure; see [configuration datastore ownership](config-store.md#configure-storage-and-ownership).
 
 An injected backend is borrowed. Sharing one instance permits configuration and application resources to use the same connection:
 
@@ -63,7 +63,7 @@ const configDatastore = new ConfigStore({ backend })
 const app = new Hedra({ backend, configDatastore })
 
 try {
-  const tenant = await app.configDatastore.tenants.create({ name: 'Acme' })
+  const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
   app.close()
   await configDatastore.tenants.get(tenant.id)

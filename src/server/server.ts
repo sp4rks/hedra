@@ -7,11 +7,13 @@ import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
 import type { LoggerInterface } from '#server/logger.ts'
 import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
+import { TenantController } from '#controllers/tenant-controller.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore, tenantTable } from '#datastores/categories/config/config.ts'
-import { ConfigurationError, ConnectionError, DatastoreError, HedraError, hedraError } from '#errors'
+import { ConfigurationError, ConnectionError } from '#errors'
 import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
+import { Tenant } from '#models/tenant.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
 import { Logger } from '#server/logger.ts'
 
@@ -40,29 +42,31 @@ export class Hedra extends Hono {
   /** Loads configuration and a logger and sets the listen address. */
   constructor(options: HedraOptions = {}) {
     super()
-    try {
-      this.instanceId = crypto.randomUUID()
+    this.instanceId = crypto.randomUUID()
 
-      this.config = options.config ?? new Config()
-      this.log = options.logger ?? new Logger(this.config, undefined, { instanceId: this.instanceId })
+    this.config = options.config ?? new Config()
+    this.log = options.logger ?? new Logger(this.config, undefined, { instanceId: this.instanceId })
 
-      this.port = this.config.serverListenPort
-      this.hostname = this.config.serverListenIp
-      this.backend = options.backend
-      this.datastore = options.configDatastore
+    this.port = this.config.serverListenPort
+    this.hostname = this.config.serverListenIp
+    this.backend = options.backend
+    this.datastore = options.configDatastore
 
-      this.associations = new AssociationOperations(
-        () => {
-          if (this.closed) throw new ConnectionError('Hedra is closed')
-          if (!this.backend) throw new ConfigurationError('Register a collection before using associations')
+    const tenants = new Collection('tenants', Tenant)
+    const tenantController = new TenantController(this.config, () => this.configDatastore)
 
-          return this.guard(this.backend)
-        },
-        (name) => this.collections.get(name),
-      )
-    } catch (error) {
-      throw hedraError(error, HedraError)
-    }
+    bindCollection(tenants, tenantController)
+    registerRoutes(this, tenants, (context) => tenantController.assertHost(context))
+
+    this.associations = new AssociationOperations(
+      () => {
+        if (this.closed) throw new ConnectionError('Hedra is closed')
+        if (!this.backend) throw new ConfigurationError('Register a collection before using associations')
+
+        return this.guard(this.backend)
+      },
+      (name) => this.collections.get(name),
+    )
   }
 
   /** Returns the app's configuration datastore. */
@@ -81,27 +85,21 @@ export class Hedra extends Hono {
   /**
    * Wraps the backend so controllers stop using it after this app closes.
    * Injected backends remain open for their owners, so saved controllers need
-   * this app's closed-state check on every call. Existing Hedra errors are
-   * preserved; other failures become DatastoreError with the original cause.
+   * this app's closed-state check on every call.
    *
    * Backend calls are asynchronous, but transaction callbacks and session methods
    * stay synchronous. Guard each layer so closing the app during a transaction
    * also blocks subsequent session operations.
    */
   private guard(backend: Backend): Backend {
+    /** Blocks operations after closure while keeping transaction sessions synchronous. */
     const guarded = <T>(operation: () => T): T => {
-      try {
-        if (this.closed) throw new ConnectionError('Datastore connection is closed')
+      if (this.closed) throw new ConnectionError('Datastore connection is closed')
 
-        return operation()
-      } catch (error) {
-        throw hedraError(error, DatastoreError)
-      }
+      return operation()
     }
-    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> =>
-      guarded(operation).catch((error) => {
-        throw hedraError(error, DatastoreError)
-      })
+    /** Turns synchronous guard and dependency failures into rejected backend promises. */
+    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> => guarded(operation)
 
     return {
       insert: (...args) => guardedAsync(() => backend.insert(...args)),
@@ -126,106 +124,97 @@ export class Hedra extends Hono {
 
   /** Constructs the selected controller using this app's backend. */
   register<S extends z.ZodObject, C extends ControllerInterface>(collection: Collection<S, C>): void {
+    if (this.closed) throw new ConfigurationError('Hedra is closed')
+    if (!(collection instanceof Collection)) throw new ConfigurationError('Expected a Collection')
+    if (this.collections.has(collection.name))
+      throw new ConfigurationError(`Collection already registered: ${collection.name}`)
+
+    const collectionsByName = new Map(this.collections)
+    const pending: Collection[] = []
+    const visiting = new Set<Collection>()
+
+    /**
+     * Validates a collection and its association graph, queuing targets before their source.
+     * This pass only changes local state; controllers and routes are created after
+     * every reachable collection passes validation.
+     *
+     * The visiting set tracks the current recursion chain. Check it before reusing a
+     * known collection so a cycle cannot be mistaken for a shared association target.
+     */
+    const visit = (candidate: Collection): void => {
+      if (visiting.has(candidate)) throw new ConfigurationError('Cyclic association definitions are not supported')
+      const known = collectionsByName.get(candidate.name)
+
+      if (known && known !== candidate) throw new ConfigurationError(`Collection already registered: ${candidate.name}`)
+      if (known) return
+      if (candidate.name === tenantTable || candidate.name === associationTable || candidate.name === 'tenants')
+        throw new ConfigurationError('Collection name is reserved')
+      if (isAttached(candidate)) throw new ConfigurationError('Collection is already attached to an app')
+
+      checkRoutes(candidate.model, candidate.outputValidator)
+
+      const embeddedNames = new Set(embeddedFields(candidate.model).map((field) => field.name))
+      const associationNames = new Set<string>()
+
+      if (candidate.associations.length && embeddedNames.has('associations'))
+        throw new ConfigurationError('Embedded path is reserved')
+
+      for (const target of candidate.associations) {
+        if (embeddedNames.has(target.name) || associationNames.has(target.name))
+          throw new ConfigurationError(`Ambiguous association path: ${target.name}`)
+        associationNames.add(target.name)
+      }
+      collectionsByName.set(candidate.name, candidate)
+      visiting.add(candidate)
+
+      for (const target of candidate.associations) visit(target)
+      visiting.delete(candidate)
+      pending.push(candidate)
+    }
+
+    visit(collection)
+
+    if (this.config.serverPrintRoutes) {
+      this.log.info(`Registering collection: ${collection.name}`)
+    }
+
+    const opened = this.backend === undefined
+
+    if (opened) {
+      const backend = new SqliteBackend(this.config.sqlitePath)
+
+      this.backend = backend
+      this.closeBackend = () => backend.close()
+    }
+
     try {
-      if (this.closed) throw new ConfigurationError('Hedra is closed')
-      if (!(collection instanceof Collection)) throw new ConfigurationError('Expected a Collection')
-      if (this.collections.has(collection.name))
-        throw new ConfigurationError(`Collection already registered: ${collection.name}`)
+      const backend = this.guard(this.backend as Backend)
+      const controllers = pending.map((item) => [item, createCollectionController(item, backend)] as const)
 
-      const collectionsByName = new Map(this.collections)
-      const pending: Collection[] = []
-      const visiting = new Set<Collection>()
-
-      /**
-       * Validates a collection and its association graph, queuing targets before their source.
-       * This pass only changes local state; controllers and routes are created after
-       * every reachable collection passes validation.
-       *
-       * The visiting set tracks the current recursion chain. Check it before reusing a
-       * known collection so a cycle cannot be mistaken for a shared association target.
-       */
-      const visit = (candidate: Collection): void => {
-        if (visiting.has(candidate)) throw new ConfigurationError('Cyclic association definitions are not supported')
-        const known = collectionsByName.get(candidate.name)
-
-        if (known && known !== candidate)
-          throw new ConfigurationError(`Collection already registered: ${candidate.name}`)
-        if (known) return
-        if (candidate.name === tenantTable || candidate.name === associationTable)
-          throw new ConfigurationError('Collection name is reserved')
-        if (isAttached(candidate)) throw new ConfigurationError('Collection is already attached to an app')
-
-        checkRoutes(candidate.model, candidate.outputValidator)
-
-        const embeddedNames = new Set(embeddedFields(candidate.model).map((field) => field.name))
-        const associationNames = new Set<string>()
-
-        if (candidate.associations.length && embeddedNames.has('associations'))
-          throw new ConfigurationError('Embedded path is reserved')
-
-        for (const target of candidate.associations) {
-          if (embeddedNames.has(target.name) || associationNames.has(target.name))
-            throw new ConfigurationError(`Ambiguous association path: ${target.name}`)
-          associationNames.add(target.name)
-        }
-        collectionsByName.set(candidate.name, candidate)
-        visiting.add(candidate)
-
-        for (const target of candidate.associations) visit(target)
-        visiting.delete(candidate)
-        pending.push(candidate)
+      for (const [item, controller] of controllers) {
+        bindCollection(item, controller)
+        this.collections.set(item.name, item)
       }
 
-      visit(collection)
+      for (const item of pending) registerRoutes(this, item)
 
-      if (this.config.serverPrintRoutes) {
-        this.log.info(`Registering collection: ${collection.name}`)
-      }
-
-      const opened = this.backend === undefined
-
-      if (opened) {
-        const backend = new SqliteBackend(this.config.sqlitePath)
-
-        this.backend = backend
-        this.closeBackend = () => backend.close()
-      }
-
-      try {
-        const backend = this.guard(this.backend as Backend)
-        const controllers = pending.map((item) => [item, createCollectionController(item, backend)] as const)
-
-        for (const [item, controller] of controllers) {
-          bindCollection(item, controller)
-          this.collections.set(item.name, item)
-        }
-
-        for (const item of pending) registerRoutes(this, item)
-
-        for (const item of pending) registerAssociationRoutes(this, item, this.associations)
-      } catch (error) {
-        if (opened) {
-          this.closeBackend?.()
-          this.closeBackend = undefined
-          this.backend = undefined
-        }
-
-        throw hedraError(error, ConfigurationError)
-      }
+      for (const item of pending) registerAssociationRoutes(this, item, this.associations)
     } catch (error) {
-      throw hedraError(error, ConfigurationError)
+      if (opened) {
+        this.closeBackend?.()
+        this.closeBackend = undefined
+        this.backend = undefined
+      }
+
+      throw error
     }
   }
 
   /** Ends this app's controller lifecycle and closes its owned backend. */
   close(): void {
-    try {
-      if (this.closed) return
-      this.closed = true
-      this.closeConfigDatastore?.()
-      this.closeBackend?.()
-    } catch (error) {
-      throw hedraError(error, HedraError)
-    }
+    if (this.closed) return
+    this.closed = true
+    this.closeConfigDatastore?.()
+    this.closeBackend?.()
   }
 }

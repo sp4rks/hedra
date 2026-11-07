@@ -418,25 +418,28 @@ function handler(action: (context: Context) => Promise<Response>): (context: Con
 }
 
 /** Registers generated REST routes for one collection. */
-export function registerRoutes(app: Hono, collection: Collection): void {
+export function registerRoutes(app: Hono, collection: Collection, before?: (context: Context) => void): void {
   const path = collection.endpoint
 
   app.get(
     path,
-    handler(async (context) =>
-      context.json(
+    handler(async (context) => {
+      before?.(context)
+
+      return context.json(
         await collection.controller.list(
           context,
           collection,
           context.req.url,
           query(context, collection.model, collection.outputValidator),
         ),
-      ),
-    ),
+      )
+    }),
   )
   app.post(
     path,
     handler(async (context) => {
+      before?.(context)
       const value = await body(context, collection.model, false)
       const response = await collection.controller.create(context, collection, value as never)
 
@@ -448,6 +451,7 @@ export function registerRoutes(app: Hono, collection: Collection): void {
   app.get(
     `${path}/:id`,
     handler(async (context) => {
+      before?.(context)
       const id = input(ResourceId, context.req.param('id'))
 
       return context.json(await collection.controller.id(context, collection, id))
@@ -456,6 +460,7 @@ export function registerRoutes(app: Hono, collection: Collection): void {
   app.patch(
     `${path}/:id`,
     handler(async (context) => {
+      before?.(context)
       const id = input(ResourceId, context.req.param('id'))
       const value = await body(context, collection.model, true)
 
@@ -465,6 +470,7 @@ export function registerRoutes(app: Hono, collection: Collection): void {
   app.delete(
     `${path}/:id`,
     handler(async (context) => {
+      before?.(context)
       const id = input(ResourceId, context.req.param('id'))
 
       await collection.controller.delete(context, collection, id)

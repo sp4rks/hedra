@@ -256,7 +256,7 @@ test('Hedra.close invalidates saved controller references without closing a borr
     mountCars(second, otherCars)
     const car = JsonApiResponse.parse(await (await first.request('/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
-    const tenant = await config.tenants.create({ name: 'Acme' })
+    const tenant = await config.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     first.onError((error, context) => {
       errors.push(error)

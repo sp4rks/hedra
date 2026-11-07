@@ -30,6 +30,15 @@ An application built with Hedra that defines its own resource models and collect
 **Tenant**:
 A distinct party served by a consuming application, with its own configuration and application records.
 
+**Tenant domain**:
+The unique, fixed domain name assigned to a tenant, directly below the deployment domain.
+
+**Deployment domain**:
+The root domain beneath which a deployment's tenants are named.
+
+**Deployment API domain**:
+The hostname used to manage a deployment's tenant catalogue.
+
 **Configuration**:
 Definitions, settings and policies that govern how a tenant or environment behaves.
 

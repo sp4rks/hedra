@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import { BaseController } from '#controllers/controller.ts'
-import { ConfigurationError, hedraError } from '#errors'
+import { ConfigurationError } from '#errors'
 import { publicModel } from '#models/embedded.ts'
 import { assertResourceModel } from '#models/resource.ts'
 
@@ -56,29 +56,31 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
       ? [options?: Options<C>]
       : [options: Options<C> & { controller: ControllerConstructor<C> }]
   ) {
-    try {
-      this.name = z
-        .string()
-        .regex(/^[a-z][a-z0-9_-]*$/)
-        .parse(name)
-      assertResourceModel(model)
-      this.model = model
-      this.endpoint = `/${this.name}`
-      const parsed = z
-        .strictObject({
-          controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
-          outputValidator: z.instanceof(z.ZodObject).optional(),
-          associations: z.array(z.instanceof(Collection)).optional(),
-        })
-        .parse(options === undefined ? {} : options)
-      const selected = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
+    const parsedName = z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]*$/)
+      .safeParse(name)
 
-      this.outputValidator = parsed.outputValidator ?? publicModel(model)
-      this.associations = Object.freeze(parsed.associations ?? [])
-      factories.set(this, (backend) => new selected(backend))
-    } catch (error) {
-      throw hedraError(error, ConfigurationError)
-    }
+    if (!parsedName.success) throw new ConfigurationError('configuration error', parsedName.error.issues)
+    this.name = parsedName.data
+    assertResourceModel(model)
+    this.model = model
+    this.endpoint = `/${this.name}`
+    const parsedOptions = z
+      .strictObject({
+        controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
+        outputValidator: z.instanceof(z.ZodObject).optional(),
+        associations: z.array(z.instanceof(Collection)).optional(),
+      })
+      .safeParse(options === undefined ? {} : options)
+
+    if (!parsedOptions.success) throw new ConfigurationError('configuration error', parsedOptions.error.issues)
+    const parsed = parsedOptions.data
+    const selected = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
+
+    this.outputValidator = parsed.outputValidator ?? publicModel(model)
+    this.associations = Object.freeze(parsed.associations ?? [])
+    factories.set(this, (backend) => new selected(backend))
   }
 
   /** Returns the controller created during registration. */

@@ -2,6 +2,8 @@
 
 Register a Collection to expose its resource operations. Web handlers validate requests and shape HTTP responses; controllers manage resources, embedded values, associations and output. The runtime remains one Bun process with Hono, Zod and the configured backend.
 
+The [Tenant API](tenants.md) is built in and uses the configuration catalogue without application collection registration.
+
 ## Define independent and embedded resources
 
 `Resource` has independent storage, a collection and a root route. `EmbeddedResource` is owned by its containing document and has only nested routes. Both have server-managed UUIDs and ISO creation/update timestamps. The containing model chooses a single embedded value, array or dictionary.

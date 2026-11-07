@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0025
 ---
 
 # Normalize operation failures into the Hedra error hierarchy
+
+Superseded by [ADR 0025](0025-explicit-validation-errors.md), which replaces blanket normalisation with explicit validation errors and unchanged propagation of unexpected failures.
 
 Hedra already defines status-bearing error classes, but explicit native errors and unwrapped Zod,
 filesystem and SQLite failures require callers to handle unrelated error contracts. Normalize

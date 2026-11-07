@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import type { z } from 'zod'
 
 /** Base class for Hedra errors, with a status, title and optional detail. */
 export class HedraError extends Error {
@@ -15,17 +15,6 @@ export class HedraError extends Error {
     this.title = title
     this.detail = detail
   }
-}
-
-/** Preserves Hedra errors and records the original value when converting another failure. */
-export function hedraError(error: unknown, ErrorClass: typeof HedraError = HedraError): HedraError {
-  if (error instanceof HedraError) return error
-  const title = error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unexpected error'
-  const converted = new ErrorClass(title)
-
-  Object.defineProperty(converted, 'cause', { value: error, writable: true, configurable: true })
-
-  return converted
 }
 
 /**
@@ -62,11 +51,11 @@ export class InputValidationError extends HedraError {
 
 /** Parses caller input while preserving failures raised by validation callbacks. */
 export function parseInput<T>(schema: z.ZodType<T>, value: unknown): T {
-  try {
-    return schema.parse(value)
-  } catch (error) {
-    throw hedraError(error, error instanceof z.ZodError ? InputValidationError : HedraError)
-  }
+  const result = schema.safeParse(value)
+
+  if (!result.success) throw new InputValidationError('input validation error', result.error.issues)
+
+  return result.data
 }
 
 /**

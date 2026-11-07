@@ -62,7 +62,7 @@ The command exits with status `0` and no output. Assertion failures or configura
 
 Pass additional context as the second argument to a logging call. `Logger` validates and copies initial field records during construction; per-call fields are also validated and override matching initial fields. Avoid overriding `instanceId` when retaining app identity.
 
-The default `Logger` reports validation and synchronous logging failures through the [Hedra error hierarchy](errors.md#wrapped-failures). A supplied logger keeps its own error contract when called directly.
+The default `Logger` raises explicit input validation errors for invalid bindings or fields. Unexpected synchronous logging failures propagate unchanged; see [validation and unexpected failures](errors.md#validation-and-unexpected-failures). A supplied logger keeps its own error contract.
 
 Pino uses `level`, `time` and `msg` for record metadata. Supplying these names as structured fields can produce duplicate JSON keys. Use application-specific field names for portable context; the generic `LogFields` interface does not reserve backend-specific names.
 
