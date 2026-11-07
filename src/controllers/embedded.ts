@@ -9,12 +9,21 @@ import type { EmbeddedScope, EmbeddedStep } from '#models/scope.ts'
 import { assertAssociationScope } from '#controllers/associations.ts'
 import { project } from '#controllers/projection.ts'
 import { validateCandidate } from '#controllers/validation.ts'
-import { ConflictError, HedraError, InputValidationError, RecordNotFoundError } from '#errors'
+import { ConflictError, HedraError, InputValidationError, OutputValidationError, RecordNotFoundError } from '#errors'
 import { embeddedFields } from '#models/embedded.ts'
 import { ResourceInput as InputSchema } from '#models/rest.ts'
 import { getAssociationScope } from '#models/scope.ts'
 
 type ObjectValue = Record<string, unknown>
+
+/** Validates projected embedded data as a resource response. */
+function embeddedOutput(value: unknown): ResourceInput {
+  const parsed = InputSchema.safeParse(value)
+
+  if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)
+
+  return parsed.data
+}
 
 /** Checks and snapshots an embedded object's attributes. */
 function object(value: unknown): ObjectValue {
@@ -174,7 +183,7 @@ export async function embeddedId(
   if (!step) throw new HedraError('Missing embedded route')
   selected(parentOf(root, scope.steps).parent, step)
   const visible = project(collection, root)
-  const data = InputSchema.parse(selected(parentOf(visible, scope.steps).parent, step))
+  const data = embeddedOutput(selected(parentOf(visible, scope.steps).parent, step))
 
   return { data, links: { self: itemLink(context, step.field) } }
 }
@@ -202,7 +211,7 @@ export async function embeddedList(
     const ids = new Set(originals.filter(matches).map((item) => object(item).id))
 
     return {
-      data: projected.filter((item) => ids.has(object(item).id)).map((item) => InputSchema.parse(item)),
+      data: projected.filter((item) => ids.has(object(item).id)).map(embeddedOutput),
       links: { self: baseUrl },
     }
   }
@@ -211,7 +220,7 @@ export async function embeddedList(
   const data = Object.fromEntries(
     Object.entries(projected)
       .filter(([key]) => Object.hasOwn(originals, key) && matches(originals[key]))
-      .map(([key, item]) => [key, InputSchema.parse(item)]),
+      .map(([key, item]) => [key, embeddedOutput(item)]),
   )
 
   return { data, links: { self: baseUrl } }
@@ -298,7 +307,7 @@ export async function embeddedMutate(
       const visibleParent = parentOf(visible, scope.steps).parent
       const visibleStep = { ...step, selector }
 
-      data = InputSchema.parse(selected(visibleParent, visibleStep))
+      data = embeddedOutput(selected(visibleParent, visibleStep))
     }
 
     return validated

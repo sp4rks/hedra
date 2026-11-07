@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { deploymentVariables } from '#config/deployment.ts'
 import { serverVariables } from '#config/server.ts'
-import { ConfigurationError, hedraError } from '#errors'
+import { ConfigurationError } from '#errors'
 
 const ConfigEntry = z.object({
   name: z.string(),
@@ -44,45 +44,44 @@ export type Config = Readonly<ConfigValues>
 export const Config = class Config {
   /** Resolves environment settings and defaults. */
   constructor(env: typeof Bun.env = process.env) {
-    try {
-      const resolved = Environment.parse(env)
+    const environment = Environment.safeParse(env)
 
-      const input: Record<string, string | number | boolean> = {}
-      const displayValues: Record<string, string> = {}
-      const sources: Record<string, 'environ' | 'default'> = {}
+    if (!environment.success) throw new ConfigurationError('configuration error', environment.error.issues)
+    const resolved = environment.data
+
+    const input: Record<string, string | number | boolean> = {}
+    const displayValues: Record<string, string> = {}
+    const sources: Record<string, 'environ' | 'default'> = {}
+
+    for (const [variable, entry] of Object.entries(definitions)) {
+      const environmentValue = resolved[variable]?.trim()
+      const fromEnvironment = environmentValue !== undefined && environmentValue !== ''
+      const raw = fromEnvironment ? environmentValue : entry.default
+      let value: string | number | boolean = raw
+
+      if (fromEnvironment && typeof entry.default === 'number') value = Number(raw)
+      if (fromEnvironment && typeof entry.default === 'boolean') {
+        if (raw === 'true') value = true
+        else if (raw === 'false') value = false
+      }
+
+      input[entry.name] = value
+      displayValues[entry.name] = String(raw)
+      sources[entry.name] = fromEnvironment ? 'environ' : 'default'
+    }
+
+    const values = Config.validateConfig(input, displayValues)
+
+    Object.assign(this, values)
+
+    if (!values.serverSilentStartup) {
+      Config.printConfigHeader()
 
       for (const [variable, entry] of Object.entries(definitions)) {
-        const environmentValue = resolved[variable]?.trim()
-        const fromEnvironment = environmentValue !== undefined && environmentValue !== ''
-        const raw = fromEnvironment ? environmentValue : entry.default
-        let value: string | number | boolean = raw
-
-        if (fromEnvironment && typeof entry.default === 'number') value = Number(raw)
-        if (fromEnvironment && typeof entry.default === 'boolean') {
-          if (raw === 'true') value = true
-          else if (raw === 'false') value = false
-        }
-
-        input[entry.name] = value
-        displayValues[entry.name] = String(raw)
-        sources[entry.name] = fromEnvironment ? 'environ' : 'default'
+        Config.printConfigRow(variable, String(values[entry.name]), sources[entry.name] ?? 'default')
       }
 
-      const values = Config.validateConfig(input, displayValues)
-
-      Object.assign(this, values)
-
-      if (!values.serverSilentStartup) {
-        Config.printConfigHeader()
-
-        for (const [variable, entry] of Object.entries(definitions)) {
-          Config.printConfigRow(variable, String(values[entry.name]), sources[entry.name] ?? 'default')
-        }
-
-        process.stdout.write('\nSee src/server/configs/ for defaults and descriptions.\n\n')
-      }
-    } catch (error) {
-      throw hedraError(error, ConfigurationError)
+      process.stdout.write('\nSee src/server/configs/ for defaults and descriptions.\n\n')
     }
   }
 

@@ -3,7 +3,7 @@ import type { Context } from 'hono'
 import type { Backend, BackendTransaction, DatabaseRecord } from '#datastores/backend.ts'
 import type { Association, ResourceReference } from '#models/association.ts'
 import type { Collection } from '#models/collection.ts'
-import { ConflictError, HedraError, hedraError, InputValidationError, parseInput, RecordNotFoundError } from '#errors'
+import { ConflictError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { Association as AssociationSchema, ResourceReference as ReferenceSchema } from '#models/association.ts'
 import { getAssociationScope } from '#models/scope.ts'
 
@@ -11,11 +11,15 @@ export const associationTable = 'hedra_associations'
 
 /** Converts one stored association to its public value. */
 function publicAssociation(record: DatabaseRecord): Association {
-  return AssociationSchema.parse({
+  const parsed = AssociationSchema.safeParse({
     id: record.id,
     source: { collection: record.sourceCollection, id: record.sourceId },
     target: { collection: record.targetCollection, id: record.targetId },
   })
+
+  if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)
+
+  return parsed.data
 }
 
 /** Reads the exact association between two resource references. */
@@ -139,55 +143,39 @@ export class AssociationOperations {
 
   /** Links registered resources once. */
   async link(source: ResourceReference, target: ResourceReference): Promise<Association> {
-    try {
-      const [from, to] = this.references(source, target)
+    const [from, to] = this.references(source, target)
 
-      return await this.backend().transaction((transaction) => addAssociation(transaction, from, to))
-    } catch (error) {
-      throw hedraError(error, HedraError)
-    }
+    return await this.backend().transaction((transaction) => addAssociation(transaction, from, to))
   }
 
   /** Lists every association involving a registered resource. */
   async list(reference: ResourceReference): Promise<Association[]> {
-    try {
-      const parsed = parseInput(ReferenceSchema, reference)
+    const parsed = parseInput(ReferenceSchema, reference)
 
-      if (!this.collection(parsed.collection)) throw new InputValidationError()
+    if (!this.collection(parsed.collection)) throw new InputValidationError()
 
-      return await this.backend().transaction((transaction) => {
-        assertResource(transaction, parsed)
+    return await this.backend().transaction((transaction) => {
+      assertResource(transaction, parsed)
 
-        return associationsFor(transaction, parsed)
-      })
-    } catch (error) {
-      throw hedraError(error, HedraError)
-    }
+      return associationsFor(transaction, parsed)
+    })
   }
 
   /** Removes a link while retaining both resources. */
   async unlink(source: ResourceReference, target: ResourceReference): Promise<boolean> {
-    try {
-      const [from, to] = this.references(source, target)
+    const [from, to] = this.references(source, target)
 
-      return await this.backend().transaction((transaction) => removeAssociation(transaction, from, to))
-    } catch (error) {
-      throw hedraError(error, HedraError)
-    }
+    return await this.backend().transaction((transaction) => removeAssociation(transaction, from, to))
   }
 
   /** Removes a link after checking every generated-route ancestor. */
   async unlinkFrom(context: Context, source: ResourceReference, target: ResourceReference): Promise<void> {
-    try {
-      const [from, to] = this.references(source, target)
-      const ancestors = getAssociationScope(context) ?? []
+    const [from, to] = this.references(source, target)
+    const ancestors = getAssociationScope(context) ?? []
 
-      await this.backend().transaction((transaction) => {
-        assertAssociationScope(transaction, ancestors, from)
-        if (!removeAssociation(transaction, from, to)) throw new RecordNotFoundError()
-      })
-    } catch (error) {
-      throw hedraError(error, HedraError)
-    }
+    await this.backend().transaction((transaction) => {
+      assertAssociationScope(transaction, ancestors, from)
+      if (!removeAssociation(transaction, from, to)) throw new RecordNotFoundError()
+    })
   }
 }

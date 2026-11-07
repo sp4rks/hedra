@@ -9,7 +9,6 @@ import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput }
 import { resourceLink } from '#controllers/controller.ts'
 import { project } from '#controllers/projection.ts'
 import {
-  hedraError,
   InputValidationError,
   OutputValidationError,
   PreconditionFailedError,
@@ -36,15 +35,14 @@ function attributes(input: ResourceInput): Record<string, unknown> {
 
 /** Validates a tenant returned by a configuration datastore. */
 function tenantOutput(input: unknown, id?: string): Tenant {
-  try {
-    const tenant = Tenant.parse(input)
+  const parsed = Tenant.safeParse(input)
 
-    if (id !== undefined && tenant.id !== id) throw new OutputValidationError('Resource ID cannot change')
+  if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)
+  const tenant = parsed.data
 
-    return tenant
-  } catch (error) {
-    throw hedraError(error, OutputValidationError)
-  }
+  if (id !== undefined && tenant.id !== id) throw new OutputValidationError('Resource ID cannot change')
+
+  return tenant
 }
 
 export class TenantController implements ControllerInterface {
@@ -56,63 +54,51 @@ export class TenantController implements ControllerInterface {
 
   /** Requires requests to use the deployment API host. */
   assertHost(context: Context): void {
-    try {
-      const host = context.req.header('host')
-      const match = host?.match(/^([a-z0-9.-]+)(?::([0-9]{1,5}))?$/i)
+    const host = context.req.header('host')
+    const match = host?.match(/^([a-z0-9.-]+)(?::([0-9]{1,5}))?$/i)
 
-      if (
-        !match ||
-        match[1]?.toLowerCase() !== this.config.deploymentApiDomain.toLowerCase() ||
-        (match[2] !== undefined && Number(match[2]) > 65535)
-      ) {
-        throw new PreconditionFailedError('precondition failed', 'Tenant operations require the deployment API host.')
-      }
-    } catch (error) {
-      throw hedraError(error)
+    if (
+      !match ||
+      match[1]?.toLowerCase() !== this.config.deploymentApiDomain.toLowerCase() ||
+      (match[2] !== undefined && Number(match[2]) > 65535)
+    ) {
+      throw new PreconditionFailedError('precondition failed', 'Tenant operations require the deployment API host.')
     }
   }
 
   /** Creates a tenant in the configuration catalogue. */
   async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
-    try {
-      this.assertHost(context)
-      const fields = parseInput(TenantInput, attributes(input))
-      const suffix = `.${this.config.deploymentDomain.toLowerCase()}`
-      const label = fields.tenantDomain.endsWith(suffix) ? fields.tenantDomain.slice(0, -suffix.length) : ''
+    this.assertHost(context)
+    const fields = parseInput(TenantInput, attributes(input))
+    const suffix = `.${this.config.deploymentDomain.toLowerCase()}`
+    const label = fields.tenantDomain.endsWith(suffix) ? fields.tenantDomain.slice(0, -suffix.length) : ''
 
-      if (
-        !label ||
-        label.includes('.') ||
-        [this.config.deploymentApiDomain.toLowerCase(), this.config.deploymentDocsDomain.toLowerCase()].includes(
-          fields.tenantDomain,
-        )
-      ) {
-        throw new InputValidationError('Tenant domain must be a direct subdomain of the deployment domain')
-      }
-      const tenant = tenantOutput(await this.datastore().tenants.create(fields))
-
-      if (tenant.tenantDomain !== fields.tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
-
-      return { data: project(collection, tenant), links: { self: resourceLink(context, tenant.id) } }
-    } catch (error) {
-      throw hedraError(error)
+    if (
+      !label ||
+      label.includes('.') ||
+      [this.config.deploymentApiDomain.toLowerCase(), this.config.deploymentDocsDomain.toLowerCase()].includes(
+        fields.tenantDomain,
+      )
+    ) {
+      throw new InputValidationError('Tenant domain must be a direct subdomain of the deployment domain')
     }
+    const tenant = tenantOutput(await this.datastore().tenants.create(fields))
+
+    if (tenant.tenantDomain !== fields.tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
+
+    return { data: project(collection, tenant), links: { self: resourceLink(context, tenant.id) } }
   }
 
   /** Returns one tenant. */
   async id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse> {
-    try {
-      this.assertHost(context)
-      const key = parseInput(ResourceId, id)
-      const value = await this.datastore().tenants.get(key)
+    this.assertHost(context)
+    const key = parseInput(ResourceId, id)
+    const value = await this.datastore().tenants.get(key)
 
-      if (value === null) throw new RecordNotFoundError()
-      const tenant = tenantOutput(value, key)
+    if (value === null) throw new RecordNotFoundError()
+    const tenant = tenantOutput(value, key)
 
-      return { data: project(collection, tenant), links: { self: resourceLink(context, key) } }
-    } catch (error) {
-      throw hedraError(error)
-    }
+    return { data: project(collection, tenant), links: { self: resourceLink(context, key) } }
   }
 
   /** Returns tenants matching public scalar fields. */
@@ -122,54 +108,46 @@ export class TenantController implements ControllerInterface {
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
-    try {
-      this.assertHost(context)
-      const options = parseInput(QuerySchema, queryParams ?? {})
-      const filter: Record<string, string> = {}
+    this.assertHost(context)
+    const options = parseInput(QuerySchema, queryParams === undefined ? {} : queryParams)
+    const filter: Record<string, string> = {}
 
-      for (const [key, value] of Object.entries(options.filter ?? {})) {
-        const schema = Tenant.shape[key as keyof typeof Tenant.shape]
+    for (const [key, value] of Object.entries(options.filter ?? {})) {
+      const schema = Tenant.shape[key as keyof typeof Tenant.shape]
 
-        if (!schema || !Object.hasOwn(collection.outputValidator.shape, key)) throw new InputValidationError()
-        filter[key] = parseInput(schema, value)
-      }
-      const values = await this.datastore().tenants.list(filter)
+      if (!schema || !Object.hasOwn(collection.outputValidator.shape, key)) throw new InputValidationError()
+      filter[key] = parseInput(schema, value)
+    }
+    const values = await this.datastore().tenants.list(filter)
 
-      return {
-        data: values.map((value) => project(collection, tenantOutput(value))),
-        links: { self: z.url().parse(baseUrl) },
-      }
-    } catch (error) {
-      throw hedraError(error)
+    const url = z.url().safeParse(baseUrl)
+
+    if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
+
+    return {
+      data: values.map((value) => project(collection, tenantOutput(value))),
+      links: { self: url.data },
     }
   }
 
   /** Changes a tenant name without allowing its domain to change. */
   async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
-    try {
-      this.assertHost(context)
-      const key = parseInput(ResourceId, id)
-      const fields = parseInput(TenantChanges, attributes(input))
-      const value = await this.datastore().tenants.update(key, fields)
+    this.assertHost(context)
+    const key = parseInput(ResourceId, id)
+    const fields = parseInput(TenantChanges, attributes(input))
+    const value = await this.datastore().tenants.update(key, fields)
 
-      if (value === null) throw new RecordNotFoundError()
-      const tenant = tenantOutput(value, key)
+    if (value === null) throw new RecordNotFoundError()
+    const tenant = tenantOutput(value, key)
 
-      return { data: project(collection, tenant), links: { self: resourceLink(context, key) } }
-    } catch (error) {
-      throw hedraError(error)
-    }
+    return { data: project(collection, tenant), links: { self: resourceLink(context, key) } }
   }
 
   /** Deletes one tenant. */
   async delete(context: Context, _collection: Collection, id: string): Promise<void> {
-    try {
-      this.assertHost(context)
-      const key = parseInput(ResourceId, id)
+    this.assertHost(context)
+    const key = parseInput(ResourceId, id)
 
-      if (!(await this.datastore().tenants.delete(key))) throw new RecordNotFoundError()
-    } catch (error) {
-      throw hedraError(error)
-    }
+    if (!(await this.datastore().tenants.delete(key))) throw new RecordNotFoundError()
   }
 }

@@ -3,7 +3,7 @@ import type { ResourceOperations } from '#datastores/resource-operations.ts'
 import { Config } from '#config'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { TenantOperations } from '#datastores/categories/config/tenants.ts'
-import { ConfigurationError, hedraError } from '#errors'
+import { ConfigurationError } from '#errors'
 import { Collection } from '#models/collection.ts'
 import { Tenant } from '#models/tenant.ts'
 
@@ -27,22 +27,19 @@ export class ConfigStore implements ConfigDatastore {
   constructor(options?: ConfigStoreOptions)
   constructor(backend: Backend)
   constructor(input: ConfigStoreOptions | Backend = {}) {
-    try {
-      const options = 'insert' in input ? { backend: input } : input
-      let backend = options.backend
+    if (!input || typeof input !== 'object') throw new ConfigurationError('Invalid configuration datastore options')
+    const options = 'insert' in input ? { backend: input } : input
+    let backend = options.backend
 
-      if (!backend) {
-        const owned = new SqliteBackend((options.config ?? new Config()).sqlitePath)
+    if (!backend) {
+      const owned = new SqliteBackend((options.config ?? new Config()).sqlitePath)
 
-        backend = owned
-        this.closeBackend = () => owned.close()
-      }
-      const tenants = new Collection(tenantTable, Tenant)
-
-      this.tenants = new TenantOperations(tenants.name, backend)
-    } catch (error) {
-      throw hedraError(error, ConfigurationError)
+      backend = owned
+      this.closeBackend = () => owned.close()
     }
+    const tenants = new Collection(tenantTable, Tenant)
+
+    this.tenants = new TenantOperations(tenants.name, backend)
   }
 
   /** Closes an owned backend without closing a supplied backend. */
