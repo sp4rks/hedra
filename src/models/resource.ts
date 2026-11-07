@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { ConfigurationError } from '#errors'
+
 export const ResourceId = z.uuid()
 export const ResourceTimestamp = z.iso.datetime()
 const resourceKinds = z.registry<{ kind: 'resource' | 'embedded' }>()
@@ -23,10 +25,10 @@ export function resourceKind(model: z.ZodObject): 'resource' | 'embedded' | unde
 
 /** Ensures a stored resource model requires a UUID identifier. */
 export function assertResourceModel(model: z.ZodObject): void {
-  if (!(model instanceof z.ZodObject)) throw new TypeError('Resource model must be a Zod object')
+  if (!(model instanceof z.ZodObject)) throw new ConfigurationError('Resource model must be a Zod object')
 
   if (!(model.shape.id instanceof z.ZodUUID)) {
-    throw new TypeError('Resource model must require a UUID id')
+    throw new ConfigurationError('Resource model must require a UUID id')
   }
-  if (resourceKind(model) === 'embedded') throw new TypeError('Embedded resources cannot own collections')
+  if (resourceKind(model) === 'embedded') throw new ConfigurationError('Embedded resources cannot own collections')
 }

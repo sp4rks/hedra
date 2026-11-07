@@ -38,7 +38,7 @@ Invalid configuration throws before server startup. Embedded applications can ca
 
 ## Settings
 
-Environment values are strings. Hedra trims them, applies defaults for unset or blank values and validates the resulting native values. Boolean variables accept exactly `true` or `false` after trimming. Invalid values throw a `ConfigurationError` identifying the variable; file-access failures also propagate. See [error constructors](errors.md) for fixed statuses and custom title/detail arguments.
+Environment values are strings. Hedra trims them, applies defaults for unset or blank values and validates the resulting native values. Boolean variables accept exactly `true` or `false` after trimming. Invalid values throw a `ConfigurationError` identifying the variable. File-access failures also throw `ConfigurationError`, retaining the original failure as `cause`. See [error constructors](errors.md) for fixed statuses and custom title/detail arguments.
 
 | Environment variable | Config property | Type and accepted values | Default |
 | --- | --- | --- | --- |

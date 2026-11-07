@@ -3,7 +3,7 @@ import type { Context } from 'hono'
 import type { Backend, BackendTransaction, DatabaseRecord } from '#datastores/backend.ts'
 import type { Association, ResourceReference } from '#models/association.ts'
 import type { Collection } from '#models/collection.ts'
-import { ConflictError, InputValidationError, RecordNotFoundError } from '#errors'
+import { ConflictError, HedraError, hedraError, InputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { Association as AssociationSchema, ResourceReference as ReferenceSchema } from '#models/association.ts'
 import { getAssociationScope } from '#models/scope.ts'
 
@@ -127,8 +127,8 @@ export class AssociationOperations {
 
   /** Validates that the selected source declares the target association. */
   private references(source: ResourceReference, target: ResourceReference): [ResourceReference, ResourceReference] {
-    const from = ReferenceSchema.parse(source)
-    const to = ReferenceSchema.parse(target)
+    const from = parseInput(ReferenceSchema, source)
+    const to = parseInput(ReferenceSchema, target)
     const definition = this.collection(from.collection)
     const destination = this.collection(to.collection)
 
@@ -139,39 +139,55 @@ export class AssociationOperations {
 
   /** Links registered resources once. */
   async link(source: ResourceReference, target: ResourceReference): Promise<Association> {
-    const [from, to] = this.references(source, target)
+    try {
+      const [from, to] = this.references(source, target)
 
-    return this.backend().transaction((transaction) => addAssociation(transaction, from, to))
+      return await this.backend().transaction((transaction) => addAssociation(transaction, from, to))
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Lists every association involving a registered resource. */
   async list(reference: ResourceReference): Promise<Association[]> {
-    const parsed = ReferenceSchema.parse(reference)
+    try {
+      const parsed = parseInput(ReferenceSchema, reference)
 
-    if (!this.collection(parsed.collection)) throw new InputValidationError()
+      if (!this.collection(parsed.collection)) throw new InputValidationError()
 
-    return this.backend().transaction((transaction) => {
-      assertResource(transaction, parsed)
+      return await this.backend().transaction((transaction) => {
+        assertResource(transaction, parsed)
 
-      return associationsFor(transaction, parsed)
-    })
+        return associationsFor(transaction, parsed)
+      })
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Removes a link while retaining both resources. */
   async unlink(source: ResourceReference, target: ResourceReference): Promise<boolean> {
-    const [from, to] = this.references(source, target)
+    try {
+      const [from, to] = this.references(source, target)
 
-    return this.backend().transaction((transaction) => removeAssociation(transaction, from, to))
+      return await this.backend().transaction((transaction) => removeAssociation(transaction, from, to))
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Removes a link after checking every generated-route ancestor. */
   async unlinkFrom(context: Context, source: ResourceReference, target: ResourceReference): Promise<void> {
-    const [from, to] = this.references(source, target)
-    const ancestors = getAssociationScope(context) ?? []
+    try {
+      const [from, to] = this.references(source, target)
+      const ancestors = getAssociationScope(context) ?? []
 
-    await this.backend().transaction((transaction) => {
-      assertAssociationScope(transaction, ancestors, from)
-      if (!removeAssociation(transaction, from, to)) throw new RecordNotFoundError()
-    })
+      await this.backend().transaction((transaction) => {
+        assertAssociationScope(transaction, ancestors, from)
+        if (!removeAssociation(transaction, from, to)) throw new RecordNotFoundError()
+      })
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 }

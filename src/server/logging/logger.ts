@@ -6,6 +6,7 @@ import pretty from 'pino-pretty'
 
 import type { LoggerInterface } from '#server/logging/logging.ts'
 import { Config } from '#config'
+import { HedraError, hedraError, parseInput } from '#errors'
 import { LogFields } from '#server/logging/logging.ts'
 
 /** Creates the default logging adapter. */
@@ -15,49 +16,77 @@ export class Logger implements LoggerInterface {
 
   /** Uses the configured level and format with initial context and an optional destination. */
   constructor(config: Config = new Config(), destination?: Writable, bindings: LogFields = {}) {
-    const initial = LogFields.parse(bindings)
-    const options = { level: config.serverLogLevel, base: {} }
-    const stream =
-      config.serverLogFormat === 'pretty'
-        ? pretty({ colorize: true, translateTime: 'SYS:standard', sync: true, destination })
-        : destination
+    try {
+      const initial = parseInput(LogFields, bindings)
+      const options = { level: config.serverLogLevel, base: {} }
+      const stream =
+        config.serverLogFormat === 'pretty'
+          ? pretty({ colorize: true, translateTime: 'SYS:standard', sync: true, destination })
+          : destination
 
-    this.bindings = initial
-    this.logger = stream ? pino(options, stream) : pino(options)
+      this.bindings = initial
+      this.logger = stream ? pino(options, stream) : pino(options)
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Combines initial context with the record's validated fields. */
   private fields(fields?: LogFields): LogFields {
-    return { ...this.bindings, ...LogFields.parse(fields === undefined ? {} : fields) }
+    return { ...this.bindings, ...parseInput(LogFields, fields === undefined ? {} : fields) }
   }
 
   /** Writes a trace record. */
   trace(message: string, fields?: LogFields): void {
-    this.logger.trace(this.fields(fields), message)
+    try {
+      this.logger.trace(this.fields(fields), message)
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Writes a debug record. */
   debug(message: string, fields?: LogFields): void {
-    this.logger.debug(this.fields(fields), message)
+    try {
+      this.logger.debug(this.fields(fields), message)
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Writes an informational record. */
   info(message: string, fields?: LogFields): void {
-    this.logger.info(this.fields(fields), message)
+    try {
+      this.logger.info(this.fields(fields), message)
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Writes a warning record. */
   warn(message: string, fields?: LogFields): void {
-    this.logger.warn(this.fields(fields), message)
+    try {
+      this.logger.warn(this.fields(fields), message)
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Writes an error record. */
   error(message: string, fields?: LogFields): void {
-    this.logger.error(this.fields(fields), message)
+    try {
+      this.logger.error(this.fields(fields), message)
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Writes a fatal record. */
   fatal(message: string, fields?: LogFields): void {
-    this.logger.fatal(this.fields(fields), message)
+    try {
+      this.logger.fatal(this.fields(fields), message)
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 }

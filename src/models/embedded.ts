@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { ConfigurationError } from '#errors'
 import { ResourceId, resourceKind } from '#models/resource.ts'
 
 export const EmbeddedField = z.object({
@@ -57,15 +58,16 @@ export function embeddedFields(model: z.ZodObject): EmbeddedField[] {
     const item = unwrap(element as z.ZodType)
 
     if (!(item instanceof z.ZodObject)) {
-      if (containsResource(schema)) throw new TypeError(`Unsupported embedded resource placement: ${name}`)
+      if (containsResource(schema)) throw new ConfigurationError(`Unsupported embedded resource placement: ${name}`)
 
       return []
     }
     const resource = resourceKind(item)
 
-    if (resource === 'resource') throw new TypeError('Independent resources cannot be embedded as owned values')
+    if (resource === 'resource')
+      throw new ConfigurationError('Independent resources cannot be embedded as owned values')
     if (resource !== 'embedded') {
-      if (containsResource(schema)) throw new TypeError(`Unsupported embedded resource placement: ${name}`)
+      if (containsResource(schema)) throw new ConfigurationError(`Unsupported embedded resource placement: ${name}`)
 
       return []
     }

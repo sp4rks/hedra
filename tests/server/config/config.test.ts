@@ -359,7 +359,8 @@ test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
       } catch (error) {
         failure = error
       }
-      expect(failure).toMatchObject({ code: 'EACCES' })
+      expect(failure).toBeInstanceOf(ConfigurationError)
+      expect((failure as ConfigurationError).cause).toMatchObject({ code: 'EACCES' })
     } finally {
       await chmod(dir, 0o700)
       await rm(dir, { recursive: true, force: true })

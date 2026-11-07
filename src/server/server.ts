@@ -9,7 +9,7 @@ import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore, tenantTable } from '#datastores/categories/config/config.ts'
-import { ConnectionError } from '#errors'
+import { ConfigurationError, ConnectionError, DatastoreError, HedraError, hedraError } from '#errors'
 import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
@@ -40,25 +40,29 @@ export class Hedra extends Hono {
   /** Loads configuration and a logger and sets the listen address. */
   constructor(options: HedraOptions = {}) {
     super()
-    this.instanceId = crypto.randomUUID()
+    try {
+      this.instanceId = crypto.randomUUID()
 
-    this.config = options.config ?? new Config()
-    this.log = options.logger ?? new Logger(this.config, undefined, { instanceId: this.instanceId })
+      this.config = options.config ?? new Config()
+      this.log = options.logger ?? new Logger(this.config, undefined, { instanceId: this.instanceId })
 
-    this.port = this.config.serverListenPort
-    this.hostname = this.config.serverListenIp
-    this.backend = options.backend
-    this.datastore = options.configDatastore
+      this.port = this.config.serverListenPort
+      this.hostname = this.config.serverListenIp
+      this.backend = options.backend
+      this.datastore = options.configDatastore
 
-    this.associations = new AssociationOperations(
-      () => {
-        if (this.closed) throw new ConnectionError('Hedra is closed')
-        if (!this.backend) throw new Error('Register a collection before using associations')
+      this.associations = new AssociationOperations(
+        () => {
+          if (this.closed) throw new ConnectionError('Hedra is closed')
+          if (!this.backend) throw new ConfigurationError('Register a collection before using associations')
 
-        return this.guard(this.backend)
-      },
-      (name) => this.collections.get(name),
-    )
+          return this.guard(this.backend)
+        },
+        (name) => this.collections.get(name),
+      )
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 
   /** Returns the app's configuration datastore. */
@@ -80,143 +84,140 @@ export class Hedra extends Hono {
       if (this.closed) throw new ConnectionError('Datastore connection is closed')
     }
 
+    const guarded = <T>(operation: () => T): T => {
+      try {
+        check()
+
+        return operation()
+      } catch (error) {
+        throw hedraError(error, DatastoreError)
+      }
+    }
+    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> => {
+      try {
+        check()
+
+        return await operation()
+      } catch (error) {
+        throw hedraError(error, DatastoreError)
+      }
+    }
+
     return {
-      insert: async (...args) => {
-        check()
-
-        return backend.insert(...args)
-      },
-      select: async (...args) => {
-        check()
-
-        return backend.select(...args)
-      },
-      update: async (...args) => {
-        check()
-
-        return backend.update(...args)
-      },
-      delete: async (...args) => {
-        check()
-
-        return backend.delete(...args)
-      },
-      transaction: async (work) => {
-        check()
-
-        return backend.transaction((transaction) => {
-          check()
-
-          return work({
-            insert: (...args) => {
-              check()
-
-              return transaction.insert(...args)
-            },
-            select: (...args) => {
-              check()
-
-              return transaction.select(...args)
-            },
-            update: (...args) => {
-              check()
-
-              return transaction.update(...args)
-            },
-            delete: (...args) => {
-              check()
-
-              return transaction.delete(...args)
-            },
-          })
-        })
-      },
+      insert: (...args) => guardedAsync(() => backend.insert(...args)),
+      select: (...args) => guardedAsync(() => backend.select(...args)),
+      update: (...args) => guardedAsync(() => backend.update(...args)),
+      delete: (...args) => guardedAsync(() => backend.delete(...args)),
+      transaction: (work) =>
+        guardedAsync(() =>
+          backend.transaction((transaction) =>
+            guarded(() =>
+              work({
+                insert: (...args) => guarded(() => transaction.insert(...args)),
+                select: (...args) => guarded(() => transaction.select(...args)),
+                update: (...args) => guarded(() => transaction.update(...args)),
+                delete: (...args) => guarded(() => transaction.delete(...args)),
+              }),
+            ),
+          ),
+        ),
     }
   }
 
   /** Constructs the selected controller using this app's backend. */
   register<S extends z.ZodObject, C extends ControllerInterface>(collection: Collection<S, C>): void {
-    if (this.closed) throw new Error('Hedra is closed')
-    if (!(collection instanceof Collection)) throw new TypeError('Expected a Collection')
-    if (this.collections.has(collection.name)) throw new Error(`Collection already registered: ${collection.name}`)
-
-    const names = new Map(this.collections)
-    const pending: Collection[] = []
-    const visiting = new Set<Collection>()
-    
-    const visit = (candidate: Collection): void => {
-      if (visiting.has(candidate)) throw new Error('Cyclic association definitions are not supported')
-      const known = names.get(candidate.name)
-
-      if (known && known !== candidate) throw new Error(`Collection already registered: ${candidate.name}`)
-      if (known) return
-      if (candidate.name === tenantTable || candidate.name === associationTable)
-        throw new Error('Collection name is reserved')
-      if (isAttached(candidate)) throw new Error('Collection is already attached to an app')
-      
-      checkRoutes(candidate.model, candidate.outputValidator)
-      
-      const fields = new Set(embeddedFields(candidate.model).map((field) => field.name))
-      const targets = new Set<string>()
-
-      if (candidate.associations.length && fields.has('associations')) throw new Error('Embedded path is reserved')
-
-      for (const target of candidate.associations) {
-        if (fields.has(target.name) || targets.has(target.name))
-          throw new Error(`Ambiguous association path: ${target.name}`)
-        targets.add(target.name)
-      }
-      names.set(candidate.name, candidate)
-      visiting.add(candidate)
-
-      for (const target of candidate.associations) visit(target)
-      visiting.delete(candidate)
-      pending.push(candidate)
-    }
-
-    visit(collection)
-
-    if (this.config.serverPrintRoutes) {
-      this.log.info(`Registering collection: ${collection.name}`)
-    }
-
-    const opened = this.backend === undefined
-
-    if (opened) {
-      const backend = new SqliteBackend(this.config.sqlitePath)
-
-      this.backend = backend
-      this.closeBackend = () => backend.close()
-    }
-
     try {
-      const backend = this.guard(this.backend as Backend)
-      const controllers = pending.map((item) => [item, createCollectionController(item, backend)] as const)
+      if (this.closed) throw new ConfigurationError('Hedra is closed')
+      if (!(collection instanceof Collection)) throw new ConfigurationError('Expected a Collection')
+      if (this.collections.has(collection.name))
+        throw new ConfigurationError(`Collection already registered: ${collection.name}`)
 
-      for (const [item, controller] of controllers) {
-        bindCollection(item, controller)
-        this.collections.set(item.name, item)
+      const names = new Map(this.collections)
+      const pending: Collection[] = []
+      const visiting = new Set<Collection>()
+
+      const visit = (candidate: Collection): void => {
+        if (visiting.has(candidate)) throw new ConfigurationError('Cyclic association definitions are not supported')
+        const known = names.get(candidate.name)
+
+        if (known && known !== candidate)
+          throw new ConfigurationError(`Collection already registered: ${candidate.name}`)
+        if (known) return
+        if (candidate.name === tenantTable || candidate.name === associationTable)
+          throw new ConfigurationError('Collection name is reserved')
+        if (isAttached(candidate)) throw new ConfigurationError('Collection is already attached to an app')
+
+        checkRoutes(candidate.model, candidate.outputValidator)
+
+        const fields = new Set(embeddedFields(candidate.model).map((field) => field.name))
+        const targets = new Set<string>()
+
+        if (candidate.associations.length && fields.has('associations'))
+          throw new ConfigurationError('Embedded path is reserved')
+
+        for (const target of candidate.associations) {
+          if (fields.has(target.name) || targets.has(target.name))
+            throw new ConfigurationError(`Ambiguous association path: ${target.name}`)
+          targets.add(target.name)
+        }
+        names.set(candidate.name, candidate)
+        visiting.add(candidate)
+
+        for (const target of candidate.associations) visit(target)
+        visiting.delete(candidate)
+        pending.push(candidate)
       }
 
-      for (const item of pending) registerRoutes(this, item)
+      visit(collection)
 
-      for (const item of pending) registerAssociationRoutes(this, item, this.associations)
-    } catch (error) {
+      if (this.config.serverPrintRoutes) {
+        this.log.info(`Registering collection: ${collection.name}`)
+      }
+
+      const opened = this.backend === undefined
+
       if (opened) {
-        this.closeBackend?.()
-        this.closeBackend = undefined
-        this.backend = undefined
+        const backend = new SqliteBackend(this.config.sqlitePath)
+
+        this.backend = backend
+        this.closeBackend = () => backend.close()
       }
 
-      throw error
+      try {
+        const backend = this.guard(this.backend as Backend)
+        const controllers = pending.map((item) => [item, createCollectionController(item, backend)] as const)
+
+        for (const [item, controller] of controllers) {
+          bindCollection(item, controller)
+          this.collections.set(item.name, item)
+        }
+
+        for (const item of pending) registerRoutes(this, item)
+
+        for (const item of pending) registerAssociationRoutes(this, item, this.associations)
+      } catch (error) {
+        if (opened) {
+          this.closeBackend?.()
+          this.closeBackend = undefined
+          this.backend = undefined
+        }
+
+        throw hedraError(error, ConfigurationError)
+      }
+    } catch (error) {
+      throw hedraError(error, ConfigurationError)
     }
   }
 
   /** Ends this app's controller lifecycle and closes its owned backend. */
   close(): void {
-    if (this.closed) return
-    this.closed = true
-    this.closeConfigDatastore?.()
-    this.closeBackend?.()
+    try {
+      if (this.closed) return
+      this.closed = true
+      this.closeConfigDatastore?.()
+      this.closeBackend?.()
+    } catch (error) {
+      throw hedraError(error, HedraError)
+    }
   }
 }

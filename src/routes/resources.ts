@@ -6,7 +6,13 @@ import type { AssociationOperations } from '#controllers/associations.ts'
 import type { Collection } from '#models/collection.ts'
 import type { EmbeddedField } from '#models/embedded.ts'
 import { DatabaseScalar } from '#datastores/backend.ts'
-import { BadRequestError, HedraError, InputValidationError, UnsupportedMediaTypeError } from '#errors'
+import {
+  BadRequestError,
+  ConfigurationError,
+  HedraError,
+  InputValidationError,
+  UnsupportedMediaTypeError,
+} from '#errors'
 import { embeddedFields, inputModel, unwrap } from '#models/embedded.ts'
 import { ResourceId } from '#models/resource.ts'
 import { ErrorResponse } from '#models/rest.ts'
@@ -129,11 +135,11 @@ function publicItem(field: EmbeddedField, output: z.ZodObject): z.ZodObject | un
   if (field.kind === 'array' && container instanceof z.ZodArray) item = container.element as z.ZodType
   else if (field.kind === 'dictionary' && container instanceof z.ZodRecord) item = container.valueType as z.ZodType
   else if (field.kind === 'single') item = container
-  else throw new TypeError(`Embedded output shape is incompatible: ${field.name}`)
+  else throw new ConfigurationError(`Embedded output shape is incompatible: ${field.name}`)
   const model = unwrap(item)
 
   if (!(model instanceof z.ZodObject) || !(model.shape.id instanceof z.ZodUUID)) {
-    throw new TypeError(`Embedded output must retain its UUID: ${field.name}`)
+    throw new ConfigurationError(`Embedded output must retain its UUID: ${field.name}`)
   }
 
   return model
@@ -141,11 +147,12 @@ function publicItem(field: EmbeddedField, output: z.ZodObject): z.ZodObject | un
 
 /** Validates embedded route definitions before attaching a collection. */
 export function checkRoutes(model: z.ZodObject, output: z.ZodObject, ancestors = new Set<z.ZodObject>()): void {
-  if (ancestors.has(model)) throw new TypeError('Recursive embedded routes are not supported')
+  if (ancestors.has(model)) throw new ConfigurationError('Recursive embedded routes are not supported')
   const next = new Set(ancestors).add(model)
 
   for (const field of embeddedFields(model)) {
-    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(field.name)) throw new TypeError(`Invalid embedded route name: ${field.name}`)
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(field.name))
+      throw new ConfigurationError(`Invalid embedded route name: ${field.name}`)
     const visible = publicItem(field, output)
 
     if (visible) checkRoutes(field.model, visible, next)
@@ -366,7 +373,7 @@ export function registerAssociationRoutes(
         associationScope(context, ancestors.slice(0, -1))
         const sourceStep = ancestors.at(-1)
 
-        if (!sourceStep) throw new Error('Missing association source')
+        if (!sourceStep) throw new HedraError('Missing association source')
         const from = { collection: source.name, id: input(ResourceId, context.req.param(sourceStep.parameter)) }
         const to = { collection: target.name, id: input(ResourceId, context.req.param(parameter)) }
 

@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import { z } from 'zod'
 
 import type { ResourceReference } from '#models/association.ts'
+import { HedraError, hedraError, InputValidationError } from '#errors'
 import { ResourceReference as ReferenceSchema } from '#models/association.ts'
 import { EmbeddedField } from '#models/embedded.ts'
 import { ResourceId } from '#models/resource.ts'
@@ -21,9 +22,13 @@ export function setEmbeddedScope(context: Context, scope: EmbeddedScope): void {
 
 /** Returns ancestry installed by a generated embedded route. */
 export function getEmbeddedScope(context: Context): EmbeddedScope | undefined {
-  const scope: unknown = context.get('hedraScope' as never)
+  try {
+    const scope: unknown = context.get('hedraScope' as never)
 
-  return scope === undefined ? undefined : EmbeddedScope.parse(scope)
+    return scope === undefined ? undefined : EmbeddedScope.parse(scope)
+  } catch (error) {
+    throw hedraError(error, error instanceof z.ZodError ? InputValidationError : HedraError)
+  }
 }
 
 /** Stores resource ancestors for a generated association route. */
@@ -33,7 +38,11 @@ export function setAssociationScope(context: Context, ancestors: ResourceReferen
 
 /** Returns ancestors installed by a generated association route. */
 export function getAssociationScope(context: Context): ResourceReference[] | undefined {
-  const scope: unknown = context.get('hedraAssociations' as never)
+  try {
+    const scope: unknown = context.get('hedraAssociations' as never)
 
-  return scope === undefined ? undefined : AssociationScope.parse(scope)
+    return scope === undefined ? undefined : AssociationScope.parse(scope)
+  } catch (error) {
+    throw hedraError(error, error instanceof z.ZodError ? InputValidationError : HedraError)
+  }
 }
