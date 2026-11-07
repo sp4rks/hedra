@@ -3,7 +3,6 @@ import { chmod, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { validateConfig } from '#config'
 import { ConfigurationError } from '#errors'
 import { Config } from '#hedra.ts'
 
@@ -119,19 +118,6 @@ test('Config rejects an invalid deployment domain', () => {
     title: 'configuration error',
     detail: 'HEDRA_DEPLOYMENT_DOMAIN has invalid value: not a domain',
   })
-})
-
-test('validateConfig reports a generic configuration error for invalid input', () => {
-  let error: unknown
-
-  try {
-    validateConfig(null)
-  } catch (caught) {
-    error = caught
-  }
-
-  expect(error).toBeInstanceOf(ConfigurationError)
-  expect(error).toMatchObject({ status: 500, title: 'configuration error', detail: 'Invalid configuration' })
 })
 
 test('Config rejects a server env outside the allowed set', () => {

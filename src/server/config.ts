@@ -36,72 +36,10 @@ export type ConfigValues = z.infer<typeof ConfigValues>
 
 const columnWidth = 50
 
-/** Prints the startup configuration table heading. */
-function printConfigHeader(): void {
-  process.stdout.write(
-    `\n${styleText('white', 'Environment Variable'.padEnd(columnWidth))} ${styleText('white', 'Value'.padEnd(columnWidth))} ${styleText('white', 'Source')}\n`,
-  )
-}
-
-/** Prints one setting and whether it came from the environment or the built-in default. */
-function printConfigRow(variable: string, value: string, source: 'environ' | 'default'): void {
-  const sourceLabel = source === 'environ' ? styleText('blueBright', 'environ') : styleText('greenBright', 'default')
-
-  process.stdout.write(
-    `${styleText('magenta', variable.padEnd(columnWidth))} ${value.padEnd(columnWidth)} ${sourceLabel}\n`,
-  )
-}
-
-/** Reads an env file and fills keys the caller has not already set. */
-function overlayEnvFile(env: typeof Bun.env, path: string): boolean {
-  let content: string
-
-  try {
-    content = readFileSync(path, 'utf8')
-  } catch (error) {
-    if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false
-
-    throw hedraError(error, ConfigurationError)
-  }
-
-  const parsed = parseEnv(content)
-
-  for (const [key, value] of Object.entries(parsed)) {
-    if (env[key] === undefined) env[key] = value
-  }
-
-  return true
-}
-
-/** Validates native configuration values and reports the associated environment variable. */
-export function validateConfig(input: unknown, displayValues?: Record<string, string>): ConfigValues {
-  const result = ConfigValues.safeParse(input)
-
-  if (!result.success) {
-    const field = result.error.issues[0]?.path[0]
-    const definition = Object.entries(defaults).find(([, entry]) => entry.name === field)
-
-    if (definition) {
-      const [variable, entry] = definition
-      const value = input !== null && typeof input === 'object' ? Reflect.get(input, entry.name) : undefined
-
-      throw new ConfigurationError(
-        'configuration error',
-        `${variable} has invalid value: ${displayValues?.[entry.name] ?? String(value)}`,
-      )
-    }
-
-    throw new ConfigurationError('configuration error', 'Invalid configuration')
-  }
-
-  return result.data
-}
-
-export interface Config extends Readonly<ConfigValues> {}
+export type Config = Readonly<ConfigValues>
 
 /** Loads and validates Hedra's deployment and server configuration. */
-// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: The constructor assigns all validated values.
-export class Config {
+export const Config = class Config {
   /** Resolves explicit settings, an env file and defaults, in that order. */
   constructor(env: typeof Bun.env = process.env) {
     try {
@@ -109,11 +47,11 @@ export class Config {
       const envFile = resolved.HEDRA_ENV_FILE?.trim()
 
       if (envFile) {
-        const loaded = overlayEnvFile(resolved, envFile)
+        const loaded = Config.overlayEnvFile(resolved, envFile)
 
-        if (!loaded && env === process.env) overlayEnvFile(resolved, '.env')
+        if (!loaded && env === process.env) Config.overlayEnvFile(resolved, '.env')
       } else if (env === process.env) {
-        overlayEnvFile(resolved, '.env')
+        Config.overlayEnvFile(resolved, '.env')
       }
 
       const input: Record<string, string | number | boolean> = {}
@@ -137,15 +75,15 @@ export class Config {
         sources[entry.name] = fromEnvironment ? 'environ' : 'default'
       }
 
-      const values = validateConfig(input, displayValues)
+      const values = Config.validateConfig(input, displayValues)
 
       Object.assign(this, values)
 
       if (!values.serverSilentStartup) {
-        printConfigHeader()
+        Config.printConfigHeader()
 
         for (const [variable, entry] of Object.entries(defaults)) {
-          printConfigRow(variable, String(Reflect.get(values, entry.name)), sources[entry.name] ?? 'default')
+          Config.printConfigRow(variable, String(Reflect.get(values, entry.name)), sources[entry.name] ?? 'default')
         }
 
         process.stdout.write('\nSee src/server/configs/ for defaults and descriptions.\n\n')
@@ -154,4 +92,67 @@ export class Config {
       throw hedraError(error, ConfigurationError)
     }
   }
-}
+
+  /** Prints the startup configuration table heading. */
+  private static printConfigHeader(): void {
+    process.stdout.write(
+      `\n${styleText('white', 'Environment Variable'.padEnd(columnWidth))} ${styleText('white', 'Value'.padEnd(columnWidth))} ${styleText('white', 'Source')}\n`,
+    )
+  }
+
+  /** Prints one setting and whether it came from the environment or the built-in default. */
+  private static printConfigRow(variable: string, value: string, source: 'environ' | 'default'): void {
+    const sourceLabel = source === 'environ' ? styleText('blueBright', 'environ') : styleText('greenBright', 'default')
+
+    process.stdout.write(
+      `${styleText('magenta', variable.padEnd(columnWidth))} ${value.padEnd(columnWidth)} ${sourceLabel}\n`,
+    )
+  }
+
+  /** Reads an env file and fills keys the caller has not already set. */
+  private static overlayEnvFile(env: typeof Bun.env, path: string): boolean {
+    let content: string
+
+    try {
+      content = readFileSync(path, 'utf8')
+    } catch (error) {
+      if (error !== null && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false
+
+      throw hedraError(error, ConfigurationError)
+    }
+
+    const parsed = parseEnv(content)
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if (env[key] === undefined) env[key] = value
+    }
+
+    return true
+  }
+
+  /** Validates native configuration values and reports the associated environment variable. */
+  private static validateConfig(input: unknown, displayValues?: Record<string, string>): ConfigValues {
+    const result = ConfigValues.safeParse(input)
+
+    if (!result.success) {
+      const field = result.error.issues[0]?.path[0]
+      const definition = Object.entries(defaults).find(([, entry]) => entry.name === field)
+
+      if (definition) {
+        const [variable, entry] = definition
+        const value = input !== null && typeof input === 'object' ? Reflect.get(input, entry.name) : undefined
+
+        throw new ConfigurationError(
+          'configuration error',
+          `${variable} has invalid value: ${displayValues?.[entry.name] ?? String(value)}`,
+        )
+      }
+
+      throw new ConfigurationError('configuration error', 'Invalid configuration')
+    }
+
+    return result.data
+  }
+} as unknown as new (
+  env?: typeof Bun.env,
+) => Config // The constructor assigns the complete Zod-parsed values.

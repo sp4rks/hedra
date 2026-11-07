@@ -23,6 +23,8 @@ test('Config exposes native configuration values as direct properties', () => {
     HEDRA_SERVER_HTTP_LOGGING: 'false',
   })
 
+  expect(config).toBeInstanceOf(Config)
+  expect(Config.name).toBe('Config')
   expect(config.serverListenPort).toBe(8080)
   expect(config.serverSilentStartup).toBe(true)
   expect(config.serverHttpLogEnabled).toBe(false)
@@ -38,6 +40,7 @@ test('Config exposes print-routes as a native boolean with a false default', () 
 })
 
 test('Config preserves precisely typed readonly fields', () => {
+  expectTypeOf<InstanceType<typeof Config>>().toEqualTypeOf<Config>()
   expectTypeOf<Config['serverEnv']>().toEqualTypeOf<'test' | 'dev' | 'nonprod' | 'prod'>()
   expectTypeOf<Config['serverLogLibrary']>().toEqualTypeOf<'pino'>()
   expectTypeOf<Config['serverLogFormat']>().toEqualTypeOf<'json' | 'pretty'>()
