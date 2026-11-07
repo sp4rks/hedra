@@ -153,7 +153,9 @@ export class Hedra extends Hono {
       if (candidate.name === tenantTable || candidate.name === associationTable)
         throw new Error('Collection name is reserved')
       if (isAttached(candidate)) throw new Error('Collection is already attached to an app')
+      
       checkRoutes(candidate.model, candidate.outputValidator)
+      
       const fields = new Set(embeddedFields(candidate.model).map((field) => field.name))
       const targets = new Set<string>()
 
