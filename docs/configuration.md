@@ -20,7 +20,7 @@ The imports above use this repository's package entry alias. Run examples from t
 
 `new Hedra()` creates a `Config` that loads `process.env`, environment files and defaults, then creates a default logger. Configure the process environment before constructing the app; no environment argument is needed.
 
-The options are `config`, `logger`, `configDatastore` and `backend`. To share a configuration instance or use a subclass, pass `new Hedra({ config })`; the app retains that instance. For isolated tests or an explicit environment snapshot, construct the dependency with `new Config(environment)` and pass it as `config`.
+The options are `config`, `logger`, `configDatastore` and `backend`. To share a configuration instance, pass `new Hedra({ config })`; the app retains that instance. For isolated tests or an explicit environment snapshot, construct the dependency with `new Config(environment)` and pass it as `config`.
 
 Supply `logger` to use any implementation of `LoggerInterface`; Hedra retains the supplied instance and the implementation controls its own context and output. Otherwise Hedra creates `new Logger(config, undefined, { instanceId })`. See [supplying a logger](logging.md#supply-a-logger).
 
@@ -75,15 +75,13 @@ When using the ambient `process.env`, Hedra falls back to `.env` if no file is s
 
 After successful validation, startup prints the settings, their values and whether each came from the environment or a default. File-provided values count as environment values in this report. Set `HEDRA_SERVER_SILENT_STARTUP=true` to suppress the report. Invalid settings prevent a success report.
 
-## Types and subclasses
+## Configuration types
 
 The category definitions in `src/server/configs/deployment.ts` and `src/server/configs/server.ts` provide each setting's environment-variable name, property name, default, metadata and Zod schema. Hedra derives the complete validation schema and the read-only `Config` property types from those entries. Adding a built-in setting requires its category entry, without a separate values-schema entry or class property declaration.
 
-`Config` stores validated properties directly; there is no public `values` object. The class is not generic.
+`Config` is a concrete loader that stores validated properties directly; there is no public `values` object. The class is not generic, and its environment loading, validation and reporting helpers are private static methods.
 
-Read-only properties are a TypeScript guarantee. The object is not frozen at runtime, allowing subclasses to initialize additional fields. Subclasses supply built-in settings through `super(environment)` so they are validated while loading; additional application fields need their own validation. Overriding built-in fields after loading, runtime mutation and live configuration reload are not supported configuration APIs. Consumers trust the loaded instance and do not revalidate it.
-
-`app.config` exposes the built-in `Config` properties. If a subclass adds application-specific fields, keep a reference to that subclass instance to access them with their concrete types.
+Read-only properties are a TypeScript guarantee; the object is not frozen at runtime. Runtime mutation and live configuration reload are not supported configuration APIs. Consumers trust the loaded instance and do not revalidate it.
 
 ## Migrating existing callers
 
