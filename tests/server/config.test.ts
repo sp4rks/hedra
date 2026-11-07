@@ -389,7 +389,7 @@ test('Config prints no success report when a setting is invalid', () => {
 test('Hedra loads ambient settings and the selected environment file without options', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
   const envPath = join(dir, 'app.env')
-  const packageEntry = join(import.meta.dir, '../../../src/hedra.ts')
+  const packageEntry = join(import.meta.dir, '../../src/hedra.ts')
   const ambient = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('HEDRA_')))
   const script = `import { Hedra } from ${JSON.stringify(packageEntry)}; const app = new Hedra(); const other = new Hedra(); process.stdout.write(JSON.stringify({ port: app.port, hostname: app.hostname, separateConfig: app.config !== other.config, separateId: app.instanceId !== other.instanceId }))`
 
@@ -423,7 +423,7 @@ test('Hedra loads ambient settings and the selected environment file without opt
 
 test('Hedra loads .env when its selected ambient file is missing', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'hedra-config-'))
-  const packageEntry = join(import.meta.dir, '../../../src/hedra.ts')
+  const packageEntry = join(import.meta.dir, '../../src/hedra.ts')
   const ambient = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('HEDRA_')))
   const script = `import { Hedra } from ${JSON.stringify(packageEntry)}; process.stdout.write(String(new Hedra().port))`
 

@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { parseEnv, styleText } from 'node:util'
 import { z } from 'zod'
 
-import { deploymentVariables } from '#config/categories/deployment.ts'
-import { serverVariables } from '#config/categories/server.ts'
+import { deploymentVariables } from '#config/deployment.ts'
+import { serverVariables } from '#config/server.ts'
 import { ConfigurationError, hedraError } from '#errors'
 
 const ConfigEntry = z.object({
@@ -168,7 +168,7 @@ export class Config {
           printConfigRow(variable, String(Reflect.get(values, entry.name)), sources[entry.name] ?? 'default')
         }
 
-        process.stdout.write('\nSee src/server/config/categories/ for defaults and descriptions.\n\n')
+        process.stdout.write('\nSee src/server/configs/ for defaults and descriptions.\n\n')
       }
     } catch (error) {
       throw hedraError(error, ConfigurationError)
