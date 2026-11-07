@@ -1,7 +1,7 @@
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend, BackendTransaction, RecordModifier } from '#datastores/backend.ts'
 import type { ConfigDatastore, ConfigStoreOptions } from '#datastores/categories/config/config.ts'
-import type { LogFields, LoggerInterface } from '#server/logging/logging.ts'
+import type { LogFields, LoggerInterface } from '#server/logging/logger.ts'
 import type { HedraOptions } from '#server/server.ts'
 import { Config } from '#config'
 import { BaseController } from '#controllers/controller.ts'
