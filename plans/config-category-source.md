@@ -1,6 +1,6 @@
 # Category definitions as configuration's single source of truth
 
-Status: implemented and independently reviewed; awaiting user approval to merge into `main`.
+Status: implemented and independently reviewed; the user approved merging into `main`.
 
 ## Scope and accepted design
 
@@ -48,4 +48,4 @@ The temporary category-only experiment is the red/green proof of this structural
 - The lead independently added only a numeric category entry in a disposable source copy. TypeScript and two public constructor tests passed for default `7`, trimmed override `12`, invalid `0` with its environment-variable name and the readonly number type. No test-only setting remains in the feature branch.
 - Documented `Config` construction and Hedra injection passed. The changed reference/ADR links resolve, and `git diff --check` passed.
 - Independent read-only review of `7a4f21f..d16a182` returned no actionable findings and a ship verdict, including the documentation newcomer pass. The reviewer independently passed TypeScript, Biome on the four changed code/test files, 11 tests with 24 assertions and the documented constructor/injection usage. The local generated-shape assertion and class/interface lint suppression were accepted against the constructor's complete parsed-value assignment.
-- The main checkout remains clean at `7a4f21f`. Runtime freezing and live configuration mutation remain outside the supported interface; readonly is enforced by TypeScript as before.
+- Before integration, the main checkout was clean at `7a4f21f`. Runtime freezing and live configuration mutation remain outside the supported interface; readonly is enforced by TypeScript as before.
