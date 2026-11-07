@@ -171,6 +171,19 @@ test('Config rejects a port outside 1 to 65535', () => {
   })
 })
 
+test('Config reports the original value for a non-numeric port', () => {
+  let error: unknown
+
+  try {
+    new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LISTEN_PORT: 'not-a-number' })
+  } catch (caught) {
+    error = caught
+  }
+
+  expect(error).toBeInstanceOf(ConfigurationError)
+  expect(error).toMatchObject({ detail: 'HEDRA_SERVER_LISTEN_PORT has invalid value: not-a-number' })
+})
+
 test('Config rejects an invalid listen IP', () => {
   for (const value of ['localhost', '256.0.0.1']) {
     let error: unknown

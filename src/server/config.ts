@@ -18,7 +18,7 @@ export type ConfigDefinitions = z.infer<typeof ConfigDefinitions>
 
 export const Environment = z.record(z.string(), z.string().optional())
 
-const defaults = {
+const definitions = {
   ...deploymentVariables,
   ...serverVariables,
 }
@@ -26,12 +26,12 @@ const defaults = {
 // ConfigEntry has a broad string name and generic schema; the category definitions retain
 // literal names and precise schema types.
 type ConfigShape = {
-  [Entry in (typeof defaults)[keyof typeof defaults] as Entry['name']]: Entry['schema']
+  [Entry in (typeof definitions)[keyof typeof definitions] as Entry['name']]: Entry['schema']
 }
 
 // Object.fromEntries loses the name-to-schema relationship, so ConfigShape restores it from the same definitions.
 export const ConfigValues = z.object(
-  Object.fromEntries(Object.values(defaults).map((entry) => [entry.name, entry.schema])) as ConfigShape,
+  Object.fromEntries(Object.values(definitions).map((entry) => [entry.name, entry.schema])) as ConfigShape,
 )
 
 export type ConfigValues = z.infer<typeof ConfigValues>
@@ -51,7 +51,7 @@ export const Config = class Config {
       const displayValues: Record<string, string> = {}
       const sources: Record<string, 'environ' | 'default'> = {}
 
-      for (const [variable, entry] of Object.entries(defaults)) {
+      for (const [variable, entry] of Object.entries(definitions)) {
         const environmentValue = resolved[variable]?.trim()
         const fromEnvironment = environmentValue !== undefined && environmentValue !== ''
         const raw = fromEnvironment ? environmentValue : entry.default
@@ -75,8 +75,8 @@ export const Config = class Config {
       if (!values.serverSilentStartup) {
         Config.printConfigHeader()
 
-        for (const [variable, entry] of Object.entries(defaults)) {
-          Config.printConfigRow(variable, String(Reflect.get(values, entry.name)), sources[entry.name] ?? 'default')
+        for (const [variable, entry] of Object.entries(definitions)) {
+          Config.printConfigRow(variable, String(values[entry.name]), sources[entry.name] ?? 'default')
         }
 
         process.stdout.write('\nSee src/server/configs/ for defaults and descriptions.\n\n')
@@ -103,20 +103,22 @@ export const Config = class Config {
   }
 
   /** Validates native configuration values and reports the associated environment variable. */
-  private static validateConfig(input: unknown, displayValues?: Record<string, string>): ConfigValues {
+  private static validateConfig(
+    input: Record<string, string | number | boolean>,
+    displayValues: Record<string, string>,
+  ): ConfigValues {
     const result = ConfigValues.safeParse(input)
 
     if (!result.success) {
       const field = result.error.issues[0]?.path[0]
-      const definition = Object.entries(defaults).find(([, entry]) => entry.name === field)
+      const definition = Object.entries(definitions).find(([, entry]) => entry.name === field)
 
       if (definition) {
         const [variable, entry] = definition
-        const value = input !== null && typeof input === 'object' ? Reflect.get(input, entry.name) : undefined
 
         throw new ConfigurationError(
           'configuration error',
-          `${variable} has invalid value: ${displayValues?.[entry.name] ?? String(value)}`,
+          `${variable} has invalid value: ${displayValues[entry.name]}`,
         )
       }
 
