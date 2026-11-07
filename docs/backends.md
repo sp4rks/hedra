@@ -51,7 +51,7 @@ The backend receives its path explicitly. `Hedra` uses the resolved `HEDRA_SQLIT
 
 `new Hedra()` opens an app-owned default SQLite backend on the first collection registration. `hedra.close()` closes it and ends its registered controllers' lifecycle.
 
-The configuration datastore has a separate lifetime. First access to `app.configDatastore` creates the default `ConfigStore`, which opens its own connection to the configured path. App closure closes that owned store too. An injected `configDatastore` is borrowed and remains usable by its creator after app closure; see [configuration datastore ownership](config-store.md#configure-storage-and-ownership).
+The configuration datastore has a separate lifetime. First access to `app.configDatastore` or an accepted tenant operation creates the default `ConfigStore`, which opens its own connection to the configured path. App closure closes that owned store too. An injected `configDatastore` is borrowed and remains usable by its creator after app closure; see [configuration datastore ownership](config-store.md#configure-storage-and-ownership).
 
 An injected backend is borrowed. Sharing one instance permits configuration and application resources to use the same connection:
 
@@ -63,7 +63,7 @@ const configDatastore = new ConfigStore({ backend })
 const app = new Hedra({ backend, configDatastore })
 
 try {
-  const tenant = await app.configDatastore.tenants.create({ name: 'Acme' })
+  const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
   app.close()
   await configDatastore.tenants.get(tenant.id)

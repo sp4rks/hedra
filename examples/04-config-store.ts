@@ -8,10 +8,11 @@ const CreateTenant = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
 
 try {
   // Validate and normalise input before passing plain data to programmatic operations.
-  const input = CreateTenant.parse({ name: ' Acme ' })
+  const input = CreateTenant.parse({ name: ' Acme ', tenantDomain: ' ACME.HEDRA.LOCAL ' })
   const tenant = await store.tenants.create(input)
 
   assert.equal(tenant.name, 'Acme')
+  assert.equal(tenant.tenantDomain, 'acme.hedra.local')
   assert.deepEqual(await store.tenants.get(tenant.id), tenant)
 } finally {
   store.close()
