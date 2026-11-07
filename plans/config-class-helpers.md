@@ -1,6 +1,6 @@
 # Keep configuration loading inside its concrete class
 
-Status: implemented and independently reviewed; awaiting user approval to merge into `main`.
+Status: implemented and independently reviewed; the user approved merging the combined cleanup into `main`.
 
 The environment-file portion of this plan is superseded by [Bun-owned environment loading](bun-environment.md): `overlayEnvFile` is removed, while validation and reporting remain private static methods. The combined branch retains the interface removal and constructor typing described below.
 
@@ -34,4 +34,4 @@ After implementation, merge docs into the feature branch, verify the result and 
 - The lead independently added only a numeric category entry in a disposable source copy. TypeScript and two constructor tests passed default `7`, trimmed override `12`, invalid `0` with the environment-variable name, runtime class identity and an exact readonly number instance property. No temporary setting was committed.
 - Documented construction, Hedra injection and runtime class identity passed. Updated documentation links resolve and `git diff --check` passed.
 - Independent read-only review of `c78145e..b45f779` found no actionable issues, including the local constructor assertion, static helper moves and documentation newcomer pass. The reviewer independently passed TypeScript, Biome, 11 tests with 26 assertions and the documented construction/injection/identity example.
-- `main` remains unchanged at `c78145e` until merge approval. The constructor assertion describes dynamically assigned fields; runtime construction tests cover that initialization, while readonly remains a TypeScript guarantee.
+- Before integration, `main` was clean at `c78145e`. The constructor assertion describes dynamically assigned fields; runtime construction tests cover that initialization, while readonly remains a TypeScript guarantee.

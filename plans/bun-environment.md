@@ -1,6 +1,6 @@
 # Let Bun load environment files
 
-Status: implemented and independently reviewed together with the pending Config class cleanup; awaiting approval to merge into `main`.
+Status: implemented and independently reviewed together with the Config class cleanup; the user approved merging the combined change into `main`.
 
 ## Accepted scope
 
@@ -34,5 +34,5 @@ After code and docs are combined, run the required checks and exercise the docum
 - `bun run check` passed on integrated revision `e071b56`: TypeScript, Biome and 233 tests with 943 assertions. Focused coverage includes Bun-selected files, automatic `.env`, process-environment precedence, disabled file loading, isolated explicit snapshots, immutability and app identity. Integration tests ran outside the filesystem sandbox.
 - The documented `bun --env-file=<app.env> examples/01-helloworld.ts` launch served `200 Hello Hedra!` at its file-configured loopback address; the temporary process and file were cleaned up.
 - Independent review found no code issues and passed TypeScript, Biome and 30 tests with 126 assertions. Its one stale logging-reference sentence was corrected in documentation-only revision `2b2768c`; focused re-review confirmed no actionable findings remain in `c78145e..2b2768c`, with a ship verdict subject to merge approval. No production code changed after the full check.
-- Updated documentation links and whitespace checks passed. `HEDRA_ENV_FILE` is intentionally ignored; custom file selection uses Bun's `--env-file` flag. The main checkout remains clean at `c78145e` pending approval for the combined change.
+- Updated documentation links and whitespace checks passed. `HEDRA_ENV_FILE` is intentionally ignored; custom file selection uses Bun's `--env-file` flag. Before integration, the main checkout was clean at `c78145e`.
 - User-approved readability follow-ups in `66be89e` rename the merged dictionary to `definitions`, use typed property indexing for reporting and require the private validator's typed input/display records, removing its obsolete raw-value fallback. A public regression preserves the original nonnumeric port text. `bun run check` passed TypeScript, Biome and 234 tests with 945 assertions. Focused independent review of `521c125..66be89e` found no actionable issues and independently passed TypeScript, Biome and 12 tests with 69 assertions.
