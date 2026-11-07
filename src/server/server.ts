@@ -139,9 +139,11 @@ export class Hedra extends Hono {
     if (this.closed) throw new Error('Hedra is closed')
     if (!(collection instanceof Collection)) throw new TypeError('Expected a Collection')
     if (this.collections.has(collection.name)) throw new Error(`Collection already registered: ${collection.name}`)
+
     const names = new Map(this.collections)
     const pending: Collection[] = []
     const visiting = new Set<Collection>()
+    
     const visit = (candidate: Collection): void => {
       if (visiting.has(candidate)) throw new Error('Cyclic association definitions are not supported')
       const known = names.get(candidate.name)
