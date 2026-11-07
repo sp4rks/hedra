@@ -65,3 +65,7 @@ tests/          mirrors src/
 - Write tests first for every behaviour change, with the `tdd` skill. Confirm a new test fails for the intended reason before making it pass.
 - Test at public seams (routes through `app.request`, controllers through their exports), never internals.
 - Name each test for the behaviour it specifies, such as `GET /health returns ok`, and cover failure paths as well as success.
+
+`bun run test:coverage` runs the full suite and requires at least 90% line coverage and 85% function coverage in each reported file. These initial floors sit below the existing suite's lowest file coverage. `bun run check` includes this gate. Plain `bun test` and `bun run test` keep coverage disabled for focused runs.
+
+Coverage settings live in `bunfig.toml`. The report appears in the terminal and in the gitignored `coverage/lcov.info` file. Tests, examples and tooling scripts are excluded. [Bun's coverage](https://bun.com/docs/test/code-coverage) measures modules loaded in the test process; unimported source files and execution in spawned processes do not contribute.
