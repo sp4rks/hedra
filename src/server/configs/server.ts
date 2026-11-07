@@ -80,4 +80,4 @@ export const serverVariables = {
     description: 'Maximum time in milliseconds to wait for incoming HTTP requests to complete',
     schema: z.number().int().min(1).max(300000),
   },
-} satisfies ConfigDefinitions
+} as const satisfies ConfigDefinitions

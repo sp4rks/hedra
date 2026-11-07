@@ -77,7 +77,9 @@ After successful validation, startup prints the settings, their values and wheth
 
 ## Types and subclasses
 
-Zod schemas provide the property types and validation. `Config` stores validated properties directly; there is no public `values` object. The class is not generic.
+The category definitions in `src/server/configs/deployment.ts` and `src/server/configs/server.ts` provide each setting's environment-variable name, property name, default, metadata and Zod schema. Hedra derives the complete validation schema and the read-only `Config` property types from those entries. Adding a built-in setting requires its category entry, without a separate values-schema entry or class property declaration.
+
+`Config` stores validated properties directly; there is no public `values` object. The class is not generic.
 
 Read-only properties are a TypeScript guarantee. The object is not frozen at runtime, allowing subclasses to initialize additional fields. Subclasses supply built-in settings through `super(environment)` so they are validated while loading; additional application fields need their own validation. Overriding built-in fields after loading, runtime mutation and live configuration reload are not supported configuration APIs. Consumers trust the loaded instance and do not revalidate it.
 
