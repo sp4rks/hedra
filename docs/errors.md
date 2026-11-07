@@ -1,6 +1,6 @@
 # Errors
 
-Errors raised by Hedra operations are `HedraError` instances or subclasses. This includes validation, file access, SQLite and callback failures that pass through Hedra operations. Each error class sets its HTTP status internally. Constructors accept a title and optional detail; callers do not pass a status.
+Expected validation and business-rule failures use explicit `HedraError` subclasses. Unexpected failures from dependencies, callbacks, the filesystem and SQLite propagate unchanged. Each Hedra error class sets its HTTP status internally. Constructors accept a title and optional detail; callers do not pass a status.
 
 ## Constructor arguments
 
@@ -53,38 +53,61 @@ These errors carry status information; routes still choose how to turn errors in
 
 Generated resource routes use `ConflictError` for occupied embedded targets and association-blocked deletion, and `UnsupportedMediaTypeError` for a non-JSON request body. Their [public error envelope](web-layer.md#requests-and-responses) preserves client-error statuses while hiding internal failure details.
 
-## Wrapped failures
+## Validation and unexpected failures
 
-An existing `HedraError` passes through unchanged, including its status, title, detail and identity. When Hedra wraps another failure, its `cause` holds the original value. `cause` is non-enumerable and is not part of the generated HTTP error envelope. Use it locally to inspect the original validation issues or native database error; do not expose it to clients.
-
-Configuration and collection-definition failures use `ConfigurationError`. Invalid operation input uses `InputValidationError`; output projection uses `OutputValidationError`. Storage failures use the datastore error classes. Unexpected failures use the base `HedraError`. The specific class and cause describe the failure; a `catch` can handle the whole hierarchy through `instanceof HedraError`.
+Use `safeParse` at a validation boundary, then raise the appropriate error explicitly if the result fails. Use the parsed data afterward so normalisation and defaults take effect. Input failures use `InputValidationError`; invalid stored/projected resources use `OutputValidationError`; invalid environment or collection definitions use `ConfigurationError`. Generic backend contract violations use the existing datastore error classes. Validation issues can be supplied as error detail.
 
 For example, run this from the repository root with Bun and dependencies installed:
 
 ```ts
 import assert from 'node:assert/strict'
 
-import { HedraError } from '#errors'
+import { InputValidationError } from '#errors'
+import { Tenant } from '#hedra.ts'
+
+const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
+
+/** Validates tenant attributes before using their normalised values. */
+function validateTenant(input: unknown) {
+  const result = TenantInput.safeParse(input)
+
+  if (!result.success) throw new InputValidationError('Invalid tenant', result.error.issues)
+
+  return result.data
+}
+
+assert.deepEqual(validateTenant({ name: ' Acme ', tenantDomain: ' ACME.HEDRA.LOCAL ' }), {
+  name: 'Acme',
+  tenantDomain: 'acme.hedra.local',
+})
+assert.throws(() => validateTenant({ name: '', tenantDomain: 'acme.hedra.local' }), InputValidationError)
+```
+
+Do not add a `try/catch` merely to turn every thrown value into a Hedra error. Unexpected failures retain their original identity, type, stack and any native cause. An existing Hedra error also passes through unchanged. A thrown exception inside a custom refinement or transform is unexpected; `safeParse` does not turn that exception into a validation result. Direct programmatic callers handle the errors relevant to their operation and cannot assume every failure is a `HedraError`.
+
+Keep catches that perform useful recovery, translate malformed JSON into an expected request error, or form a safe HTTP response. Keep transaction rollback, session invalidation and connection cleanup even when removing normalising catches. For example, a callback failure propagates unchanged and rolls back its writes:
+
+```ts
+import assert from 'node:assert/strict'
+
 import { SqliteBackend } from '#hedra.ts'
 
 const backend = new SqliteBackend(':memory:')
+const failure = new Error('The callback failed')
 
 try {
-  await backend.insert('widgets', { id: 'one' })
-
-  try {
-    await backend.insert('widgets', { id: 'one' })
-    assert.fail('A duplicate ID must reject')
-  } catch (error) {
-    assert.ok(error instanceof HedraError)
-    assert.ok(error.cause instanceof Error)
-    assert.equal(Object.prototype.propertyIsEnumerable.call(error, 'cause'), false)
-  }
-
-  assert.deepEqual(await backend.select('widgets'), [{ id: 'one' }])
+  await backend.insert('widgets', { id: 'existing' })
+  await assert.rejects(
+    backend.transaction((transaction) => {
+      transaction.insert('widgets', { id: 'temporary' })
+      throw failure
+    }),
+    (error) => error === failure,
+  )
+  assert.deepEqual(await backend.select('widgets'), [{ id: 'existing' }])
 } finally {
   backend.close()
 }
 ```
 
-The guarantee applies to Hedra-owned operations. Calling `.parse()` on an exported Zod schema directly retains Zod's error contract. Consumer callbacks, custom dependencies and inherited Hono APIs keep their own contracts until an error crosses a Hedra operation. Hedra does not mutate borrowed dependencies or replace their identity. See [the error-boundary decision](adr/0020-hedra-error-boundaries.md).
+Generated resource routes retain their existing response boundary: recognised Hedra client errors preserve their public status, title and JSON-compatible detail; all internal or unexpected failures become a generic 500 envelope. Exception messages, stacks and native causes are not exposed. This change does not install a global error handler for custom Hono routes, startup or background work; those callers need their own error handling. See [the explicit-error decision](adr/0025-explicit-validation-errors.md).

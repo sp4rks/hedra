@@ -125,7 +125,7 @@ For separate persistent configuration storage, pass a `Config` with the desired 
 
 ## Validation and scope
 
-The default store validates tenant writes against `Tenant` and performs uniqueness checks in the same transaction as insertion. Invalid input and attempted domain changes raise an input validation error; a duplicate canonical domain raises `UniqueViolationError` (409). Generic JSON, UUID and managed-field guards remain active. Failed validation or storage operations leave data unchanged. Operations report failures through the [Hedra error hierarchy](errors.md#wrapped-failures), without constructing HTTP responses or terminating the process. A pure validator called directly retains its own error contract.
+The default store validates tenant writes against `Tenant` and performs uniqueness checks in the same transaction as insertion. Invalid input and attempted domain changes raise an input validation error; a duplicate canonical domain raises `UniqueViolationError` (409). Generic JSON, UUID and managed-field guards remain active. Failed validation or storage operations leave data unchanged. Expected validation failures use explicit [Hedra error classes](errors.md#validation-and-unexpected-failures); unexpected datastore failures propagate unchanged. Programmatic operations construct no HTTP response and do not terminate the process. A pure validator called directly retains its own error contract.
 
 The pure schema and programmatic store check DNS syntax without imposing an app's deployment root. The [Tenant controller](tenants.md#domain-rules) additionally restricts HTTP creation to a direct deployment subdomain and excludes configured API/docs hostnames.
 
