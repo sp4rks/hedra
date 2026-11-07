@@ -1,5 +1,7 @@
 # Let Bun load environment files
 
+Status: implemented and independently reviewed together with the pending Config class cleanup; awaiting approval to merge into `main`.
+
 ## Accepted scope
 
 The user wants Bun to handle environment files and Hedra to read whatever environment variables Bun provides. Continue on the pending `feature/config-class-helpers` branch, preserving its removal of the merged interface and its private static validation/reporting methods. No merge approval has been given for this combined change.
@@ -25,3 +27,11 @@ Remove obsolete tests for Hedra file precedence, missing-file fallback, access e
 The same configured coder owns only `src/server/config.ts` and `tests/server/config.test.ts` in `.worktrees/config-class-helpers`; do not undo the prior helper/type refactor. The lead owns this plan, test boundaries, `docs/` and `examples/` updates, verification and integration. Reuse `.worktrees/config-class-helpers-docs`, advancing its docs branch to the new plan before implementation begins; documentation proceeds separately from code. Continue using the previously established house/docs-style substitute for the unavailable `user-docs` skill.
 
 After code and docs are combined, run the required checks and exercise the documented Bun launch command. Have the same independent reviewer review the fixed combined diff against both plans and the latest user request. Leave `main` unchanged until the user approves merging the completed result.
+
+## Verification results
+
+- Implementation commit `174cfc0` removes Hedra's file reader, selection/fallback logic and obsolete filesystem tests. The explicit-snapshot regression failed before the fix (`from-file.example` rather than `hedra.local`); the `--no-env-file` regression also failed (`8123` rather than `3000`). Both passed after removing the loader.
+- `bun run check` passed on integrated revision `e071b56`: TypeScript, Biome and 233 tests with 943 assertions. Focused coverage includes Bun-selected files, automatic `.env`, process-environment precedence, disabled file loading, isolated explicit snapshots, immutability and app identity. Integration tests ran outside the filesystem sandbox.
+- The documented `bun --env-file=<app.env> examples/01-helloworld.ts` launch served `200 Hello Hedra!` at its file-configured loopback address; the temporary process and file were cleaned up.
+- Independent review found no code issues and passed TypeScript, Biome and 30 tests with 126 assertions. Its one stale logging-reference sentence was corrected in documentation-only revision `2b2768c`; focused re-review confirmed no actionable findings remain in `c78145e..2b2768c`, with a ship verdict subject to merge approval. No production code changed after the full check.
+- Updated documentation links and whitespace checks passed. `HEDRA_ENV_FILE` is intentionally ignored; custom file selection uses Bun's `--env-file` flag. The main checkout remains clean at `c78145e` pending approval for the combined change.

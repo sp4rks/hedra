@@ -2,6 +2,8 @@
 
 Status: implemented and independently reviewed; awaiting user approval to merge into `main`.
 
+The environment-file portion of this plan is superseded by [Bun-owned environment loading](bun-environment.md): `overlayEnvFile` is removed, while validation and reporting remain private static methods. The combined branch retains the interface removal and constructor typing described below.
+
 ## Accepted scope and design
 
 The user requested removing the merged `Config` interface and making `printConfigHeader`, `overlayEnvFile` and `validateConfig` class functions. Category definitions remain the single source of truth, with Zod validation, native values, exact readonly types and `new Config()` retained.
