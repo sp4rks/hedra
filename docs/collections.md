@@ -55,7 +55,7 @@ const UpdateCar = CreateCar.partial()
 const prepared = CreateCar.parse({ make: 'Toyota', model: 'Corolla', year: 2024 })
 ```
 
-The controller accepts prepared JSON attributes and combines them with current state and managed metadata. Inside the storage transaction it validates the complete proposed resource, including cross-field model rules, before saving. A failed candidate returns 422 without writes; an output-projection failure is an internal 500. Embedded mutations validate the containing document too. The controller stays non-generic and obtains the validator from its per-call collection. ConfigStore's programmatic operations remain model-independent. See the [validation decision](adr/0012-atomic-candidate-validation.md).
+The controller accepts prepared JSON attributes and combines them with current state and managed metadata. Inside the storage transaction it validates the complete proposed resource, including cross-field model rules, before saving. A failed candidate returns 422 without writes; an output-projection failure is an internal 500. Embedded mutations validate the containing document too. The controller stays non-generic and obtains the validator from its per-call collection. Generic `ResourceOperations` remain model-independent; ConfigStore specialises [tenant writes](config-store.md#validation-and-scope). See the [validation decision](adr/0012-atomic-candidate-validation.md).
 
 Model validators must be synchronous and describe the [stable stored representation](adr/0003-models-describe-stored-records.md). Parsed values must remain valid under the same model; transformations between incompatible request and stored representations belong in separate input/controller code. Models cannot replace server-managed identity or timestamps.
 
@@ -94,7 +94,7 @@ Custom controllers can read that ancestry through the exported `getEmbeddedScope
 
 Register collections and custom routes before handling the first request.
 
-Accessing `collection.controller` before registration throws. Registration includes referenced association collections and their root routes. It rejects invalid definitions, ambiguous paths, duplicate names and reusing one collection instance across apps. A collection already registered in the same app may be referenced by a later definition; explicitly registering it again rejects. Internal tenant and association table names are reserved. Failed registration leaves no partially bound controllers or routes.
+Accessing `collection.controller` before registration throws. Registration includes referenced association collections and their root routes. It rejects invalid definitions, ambiguous paths, duplicate names and reusing one collection instance across apps. A collection already registered in the same app may be referenced by a later definition; explicitly registering it again rejects. The built-in `tenants` name and internal tenant and association table names are reserved. See the [Tenant API](tenants.md). Failed registration leaves no partially bound controllers or routes.
 
 `new Hedra()` lazily opens its default SQLite backend on first registration using `HEDRA_SQLITE_PATH`. An app can borrow a backend with `new Hedra({ backend })`. Closing the app ends access through its controllers, including saved references. It closes an owned backend; a borrowed backend stays available to other apps and configuration stores. Close is idempotent and registration after closure rejects. See [connection ownership](backends.md#connection-ownership) and [server configuration](configuration.md).
 

@@ -24,7 +24,7 @@ The options are `config`, `logger`, `configDatastore` and `backend`. To share a 
 
 Supply `logger` to use any implementation of `LoggerInterface`; Hedra retains the supplied instance and the implementation controls its own context and output. Otherwise Hedra creates `new Logger(config, undefined, { instanceId })`. See [supplying a logger](logging.md#supply-a-logger).
 
-Supply `configDatastore` to borrow any implementation of `ConfigDatastore`; Hedra exposes that same instance through `app.configDatastore`. Otherwise, the first access constructs a default `ConfigStore` using `app.config`. Backend setup belongs to that store. Hedra closes its default store on app closure and leaves supplied stores open. See the [configuration datastore](config-store.md).
+Supply `configDatastore` to borrow any implementation of `ConfigDatastore`; Hedra exposes that same instance through `app.configDatastore`. Otherwise, the first access or accepted built-in tenant operation constructs a default `ConfigStore` using `app.config`. Backend setup belongs to that store. Hedra closes its default store on app closure and leaves supplied stores open. See the [configuration datastore](config-store.md).
 
 Supply `backend` to borrow the storage backend for application collections and associations; otherwise Hedra lazily creates and owns their default SQLite backend on registration. This option does not configure `app.configDatastore`. See [backend ownership](backends.md#connection-ownership).
 
