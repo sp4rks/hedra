@@ -80,28 +80,19 @@ export class Hedra extends Hono {
 
   /** Prevents a closed app's controllers from using a borrowed backend. */
   private guard(backend: Backend): Backend {
-    const check = () => {
-      if (this.closed) throw new ConnectionError('Datastore connection is closed')
-    }
-
     const guarded = <T>(operation: () => T): T => {
       try {
-        check()
+        if (this.closed) throw new ConnectionError('Datastore connection is closed')
 
         return operation()
       } catch (error) {
         throw hedraError(error, DatastoreError)
       }
     }
-    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> => {
-      try {
-        check()
-
-        return await operation()
-      } catch (error) {
+    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> =>
+      guarded(operation).catch((error) => {
         throw hedraError(error, DatastoreError)
-      }
-    }
+      })
 
     return {
       insert: (...args) => guardedAsync(() => backend.insert(...args)),
