@@ -11,3 +11,5 @@ TypeScript cannot infer fields created by `Object.assign`, so the constructor as
 Environment-file loading, native-value validation and startup reporting belong to private static methods on the class. They share no instance state and provide no overridable loading hooks. Consumers use the validated instance directly.
 
 This supersedes the interface-merging detail of [ADR 0021](0021-category-derived-configuration.md). The constructor remains responsible for complete initialization and validation; readonly remains a TypeScript guarantee.
+
+Environment-file loading is superseded by [ADR 0023](0023-bun-owned-environment-files.md); validation and reporting remain private static methods.

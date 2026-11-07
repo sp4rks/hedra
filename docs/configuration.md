@@ -18,7 +18,7 @@ The imports above use this repository's package entry alias. Run examples from t
 
 ## Construct an application
 
-`new Hedra()` creates a `Config` that loads `process.env`, environment files and defaults, then creates a default logger. Configure the process environment before constructing the app; no environment argument is needed.
+`new Hedra()` creates a `Config` from the environment Bun has already loaded and the built-in defaults, then creates a default logger. Configure the process environment before constructing the app; no environment argument is needed.
 
 The options are `config`, `logger`, `configDatastore` and `backend`. To share a configuration instance, pass `new Hedra({ config })`; the app retains that instance. For isolated tests or an explicit environment snapshot, construct the dependency with `new Config(environment)` and pass it as `config`.
 
@@ -38,7 +38,7 @@ Invalid configuration throws before server startup. Embedded applications can ca
 
 ## Settings
 
-Environment values are strings. Hedra trims them, applies defaults for unset or blank values and validates the resulting native values. Boolean variables accept exactly `true` or `false` after trimming. Invalid values throw a `ConfigurationError` identifying the variable. File-access failures also throw `ConfigurationError`, retaining the original failure as `cause`. See [error constructors](errors.md) for fixed statuses and custom title/detail arguments.
+Environment values are strings. Hedra trims them, applies defaults for unset or blank values and validates the resulting native values. Boolean variables accept exactly `true` or `false` after trimming. Invalid values throw a `ConfigurationError` identifying the variable. See [error constructors](errors.md) for fixed statuses and custom title/detail arguments.
 
 | Environment variable | Config property | Type and accepted values | Default |
 | --- | --- | --- | --- |
@@ -67,11 +67,17 @@ Set `serverPrintRoutes` through `HEDRA_SERVER_PRINT_ROUTES=true` to log collecti
 
 ## Environment files and reporting
 
-Set `HEDRA_ENV_FILE` to select an environment file. It controls loading and is not a resolved configuration property. Explicit environment values win over file values, which win over built-in defaults.
+Bun loads environment files before application code runs. Hedra reads the resulting `process.env`; it does not open or parse environment files. Bun controls file selection, precedence and file errors. See [Bun's environment documentation](https://bun.com/docs/runtime/environment-variables).
 
-A file fills only variables whose value is `undefined`. An explicitly blank variable subsequently uses the built-in default, even when the file contains a value for that variable. Supplied environment objects are copied rather than modified.
+To select a custom file when running the hello-world example, run this from the repository root with your environment file at `./app.env`:
 
-When using the ambient `process.env`, Hedra falls back to `.env` if no file is selected or the selected file is missing. A supplied custom environment reads its selected file, but does not implicitly read the ambient `.env`. Missing files retain the applicable fallback; other file-read failures throw.
+```sh
+bun --env-file=./app.env examples/01-helloworld.ts
+```
+
+Use Bun's `--no-env-file` flag to disable automatic file loading. `HEDRA_ENV_FILE` no longer selects a file; replace it with Bun's `--env-file` flag.
+
+An explicit `new Config(environment)` uses only that snapshot, without loading files or merging ambient variables. Supplied environment objects are copied rather than modified. Unset or blank setting values use their built-in defaults.
 
 After successful validation, startup prints the settings, their values and whether each came from the environment or a default. File-provided values count as environment values in this report. Set `HEDRA_SERVER_SILENT_STARTUP=true` to suppress the report. Invalid settings prevent a success report.
 
@@ -79,7 +85,7 @@ After successful validation, startup prints the settings, their values and wheth
 
 The category definitions in `src/server/configs/deployment.ts` and `src/server/configs/server.ts` provide each setting's environment-variable name, property name, default, metadata and Zod schema. Hedra derives the complete validation schema and the read-only `Config` property types from those entries. Adding a built-in setting requires its category entry, without a separate values-schema entry or class property declaration.
 
-`Config` is a concrete loader that stores validated properties directly; there is no public `values` object. The class is not generic, and its environment loading, validation and reporting helpers are private static methods.
+`Config` is a concrete loader that stores validated properties directly; there is no public `values` object. The class is not generic, and its validation and reporting helpers are private static methods.
 
 Read-only properties are a TypeScript guarantee; the object is not frozen at runtime. Runtime mutation and live configuration reload are not supported configuration APIs. Consumers trust the loaded instance and do not revalidate it.
 
