@@ -22,35 +22,36 @@ import { Tenant } from '#models/tenant.ts'
 const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
 const TenantChanges = TenantInput.omit({ tenantDomain: true }).partial()
 
-/** Removes server-owned attributes before validating tenant input. */
-function attributes(input: ResourceInput): Record<string, unknown> {
-  const value = parseInput(z.record(z.string(), z.unknown()), input)
-
-  delete value.id
-  delete value.createdAt
-  delete value.updatedAt
-
-  return value
-}
-
-/** Validates a tenant returned by a configuration datastore. */
-function tenantOutput(input: unknown, id?: string): Tenant {
-  const parsed = Tenant.safeParse(input)
-
-  if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)
-  const tenant = parsed.data
-
-  if (id !== undefined && tenant.id !== id) throw new OutputValidationError('Resource ID cannot change')
-
-  return tenant
-}
-
 export class TenantController implements ControllerInterface {
   /** Uses app configuration and obtains its configuration datastore on demand. */
   constructor(
     private readonly config: Config,
     private readonly datastore: () => ConfigDatastore,
   ) {}
+
+  /** Removes server-owned attributes before validating tenant input. */
+  private attributes(input: ResourceInput): Record<string, unknown> {
+    const value = parseInput(z.record(z.string(), z.unknown()), input)
+
+    delete value.id
+    delete value.createdAt
+    delete value.updatedAt
+
+    return value
+  }
+
+  /** Validates a tenant returned by a configuration datastore. */
+  private tenantOutput(input: unknown, id?: string): Tenant {
+    const parsed = Tenant.safeParse(input)
+
+    if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)
+
+    const tenant = parsed.data
+
+    if (id !== undefined && tenant.id !== id) throw new OutputValidationError('Resource ID cannot change')
+
+    return tenant
+  }
 
   /** Requires requests to use the deployment API host. */
   assertHost(context: Context): void {
@@ -69,7 +70,7 @@ export class TenantController implements ControllerInterface {
   /** Creates a tenant in the configuration catalogue. */
   async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
     this.assertHost(context)
-    const fields = parseInput(TenantInput, attributes(input))
+    const fields = parseInput(TenantInput, this.attributes(input))
     const suffix = `.${this.config.deploymentDomain.toLowerCase()}`
     const label = fields.tenantDomain.endsWith(suffix) ? fields.tenantDomain.slice(0, -suffix.length) : ''
 
@@ -82,7 +83,7 @@ export class TenantController implements ControllerInterface {
     ) {
       throw new InputValidationError('Tenant domain must be a direct subdomain of the deployment domain')
     }
-    const tenant = tenantOutput(await this.datastore().tenants.create(fields))
+    const tenant = this.tenantOutput(await this.datastore().tenants.create(fields))
 
     if (tenant.tenantDomain !== fields.tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
 
@@ -96,7 +97,7 @@ export class TenantController implements ControllerInterface {
     const value = await this.datastore().tenants.get(key)
 
     if (value === null) throw new RecordNotFoundError()
-    const tenant = tenantOutput(value, key)
+    const tenant = this.tenantOutput(value, key)
 
     return { data: project(collection, tenant), links: { self: resourceLink(context, key) } }
   }
@@ -125,7 +126,7 @@ export class TenantController implements ControllerInterface {
     if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
 
     return {
-      data: values.map((value) => project(collection, tenantOutput(value))),
+      data: values.map((value) => project(collection, this.tenantOutput(value))),
       links: { self: url.data },
     }
   }
@@ -134,11 +135,11 @@ export class TenantController implements ControllerInterface {
   async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
-    const fields = parseInput(TenantChanges, attributes(input))
+    const fields = parseInput(TenantChanges, this.attributes(input))
     const value = await this.datastore().tenants.update(key, fields)
 
     if (value === null) throw new RecordNotFoundError()
-    const tenant = tenantOutput(value, key)
+    const tenant = this.tenantOutput(value, key)
 
     return { data: project(collection, tenant), links: { self: resourceLink(context, key) } }
   }
