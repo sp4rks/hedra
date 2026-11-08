@@ -12,8 +12,8 @@
     "#*": "./src/*"
   },
   "scripts": {
-    "dev": "bun --watch src/hedra.ts",
-    "start": "bun src/hedra.ts",
+    "dev": "bun --watch examples/01-helloworld.ts",
+    "start": "bun examples/01-helloworld.ts",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
     "fmt": "biome check --write .",
