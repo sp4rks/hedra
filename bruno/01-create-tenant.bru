@@ -1,0 +1,48 @@
+meta {
+  name: Create tenant
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/tenants
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "Bruno tenant",
+    "tenantDomain": "{{requestedTenantDomain}}"
+  }
+}
+
+script:pre-request {
+  const deploymentDomain = bru.getEnvVar('deploymentDomain').trim().toLowerCase()
+
+  bru.deleteVar('tenantId')
+  bru.deleteVar('tenantDomain')
+  bru.deleteVar('tenantCreatedAt')
+  bru.setVar('requestedTenantDomain', `bruno-${bru.interpolate('{{$randomUUID}}')}.${deploymentDomain}`)
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setVar('tenantId', res.body.data.id)
+    bru.setVar('tenantDomain', res.body.data.tenantDomain)
+    bru.setVar('tenantCreatedAt', res.body.data.createdAt)
+  }
+}
+
+tests {
+  test('creates the tenant and returns its location', function () {
+    expect(res.status).to.equal(201)
+    expect(res.headers.location).to.be.a('string').and.not.empty
+    expect(res.headers.location).to.equal(res.body.links.self)
+    expect(res.body.data.id).to.be.a('string').and.not.empty
+    expect(res.body.data.name).to.equal('Bruno tenant')
+    expect(res.body.data.tenantDomain).to.equal(bru.getVar('requestedTenantDomain'))
+    expect(res.body.data.createdAt).to.be.a('string').and.not.empty
+    expect(res.body.data.updatedAt).to.be.a('string').and.not.empty
+  })
+}
