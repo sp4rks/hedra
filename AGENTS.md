@@ -32,3 +32,9 @@ A bug fix or small change that alters no public interface and needs no design de
 Architecture decision records (ADRs) live in `docs/adr/` as `NNNN-<slug>.md`, numbered from `0001`. Each covers one decision: its context, the decision, and its consequences.
 
 Before changing an area, read the ADRs that touch it. When work would contradict an ADR, say so and propose a new ADR that supersedes it.
+
+## Cursor Cloud specific instructions
+
+Bun is on `PATH`. `bun run check` is the type, lint, and test gate, and it needs no secrets or external services.
+
+The HTTP process is `examples/01-helloworld.ts`. Bun serves that default export on `HEDRA_SERVER_PORT` (3000). `GET /` returns `Hello Hedra!` and `GET /health` returns `{ "ok": true }`. `bun run dev` reloads the library entry `src/hedra.ts`. The boot script starts the example when port 3000 is not already answering `/health`.
