@@ -2,6 +2,27 @@
 
 Every Hedra app exposes its configuration catalogue at `/tenants`. No application collection registration is required. A tenant has a required `name`, an immutable `tenantDomain`, and the standard server-managed UUID and timestamps. See the [configuration datastore](config-store.md) for its schema and programmatic operations.
 
+## Use the Bruno collection
+
+Open the repository's [bruno directory](../bruno/) as a collection in Bruno and select the `Local` environment. Point it at a running Hedra deployment API by setting:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `baseUrl` | `http://127.0.0.1:3000` | Server URL, without a trailing slash. |
+| `deploymentApiDomain` | `deployment.hedra.local` | The required `Host` header, matching `HEDRA_DEPLOYMENT_API_DOMAIN`. |
+| `deploymentDomain` | `hedra.local` | Root for generated tenant domains, matching `HEDRA_DEPLOYMENT_DOMAIN`. |
+
+Run the collection in order. It covers tenant creation, retrieval, listing, filtering, renaming and deletion, plus duplicate-domain, immutable-domain, wrong-host and missing-tenant responses. It uses only `/tenants` routes.
+
+With the [Bruno CLI](https://docs.usebruno.com/bru-cli/overview) installed, run from the repository root:
+
+```sh
+cd bruno
+bru run --env Local
+```
+
+When sending requests individually, run **Create tenant** first. It generates a unique tenant domain and saves the returned ID in runtime variables for subsequent requests. A complete run renames and deletes only that tenant. If a run stops before **Delete tenant**, the created tenant remains; send that request while the runtime ID is still available to remove it.
+
 ## Create and rename a tenant
 
 From the repository root with Bun and the project's dependencies installed:
