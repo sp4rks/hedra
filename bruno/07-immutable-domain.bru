@@ -1,0 +1,23 @@
+meta {
+  name: Reject tenant domain change
+  type: http
+  seq: 7
+}
+
+patch {
+  url: {{baseUrl}}/tenants/{{tenantId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "tenantDomain": "{{tenantDomain}}"
+  }
+}
+
+tests {
+  test('rejects a tenant domain field even when unchanged', function () {
+    expect(res.status).to.equal(422)
+  })
+}

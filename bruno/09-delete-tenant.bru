@@ -1,0 +1,17 @@
+meta {
+  name: Delete tenant
+  type: http
+  seq: 9
+}
+
+delete {
+  url: {{baseUrl}}/tenants/{{tenantId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test('deletes the created tenant', function () {
+    expect(res.status).to.equal(204)
+  })
+}

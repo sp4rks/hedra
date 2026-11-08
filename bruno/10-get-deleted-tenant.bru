@@ -1,0 +1,17 @@
+meta {
+  name: Get deleted tenant
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{baseUrl}}/tenants/{{tenantId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test('reports the deleted tenant as absent', function () {
+    expect(res.status).to.equal(404)
+  })
+}

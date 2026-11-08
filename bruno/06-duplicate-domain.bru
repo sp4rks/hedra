@@ -1,0 +1,25 @@
+meta {
+  name: Reject duplicate tenant domain
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/tenants
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "Duplicate Bruno tenant",
+    "tenantDomain": "{{tenantDomain}}"
+  }
+}
+
+tests {
+  test('rejects a duplicate tenant domain', function () {
+    expect(res.status).to.equal(409)
+    expect(res.body.errors).to.be.an('array').and.not.empty
+  })
+}

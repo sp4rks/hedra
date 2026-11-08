@@ -1,0 +1,21 @@
+meta {
+  name: Reject wrong host
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/tenants/{{tenantId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Host: {{tenantDomain}}
+}
+
+tests {
+  test('rejects a tenant hostname at the deployment API', function () {
+    expect(res.status).to.equal(412)
+  })
+}
