@@ -6,6 +6,15 @@ import { join } from 'node:path'
 
 const projectRoot = join(import.meta.dir, '..')
 
+/** Stops a spawned command and any watcher or server processes it started. */
+function stopProcessGroup(pid: number): void {
+  try {
+    process.kill(-pid)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+  }
+}
+
 /** Reserves an ephemeral local port, then releases it for the child process. */
 function freePort(): Promise<number> {
   const server = createServer()
@@ -82,6 +91,38 @@ test('the process entrypoint serves the example route', async () => {
     await proc.exited
   }
 })
+
+test.each(['dev', 'start'])(
+  'bun run %s serves the example route',
+  async (script) => {
+    const port = await freePort()
+    const proc = Bun.spawn(['bun', 'run', script], {
+      cwd: projectRoot,
+      detached: true,
+      env: {
+        ...process.env,
+        HEDRA_SERVER_LISTEN_IP: '127.0.0.1',
+        HEDRA_SERVER_LISTEN_PORT: String(port),
+        HEDRA_SERVER_SILENT_STARTUP: 'true',
+        HEDRA_SERVER_LOG_LEVEL: 'silent',
+        HEDRA_SQLITE_PATH: ':memory:',
+      },
+      stdout: 'ignore',
+      stderr: 'pipe',
+    })
+
+    try {
+      const response = await waitForApp(port)
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe('Hello Hedra!')
+    } finally {
+      stopProcessGroup(proc.pid)
+      await proc.exited
+    }
+  },
+  8000,
+)
 
 test.each([
   ['HEDRA_DEPLOYMENT_DOMAIN', 'not a domain'],
