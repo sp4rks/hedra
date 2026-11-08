@@ -16,6 +16,18 @@ app.instanceId // A unique identifier for this app.
 
 The imports above use this repository's package entry alias. Run examples from the repository root with Bun and the installed dependencies.
 
+## Run the example server
+
+From the repository root with dependencies installed:
+
+```sh
+bun run dev
+```
+
+This starts the [hello-world example](../examples/01-helloworld.ts) in watch mode. With the default listen settings, `curl http://127.0.0.1:3000/` returns `Hello Hedra!`. Use `bun run start` to run the same example without watching for changes.
+
+Set `HEDRA_SERVER_LISTEN_IP` and `HEDRA_SERVER_LISTEN_PORT` to change the listen address. Bun loads environment files for both commands; see [environment files and reporting](#environment-files-and-reporting).
+
 ## Construct an application
 
 `new Hedra()` creates a `Config` from the environment Bun has already loaded and the built-in defaults, then creates a default logger. Configure the process environment before constructing the app; no environment argument is needed.
