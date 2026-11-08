@@ -9,11 +9,3 @@ get {
   body: none
   auth: none
 }
-
-tests {
-  test('lists the created tenant', function () {
-    expect(res.status).to.equal(200)
-    expect(res.body.data).to.be.an('array')
-    expect(res.body.data.some(tenant => tenant.id === bru.getVar('tenantId'))).to.equal(true)
-  })
-}

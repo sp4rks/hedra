@@ -10,18 +10,12 @@ Open the repository's [bruno directory](../bruno/) as a collection in Bruno and 
 | --- | --- | --- |
 | `baseUrl` | `http://127.0.0.1:3000` | Server URL, without a trailing slash. |
 | `deploymentApiDomain` | `deployment.hedra.local` | The required `Host` header, matching `HEDRA_DEPLOYMENT_API_DOMAIN`. |
-| `deploymentDomain` | `hedra.local` | Root for generated tenant domains, matching `HEDRA_DEPLOYMENT_DOMAIN`. |
+| `tenantDomain` | `acme.hedra.local` | Tenant domain for creation and filtering. Must be directly below the deployment domain. |
+| `tenantId` | Empty | Existing tenant UUID for retrieval, renaming or deletion. |
 
-Run the collection in order. It covers tenant creation, retrieval, listing, filtering, renaming and deletion, plus duplicate-domain, immutable-domain, wrong-host and missing-tenant responses. It uses only `/tenants` routes.
+Send the request you need: **Create tenant**, **Get tenant**, **List tenants**, **Filter tenants**, **Rename tenant** or **Delete tenant**. Edit the request body or query parameters before sending. These are manual API calls; there is no collection-wide run order or automatic cleanup.
 
-With the [Bruno CLI](https://docs.usebruno.com/bru-cli/overview) installed, run from the repository root:
-
-```sh
-cd bruno
-bru run --env Local
-```
-
-When sending requests individually, run **Create tenant** first. It generates a unique tenant domain and saves the returned ID in runtime variables for subsequent requests. A complete run renames and deletes only that tenant. If a run stops before **Delete tenant**, the created tenant remains; send that request while the runtime ID is still available to remove it.
+Set `tenantId` to work with an existing tenant. A successful **Create tenant** remembers its returned ID as a runtime `tenantId` for follow-up calls. Runtime variables override environment values, so replace or clear the captured runtime ID before selecting a different tenant through the environment. `tenantDomain` remains the value you choose for creation or filtering.
 
 ## Create and rename a tenant
 
