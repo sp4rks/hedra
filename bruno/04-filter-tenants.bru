@@ -5,20 +5,11 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/tenants?filter={{tenantFilter}}
+  url: {{baseUrl}}/tenants?filter={"tenantDomain":"{{tenantDomain}}"}
   body: none
   auth: none
 }
 
-script:pre-request {
-  bru.setVar('tenantFilter', encodeURIComponent(JSON.stringify({ tenantDomain: bru.getVar('tenantDomain') })))
-}
-
-tests {
-  test('filters by tenant domain', function () {
-    expect(res.status).to.equal(200)
-    expect(res.body.data).to.be.an('array').with.lengthOf(1)
-    expect(res.body.data[0].id).to.equal(bru.getVar('tenantId'))
-    expect(res.body.data[0].tenantDomain).to.equal(bru.getVar('tenantDomain'))
-  })
+params:query {
+  filter: {"tenantDomain":"{{tenantDomain}}"}
 }

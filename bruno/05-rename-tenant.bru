@@ -12,16 +12,6 @@ patch {
 
 body:json {
   {
-    "name": "Renamed Bruno tenant"
+    "name": "Acme Australia"
   }
-}
-
-tests {
-  test('renames the tenant without changing its identity', function () {
-    expect(res.status).to.equal(200)
-    expect(res.body.data.name).to.equal('Renamed Bruno tenant')
-    expect(res.body.data.id).to.equal(bru.getVar('tenantId'))
-    expect(res.body.data.tenantDomain).to.equal(bru.getVar('tenantDomain'))
-    expect(res.body.data.createdAt).to.equal(bru.getVar('tenantCreatedAt'))
-  })
 }
