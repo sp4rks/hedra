@@ -18,10 +18,12 @@ body:json {
 }
 
 script:pre-request {
+  const deploymentDomain = bru.getEnvVar('deploymentDomain').trim().toLowerCase()
+
   bru.deleteVar('tenantId')
   bru.deleteVar('tenantDomain')
   bru.deleteVar('tenantCreatedAt')
-  bru.setVar('requestedTenantDomain', `bruno-${bru.interpolate('{{$randomUUID}}')}.${bru.getEnvVar('deploymentDomain')}`)
+  bru.setVar('requestedTenantDomain', `bruno-${bru.interpolate('{{$randomUUID}}')}.${deploymentDomain}`)
 }
 
 script:post-response {
