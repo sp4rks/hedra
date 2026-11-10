@@ -132,7 +132,7 @@ For `/projects/:projectId/labels/:labelId/namedNotes/release%20plan`, the labels
 
 Association chains retain every ancestor, outermost first. Embedded fields never become association ancestors. For the canonical `/labels/:labelId/namedNotes/release%20plan` route, `associations` is empty and the target stays the same.
 
-The existing accessors are views of that same description:
+For requests dispatched to resource controllers, the existing accessors are views of that same description:
 
 | Accessor | Result |
 | --- | --- |
@@ -140,7 +140,9 @@ The existing accessors are views of that same description:
 | `getEmbeddedScope(context)` | `{ rootId, steps }` for an embedded target; otherwise undefined. |
 | `getAssociationScope(context)` | Nonempty ancestor array; otherwise undefined. |
 
-Accessors return validated, detached values. Changing a returned value does not change the request's scope. Scope describes a requested address; it does not prove existence, ownership or permission. Delegating to `BaseController` retains ownership checks, complete association-chain checks, output filtering and transactional writes. Custom Hono routes and direct controller calls do not acquire scope automatically. Association-unlink routes do not dispatch a resource controller.
+Accessors return validated, detached values. Changing a returned value does not change the request's scope. Scope describes a requested address; it does not prove existence, ownership or permission. Delegating to `BaseController` retains ownership checks, complete association-chain checks, output filtering and transactional writes. Custom Hono routes and direct controller calls do not acquire scope automatically.
+
+Association-unlink routes do not dispatch a resource controller, so `getResourceScope` and `getEmbeddedScope` return undefined. Their `getAssociationScope` result retains the ancestors preceding the link's source, including an empty array for a direct unlink. For example, unlinking `/projects/:projectId/labels/:labelId/associations/tags/:tagId` retains only the project ancestor; unlinking `/projects/:projectId/associations/labels/:labelId` returns `[]`.
 
 The [custom-controller example](../examples/07-resource-scope.ts) reads scope before delegating to `BaseController` and exposes an extra method with its own inferred type. See the [scope decision](adr/0027-data-only-resource-scope.md) for the interface trade-off.
 
