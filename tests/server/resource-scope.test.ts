@@ -8,6 +8,7 @@ import {
   Collection,
   Config,
   EmbeddedResource,
+  getAssociationScope,
   getEmbeddedScope,
   getResourceScope,
   Hedra,
@@ -163,6 +164,7 @@ test('association chains describe every ancestor and the addressed target', asyn
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const seen: Array<ResourceScope | undefined> = []
+  const seenAssociations: Array<ReturnType<typeof getAssociationScope>> = []
 
   class ScopedController extends BaseController {
     /** Records the request scope before delegating resource creation. */
@@ -174,6 +176,7 @@ test('association chains describe every ancestor and the addressed target', asyn
     /** Records the request scope before delegating resource lookup. */
     override async id(context: Context, collection: CollectionType, id: string) {
       seen.push(getResourceScope(context))
+      seenAssociations.push(getAssociationScope(context))
 
       return super.id(context, collection, id)
     }
@@ -236,6 +239,7 @@ test('association chains describe every ancestor and the addressed target', asyn
       { collection: 'tags', target: { kind: 'resource' as const, id: tag }, associations: ancestors },
       { collection: 'tags', target: { kind: 'resource' as const, id: tag }, associations: [] },
     ])
+    expect(seenAssociations).toEqual([ancestors, undefined])
   } finally {
     app.close()
     backend.close()

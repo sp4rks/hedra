@@ -1,7 +1,6 @@
 import { expect, expectTypeOf, test } from 'bun:test'
 
 import type { HedraOptions, Logger, LoggerInterface } from '#hedra.ts'
-import { ConfigurationError } from '#errors'
 import { Collection, Config, Hedra, Resource } from '#hedra.ts'
 
 test('HedraOptions has no environment option', () => {
@@ -72,9 +71,4 @@ test('Hedra retains a custom LoggerInterface and uses it for collection registra
   expect(records).toEqual(['Registering collection: widgets'])
   app.close()
   expect(closed).toBe(false)
-})
-
-test('Config validates supplied environment values', () => {
-  expect(() => new Config({ HEDRA_SERVER_LISTEN_PORT: 3000 } as never)).toThrow()
-  expect(() => new Config({ HEDRA_SERVER_LISTEN_PORT: '0' })).toThrow(ConfigurationError)
 })

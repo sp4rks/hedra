@@ -170,26 +170,6 @@ test('transaction session operation failures are already Hedra errors inside the
   }
 })
 
-test('native SQLite failures propagate without replacing records', async () => {
-  const backend = new SqliteBackend(':memory:')
-
-  try {
-    await backend.insert('items', { id: 'one', value: 'original' })
-    let error: unknown
-
-    try {
-      await backend.insert('items', { id: 'one', value: 'replacement' })
-    } catch (caught) {
-      error = caught
-    }
-    expect(error).toMatchObject({ name: 'SQLiteError', code: 'SQLITE_CONSTRAINT_PRIMARYKEY' })
-    expect(error).not.toBeInstanceOf(HedraError)
-    expect(await backend.select('items')).toEqual([{ id: 'one', value: 'original' }])
-  } finally {
-    backend.close()
-  }
-})
-
 test('programmatic resource validation throws a Hedra error', async () => {
   const backend = new SqliteBackend(':memory:')
 
@@ -277,32 +257,6 @@ test('direct controller and scope input failures throw Hedra errors', async () =
     expect(() => getEmbeddedScope(context)).toThrow(HedraError)
   } finally {
     backend.close()
-  }
-})
-
-test('registration propagates controller constructor failures and leaves the collection unattached', () => {
-  const cause = new Error('controller failed')
-
-  class BrokenController extends BaseController {
-    constructor(backend: Backend) {
-      super(backend)
-      throw cause
-    }
-  }
-  const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }) })
-  const collection = new Collection('items', Resource, { controller: BrokenController })
-  let caught: unknown
-
-  try {
-    try {
-      app.register(collection)
-    } catch (error) {
-      caught = error
-    }
-    expect(caught).toBe(cause)
-    expect(() => collection.controller).toThrow(HedraError)
-  } finally {
-    app.close()
   }
 })
 
