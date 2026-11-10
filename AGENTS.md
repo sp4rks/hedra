@@ -1,34 +1,27 @@
 # AGENTS.md
 
-[README.md](README.md) defines Hedra. Its design goals settle trade-offs.
+[IDEA.md](IDEA.md) defines Hedra. Its design goals settle trade-offs.
 
-Hedra runs as a Bun process in a container wherever it is deployed. Use no Cloudflare Workers or other cloud-specific runtime APIs, whatever the house defaults say.
+Hedra runs as a Bun process in a container wherever it is deployed. Use no Cloudflare Workers or other cloud-specific runtime APIs.
 
 Code follows [CODING_STYLE.md](CODING_STYLE.md). `bun run check` enforces types, formatting, import order, lint and tests; `bun run fmt` fixes formatting and import order.
 
 ## Feature workflow
 
-The **lead agent** owns design, test design, documentation and acceptance. The configured **coder** implements the work, and the configured **reviewer** performs an independent read-only review. Each stage finishes before the next starts, except implementation and docs, which run in parallel. Worktrees live in `.worktrees/<branch-name>`, which git ignores.
+The **lead** owns design, test design, documentation and acceptance; the configured **coder** implements; the configured **reviewer** performs an independent read-only review. Finish each stage before the next, except implementation and documentation, which run in parallel. Worktrees live in gitignored `.worktrees/<branch-name>`.
 
-The agents manage planning, test boundaries, tests, implementation and review within the user's requested scope. The lead confirms test seams for the TDD workflow and adjusts coverage as needed. User approval is required only for merging into `main`; ask for clarification when a missing product or scope decision prevents progress, rather than requesting design or test-plan sign-off.
+The lead makes routine design decisions and confirms test seams within the requested scope. Ask the user when a missing product or scope decision prevents progress; design and test plans need no user sign-off. User approval is required before merging into `main`.
 
-1. **Request.** The user describes the feature.
-2. **Clarify.** The lead resolves missing behaviour or scope decisions, using the `grilling` skill where useful, and makes routine implementation choices autonomously. Done when the requested behaviour and constraints are clear.
-3. **Design.** The lead records the behaviour, public interface (Zod schemas, routes, exports), code structure and design trade-offs in `plans/<feature>.md`, committed with the feature. Done when the lead accepts the design against the requested scope.
-4. **Test design.** The lead owns the tests, following the `tdd` skill: each behaviour and failure path is named as a test and placed at a public seam. Add them to the plan. Done when the lead accepts the test boundaries and coverage; no user sign-off is needed.
-5. **Implement and document.** The lead commits the plan to `feature/<feature>`, creates a worktree for that branch, and starts the coding agent in it. While it works, the lead writes the user docs with the `user-docs` skill on `feature/<feature>-docs`, in a separate worktree, touching only `docs/` and `examples/`.
-   - The coding agent writes the agreed tests first and sees them fail, then implements until they pass and runs `bun run check`. It reports the commit range and check results.
-   - The docs' examples fail until the code lands. The docs are done when the `user-docs` newcomer review is clean.
-6. **Review.** The lead merges the docs branch into `feature/<feature>` and runs the checks and the docs' examples. Where an example fails, the lead fixes the docs if they stray from the plan, and otherwise sends the failure to the coding agent. The lead reviews the commit range with the `reviewer` skill, against the plan and docs. It sends confirmed findings back to the same coding agent to fix, then re-reviews. Done when the review has no actionable findings and every check passes. The lead then reports the result to the user and merges to `main` only after the user approves.
-
-A decision that outlives the feature becomes an ADR during design.
+1. **Clarify.** Resolve missing behaviour and constraints, using `grilling` where useful.
+2. **Design.** Record behaviour, public interface (Zod schemas, routes, exports), code structure and trade-offs in `plans/<feature>.md`. The lead accepts the design against the requested scope.
+3. **Test design.** Following `tdd`, name each behaviour and failure path as a test at a public seam in the plan. The lead accepts the boundaries and coverage.
+4. **Implement and document.** Commit the plan to `feature/<feature>`, create its worktree and start the coder. The coder writes each agreed failing test, makes it pass, runs `bun run check` and reports the commit range and checks. In parallel, the lead writes docs with [docs-style](/home/sparks/.agents/skills/personal/docs-style/SKILL.md) and [Diátaxis](/home/sparks/.agents/skills/personal/house-standards/Diataxis.md) on `feature/<feature>-docs` in a separate worktree, touching only `docs/` and `examples/`. Complete a newcomer review: examples run from their stated starting point and references are accurate. Examples may fail until implementation lands.
+5. **Review.** Merge the docs branch into the feature branch; run checks and docs examples. Fix docs that stray from the plan; send other example failures to the coder. The lead reviews the fixed commit range against the plan and docs, and the configured reviewer independently applies the [reviewer skill](/home/sparks/.agents/skills/personal/reviewer/SKILL.md). Send confirmed findings to the same coder, rerun affected checks and re-review. Acceptance requires no actionable findings and passing checks. Report the result and merge to `main` only after user approval.
 
 ## Small changes
 
-A bug fix or small change that alters no public interface and needs no design decision takes a light path. The lead states the change and its test in a short brief, then hands it to the coding agent on `fix/<slug>` in its own worktree. The coding agent writes the failing test, makes it pass and runs `bun run check`. The lead updates the user docs if users would notice the change, reviews as in stage 6, and merges after the user approves. If the change turns out to need a design decision, switch to the feature workflow.
+For a bug fix or small change with no public interface or design decision, the lead briefs the change and its test, then assigns the coder on `fix/<slug>` in its own worktree. For behaviour changes, the coder writes the failing test and makes it pass. Software changes require `bun run check`; instruction or documentation-only changes require link and meaning checks. The lead updates user docs when needed and reviews as in the feature workflow. Switch to that workflow if a design decision arises.
 
 ## Decisions
 
-Architecture decision records (ADRs) live in `docs/adr/` as `NNNN-<slug>.md`, numbered from `0001`. Each covers one decision: its context, the decision, and its consequences.
-
-Before changing an area, read the ADRs that touch it. When work would contradict an ADR, say so and propose a new ADR that supersedes it.
+Record durable architectural trade-offs and significant constraints that need future context in `docs/adr/NNNN-<slug>.md`, numbered from `0001`. Each ADR covers one decision, its context and consequences. Before changing an area, read its applicable ADRs; if a change contradicts one, say so and propose a superseding ADR.
