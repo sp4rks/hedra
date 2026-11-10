@@ -88,6 +88,10 @@ const accounts = new Collection('accounts', Account, {
 
 The output validator defines the public fields. The default projection uses declared field validators without carrying object-level refinements that may depend on omitted private fields. Supply output-specific refinements explicitly when needed. Define public fields within ordinary nested objects explicitly too. Hidden embedded fields receive no exposing nested routes; exposed embedded output definitions must retain a compatible container and identity shape.
 
+The internal embedded model module supplies schema definitions to routes and controllers; mutation,
+complete-candidate validation and output projection keep their distinct policies. See the
+[schema interpretation decision](adr/0027-embedded-schema-interpretation.md).
+
 ## Resource scope
 
 `getResourceScope(context)` returns a data-only description of the address passed to a controller by a generated REST route. The exported `ResourceScope`, `EmbeddedScope`, `EmbeddedStep` and `AssociationScope` Zod schemas also provide their inferred types. Scope contains strings, arrays and plain objects; model/schema objects and traversal machinery stay internal.
@@ -144,7 +148,7 @@ Accessors return validated, detached values. Changing a returned value does not 
 
 Association-unlink routes do not dispatch a resource controller, so `getResourceScope` and `getEmbeddedScope` return undefined. Their `getAssociationScope` result retains the ancestors preceding the link's source, including an empty array for a direct unlink. For example, unlinking `/projects/:projectId/labels/:labelId/associations/tags/:tagId` retains only the project ancestor; unlinking `/projects/:projectId/associations/labels/:labelId` returns `[]`.
 
-The [custom-controller example](../examples/07-resource-scope.ts) reads scope before delegating to `BaseController` and exposes an extra method with its own inferred type. See the [scope decision](adr/0027-data-only-resource-scope.md) for the interface trade-off.
+The [custom-controller example](../examples/07-resource-scope.ts) reads scope before delegating to `BaseController` and exposes an extra method with its own inferred type. See the [scope decision](adr/0028-data-only-resource-scope.md) for the interface trade-off.
 
 ## Controller selection and lifecycle
 

@@ -14,7 +14,7 @@ export const EmbeddedField = z.object({
 export type EmbeddedField = z.infer<typeof EmbeddedField>
 
 /** Removes wrappers that do not change the underlying container kind. */
-export function unwrap(schema: z.ZodType): z.ZodType {
+function unwrap(schema: z.ZodType): z.ZodType {
   let current = schema
 
   while (current instanceof z.ZodOptional || current instanceof z.ZodNullable || current instanceof z.ZodDefault) {
@@ -22,6 +22,17 @@ export function unwrap(schema: z.ZodType): z.ZodType {
   }
 
   return current
+}
+
+/** Identifies an embedded container and unwraps its item definition. */
+function container(schema: z.ZodType): { kind: EmbeddedField['kind']; item: z.ZodType; key?: z.ZodType } {
+  const current = unwrap(schema)
+
+  if (current instanceof z.ZodArray) return { kind: 'array', item: unwrap(current.element as z.ZodType) }
+  if (current instanceof z.ZodRecord)
+    return { kind: 'dictionary', item: unwrap(current.valueType as z.ZodType), key: current.keyType as z.ZodType }
+
+  return { kind: 'single', item: current }
 }
 
 /** Detects resource definitions hidden inside unsupported schema wrappers. */
@@ -47,15 +58,7 @@ function containsResource(schema: z.ZodType, seen = new Set<z.ZodType>()): boole
 /** Finds the direct embedded fields declared by one resource model. */
 export function embeddedFields(model: z.ZodObject): EmbeddedField[] {
   return Object.entries(model.shape).flatMap(([name, schema]) => {
-    const container = unwrap(schema)
-    const kind = container instanceof z.ZodArray ? 'array' : container instanceof z.ZodRecord ? 'dictionary' : 'single'
-    const element =
-      kind === 'array'
-        ? (container as z.ZodArray).element
-        : kind === 'dictionary'
-          ? (container as z.ZodRecord).valueType
-          : container
-    const item = unwrap(element as z.ZodType)
+    const { kind, item, key } = container(schema)
 
     if (!(item instanceof z.ZodObject)) {
       if (containsResource(schema)) throw new ConfigurationError(`Unsupported embedded resource placement: ${name}`)
@@ -78,19 +81,34 @@ export function embeddedFields(model: z.ZodObject): EmbeddedField[] {
         kind,
         model: item,
         schema,
-        ...(kind === 'dictionary' ? { key: (container as z.ZodRecord).keyType as z.ZodType } : {}),
+        ...(kind === 'dictionary' ? { key } : {}),
       },
     ]
   })
 }
 
 /** Substitutes an embedded item schema while retaining container constraints. */
-export function replaceItem(schema: z.ZodType, item: z.ZodType): z.ZodType {
+function replaceItem(schema: z.ZodType, item: z.ZodType): z.ZodType {
   if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable || schema instanceof z.ZodDefault) {
     return schema.clone({ ...schema.def, innerType: replaceItem(schema.unwrap() as z.ZodType, item) } as never)
   }
   if (schema instanceof z.ZodArray) return schema.clone({ ...schema.def, element: item } as never)
   if (schema instanceof z.ZodRecord) return schema.clone({ ...schema.def, valueType: item } as never)
+
+  return item
+}
+
+/** Finds an exposed embedded item model, checking its container and UUID. */
+export function publicItem(field: EmbeddedField, output: z.ZodObject): z.ZodObject | undefined {
+  const schema = output.shape[field.name]
+
+  if (!schema) return undefined
+  const { kind, item } = container(schema)
+
+  if (field.kind !== 'single' && field.kind !== kind)
+    throw new ConfigurationError(`Embedded output shape is incompatible: ${field.name}`)
+  if (field.kind !== kind || !(item instanceof z.ZodObject) || !(item.shape.id instanceof z.ZodUUID))
+    throw new ConfigurationError(`Embedded output must retain its UUID: ${field.name}`)
 
   return item
 }

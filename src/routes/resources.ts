@@ -13,7 +13,7 @@ import {
   InputValidationError,
   UnsupportedMediaTypeError,
 } from '#errors'
-import { embeddedFields, inputModel, unwrap } from '#models/embedded.ts'
+import { embeddedFields, inputModel, publicItem } from '#models/embedded.ts'
 import { ResourceId } from '#models/resource.ts'
 import { ErrorResponse } from '#models/rest.ts'
 import { getAssociationScope, setAssociationScope, setEmbeddedTraversal, setResourceScope } from '#models/scope.ts'
@@ -122,31 +122,6 @@ function checkDictionaryKeys(model: z.ZodObject, attributes: Record<string, unkn
       checkDictionaryKeys(field.model, value as Record<string, unknown>)
     }
   }
-}
-
-/**
- * Selects the output schema that controls an embedded field's routes. Omitted
- * fields have no routes; exposed fields must retain their container kind and UUID.
- */
-function publicItem(field: EmbeddedField, output: z.ZodObject): z.ZodObject | undefined {
-  const outputField = output.shape[field.name]
-
-  if (!outputField) return undefined
-  const outputContainer = unwrap(outputField)
-  let itemSchema: z.ZodType
-
-  if (field.kind === 'array' && outputContainer instanceof z.ZodArray) itemSchema = outputContainer.element as z.ZodType
-  else if (field.kind === 'dictionary' && outputContainer instanceof z.ZodRecord)
-    itemSchema = outputContainer.valueType as z.ZodType
-  else if (field.kind === 'single') itemSchema = outputContainer
-  else throw new ConfigurationError(`Embedded output shape is incompatible: ${field.name}`)
-  const itemModel = unwrap(itemSchema)
-
-  if (!(itemModel instanceof z.ZodObject) || !(itemModel.shape.id instanceof z.ZodUUID)) {
-    throw new ConfigurationError(`Embedded output must retain its UUID: ${field.name}`)
-  }
-
-  return itemModel
 }
 
 /**
