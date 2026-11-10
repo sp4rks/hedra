@@ -23,26 +23,31 @@ test('root REST requests describe collection and UUID targets', async () => {
   const seen: Array<ResourceScope | undefined> = []
 
   class ScopedController extends BaseController {
+    /** Records the request scope before delegating resource creation. */
     override async create(context: Context, collection: CollectionType, input: ResourceInput) {
       seen.push(getResourceScope(context))
 
       return super.create(context, collection, input)
     }
+    /** Records the request scope before delegating resource lookup. */
     override async id(context: Context, collection: CollectionType, id: string) {
       seen.push(getResourceScope(context))
 
       return super.id(context, collection, id)
     }
+    /** Records the request scope before delegating resource listing. */
     override async list(context: Context, collection: CollectionType, baseUrl: string, params?: QueryParams) {
       seen.push(getResourceScope(context))
 
       return super.list(context, collection, baseUrl, params)
     }
+    /** Records the request scope before delegating resource update. */
     override async update(context: Context, collection: CollectionType, input: ResourceInput, id: string) {
       seen.push(getResourceScope(context))
 
       return super.update(context, collection, input, id)
     }
+    /** Records the request scope before delegating resource deletion. */
     override async delete(context: Context, collection: CollectionType, id: string) {
       seen.push(getResourceScope(context))
 
@@ -81,30 +86,36 @@ test('embedded array requests distinguish containers from UUID selectors', async
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const seen: Array<{ scope: ResourceScope | undefined; embedded: ReturnType<typeof getEmbeddedScope> }> = []
+  /** Records the public resource and embedded scopes. */
   const record = (context: Context) =>
     seen.push({ scope: getResourceScope(context), embedded: getEmbeddedScope(context) })
 
   class ScopedController extends BaseController {
+    /** Records the request scope before delegating resource creation. */
     override async create(context: Context, collection: CollectionType, input: ResourceInput) {
       record(context)
 
       return super.create(context, collection, input)
     }
+    /** Records the request scope before delegating resource lookup. */
     override async id(context: Context, collection: CollectionType, id: string) {
       record(context)
 
       return super.id(context, collection, id)
     }
+    /** Records the request scope before delegating resource listing. */
     override async list(context: Context, collection: CollectionType, baseUrl: string, params?: QueryParams) {
       record(context)
 
       return super.list(context, collection, baseUrl, params)
     }
+    /** Records the request scope before delegating resource update. */
     override async update(context: Context, collection: CollectionType, input: ResourceInput, id: string) {
       record(context)
 
       return super.update(context, collection, input, id)
     }
+    /** Records the request scope before delegating resource deletion. */
     override async delete(context: Context, collection: CollectionType, id: string) {
       record(context)
 
@@ -154,26 +165,31 @@ test('association chains describe every ancestor and the addressed target', asyn
   const seen: Array<ResourceScope | undefined> = []
 
   class ScopedController extends BaseController {
+    /** Records the request scope before delegating resource creation. */
     override async create(context: Context, collection: CollectionType, input: ResourceInput) {
       seen.push(getResourceScope(context))
 
       return super.create(context, collection, input)
     }
+    /** Records the request scope before delegating resource lookup. */
     override async id(context: Context, collection: CollectionType, id: string) {
       seen.push(getResourceScope(context))
 
       return super.id(context, collection, id)
     }
+    /** Records the request scope before delegating resource listing. */
     override async list(context: Context, collection: CollectionType, baseUrl: string, params?: QueryParams) {
       seen.push(getResourceScope(context))
 
       return super.list(context, collection, baseUrl, params)
     }
+    /** Records the request scope before delegating resource update. */
     override async update(context: Context, collection: CollectionType, input: ResourceInput, id: string) {
       seen.push(getResourceScope(context))
 
       return super.update(context, collection, input, id)
     }
+    /** Records the request scope before delegating resource deletion. */
     override async delete(context: Context, collection: CollectionType, id: string) {
       seen.push(getResourceScope(context))
 
@@ -183,6 +199,7 @@ test('association chains describe every ancestor and the addressed target', asyn
   const tags = new Collection('tags', Resource.extend({ name: z.string() }), { controller: ScopedController })
   const labels = new Collection('labels', Resource.extend({ name: z.string() }), { associations: [tags] })
   const projects = new Collection('projects', Resource.extend({ name: z.string() }), { associations: [labels] })
+  /** Creates a named resource through its generated route and returns its ID. */
   const create = async (path: string, name: string) => {
     const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify({ name }) })
 

@@ -30,6 +30,7 @@ async function fixture(mutate?: (context: Context) => void) {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const seen: Capture[] = []
+  /** Applies an optional mutation and records the public scope views. */
   const capture = (context: Context) => {
     mutate?.(context)
     seen.push({
@@ -40,26 +41,31 @@ async function fixture(mutate?: (context: Context) => void) {
   }
 
   class ScopedController extends BaseController {
+    /** Records the request scope before delegating resource creation. */
     override async create(context: Context, collection: CollectionType, input: ResourceInput) {
       capture(context)
 
       return super.create(context, collection, input)
     }
+    /** Records the request scope before delegating resource lookup. */
     override async id(context: Context, collection: CollectionType, id: string) {
       capture(context)
 
       return super.id(context, collection, id)
     }
+    /** Records the request scope before delegating resource listing. */
     override async list(context: Context, collection: CollectionType, url: string, params?: QueryParams) {
       capture(context)
 
       return super.list(context, collection, url, params)
     }
+    /** Records the request scope before delegating resource update. */
     override async update(context: Context, collection: CollectionType, input: ResourceInput, id: string) {
       capture(context)
 
       return super.update(context, collection, input, id)
     }
+    /** Records the request scope before delegating resource deletion. */
     override async delete(context: Context, collection: CollectionType, id: string) {
       capture(context)
 
@@ -80,6 +86,7 @@ async function fixture(mutate?: (context: Context) => void) {
   const tags = new Collection('tags', Tag, { controller: ScopedController })
   const labels = new Collection('labels', Resource.extend({ name: z.string() }), { associations: [tags] })
   const projects = new Collection('projects', Resource.extend({ name: z.string() }), { associations: [labels] })
+  /** Creates a resource through its generated route and returns its ID. */
   const create = async (path: string, value: object) => {
     const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify(value) })
 
@@ -262,6 +269,7 @@ test('public accessors return only documented detached data', async () => {
 
 test('scope schemas reject invalid addressing combinations', async () => {
   const rootId = crypto.randomUUID()
+  /** Builds an embedded scope candidate for validation. */
   const target = (steps: unknown[]) => ({
     collection: 'tags',
     target: { kind: 'embedded' as const, rootId, steps },
