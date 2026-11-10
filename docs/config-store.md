@@ -1,6 +1,6 @@
 # Configuration datastore
 
-`ConfigDatastore` defines the operations for persisted configuration resources. Its `tenants` member exposes create/get/list/update/replace/delete operations that require no Hono context and return tenant data directly. `ConfigStore` is the default implementation; it chooses and configures its backend internally. [REST controllers](collections.md) have a separate interface and response envelopes.
+`ConfigDatastore` defines the operations for persisted configuration resources. Its `tenants` member implements the exported structural `TenantOperationsInterface`: create/get/list/update/replace/delete operations that require no Hono context and return validated tenant data directly. `ConfigStore` is the default implementation; it chooses and configures its backend internally. [REST controllers](collections.md) have a separate interface and response envelopes.
 
 Access it through `app.configDatastore`. Process settings remain available through `app.config`; see [server configuration](configuration.md).
 
@@ -11,15 +11,14 @@ Hedra also supplies the built-in [Tenant REST API](tenants.md) over this same ca
 From the repository root with Bun and the project's dependencies installed, use the public exports:
 
 ```ts
-import { Config, Hedra, Tenant } from '#hedra.ts'
+import { Config, Hedra, TenantInput } from '#hedra.ts'
 
 const app = new Hedra({
   config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SQLITE_PATH: ':memory:' }),
 })
-const CreateTenant = Tenant.omit({ id: true, createdAt: true, updatedAt: true }).strict()
 
 try {
-  const input = CreateTenant.parse({ name: ' Acme ', tenantDomain: ' ACME.HEDRA.LOCAL ' })
+  const input = TenantInput.parse({ name: ' Acme ', tenantDomain: ' ACME.HEDRA.LOCAL ' })
   const tenant = await app.configDatastore.tenants.create(input)
   const stored = await app.configDatastore.tenants.get(tenant.id)
 
@@ -39,9 +38,11 @@ try {
 | `name` | `string` | Required, trimmed and nonempty. |
 | `tenantDomain` | DNS domain string | Required, trimmed, lowercased, unique and immutable. |
 
-Omit all three managed metadata fields from mutation payloads. Programmatic operations reject supplied managed fields. Create and replacement require the name and domain; update changes the name and rejects any domain field. Replacement must retain the existing domain. The default store validates and normalises tenant writes itself; a pure validator can also prepare input before calling it. The strict subset above rejects unknown fields.
+Use the exported `TenantInput` schema for creation and replacement, and `TenantChanges` for name-only updates. Both also export their TypeScript types. The schemas derive from `Tenant`, normalise names/domains and reject unknown fields. Mutation types exclude managed metadata; `TenantChanges` additionally excludes the domain, including when passing a pretyped object with a name and forbidden fields.
 
-The [standalone example](../examples/04-config-store.ts) validates input, checks the normalised name and domain, and retrieves the stored tenant. Run it without starting an HTTP server:
+Omit all three managed metadata fields from mutation payloads. Programmatic operations reject supplied managed fields, including keys whose value is `undefined`. Create and replacement require the name and domain; update changes the name and rejects any domain field. Replacement must retain the existing domain. The default store validates and normalises tenant writes itself; calling the pure schemas first is optional.
+
+The [standalone example](../examples/04-config-store.ts) uses both mutation schemas, checks normalised reads and a name update, and checks that a domain update fails schema validation. Run it without starting an HTTP server:
 
 ```sh
 bun run examples/04-config-store.ts
@@ -76,7 +77,7 @@ The default configuration store and application collections open separate connec
 
 ## Supply a configuration datastore
 
-Pass any implementation of the exported `ConfigDatastore` interface as `new Hedra({ configDatastore })`. Its readonly `tenants` member supplies the six operations below, with signatures derived from `ResourceOperations<Tenant>`. The contract requires no table name, backend methods, base class or `close()` method.
+Pass any implementation of the exported `ConfigDatastore` interface as `new Hedra({ configDatastore })`. Its readonly `tenants` member supplies the six operations below through `TenantOperationsInterface`. Use that exported type when implementing a replacement. The contract requires no table name, backend methods, base class or `close()` method.
 
 Hedra retains the supplied object unchanged and borrows it. Closing the app leaves that datastore usable by its creator and other apps; the creator manages its lifetime. The default implementation can also be supplied explicitly:
 
@@ -100,20 +101,22 @@ try {
 
 ## Programmatic operations
 
-All methods return promises. The default store specialises tenant writes with model validation, domain immutability and atomic uniqueness checks. An injected datastore must uphold those same guarantees, including concurrent creation across its users. The REST controller validates request and returned data; it cannot make an external datastore transactional.
+All methods return promises. The default store validates tenant reads and writes and enforces domain immutability and atomic uniqueness checks. An injected datastore must uphold those same guarantees, including concurrent creation across its users and valid Tenant results from every read. The REST controller validates request and returned data; it cannot make an external datastore transactional.
 
 `ResourceOperations<T>` remains available independently as a generic helper: it accepts a collection/table name and backend, and `T` can describe plain data without declaring the shared `Resource` metadata fields. It protects UUIDs, timestamps and JSON integrity but does not supply tenant-specific model rules. Use `ConfigStore` when those rules are needed.
 
 | Method | Behaviour | Result |
 | --- | --- | --- |
-| `create(input)` | Validate and insert a unique domain with generated UUID and audit timestamps. | Resource |
-| `get(id)` | Read one resource by UUID. | Resource or `null` |
-| `list(filter?)` | Match every scalar equality criterion, in insertion order. | Resource array |
-| `update(id, changes)` | Validate name changes, reject a domain field and refresh `updatedAt`. | Resource or `null` |
-| `replace(id, input)` | Validate replacement, preserving ID, domain and creation time. | Resource or `null` |
+| `create(input: TenantInput)` | Validate and insert a unique domain with generated UUID and audit timestamps. | Tenant |
+| `get(id: string)` | Read and validate one tenant by UUID. | Tenant or `null` |
+| `list(filter?: Partial<Tenant>)` | Match every scalar equality criterion, in insertion order; validate every selected tenant. | Tenant array |
+| `update(id: string, changes: TenantChanges)` | Validate name changes, reject a domain field and refresh `updatedAt`. | Tenant or `null` |
+| `replace(id: string, input: TenantInput)` | Validate replacement, preserving ID, domain and creation time. | Tenant or `null` |
 | `delete(id)` | Remove one resource. | Boolean |
 
-Update and replacement are atomic and never insert a missing resource. Replacement removes omitted optional attributes. List accepts the filter directly; it has no response envelope, pagination or sorting. These methods return stored data without REST output filtering; callers decide which attributes to expose externally.
+Update and replacement are atomic and never insert a missing tenant. List accepts the filter directly; it has no response envelope, pagination or sorting. An empty selection returns `[]`. These methods return parsed Tenant values without REST output filtering; callers decide which attributes to expose externally.
+
+`get` and `list` validate the complete selected Tenant values, including names, domains, managed metadata and the absence of unknown fields. They return schema-normalised values without rewriting storage. An invalid selected row raises `OutputValidationError` (500); a list rejects as a whole instead of omitting the row or returning partial data. Rows excluded by the filter are not read as tenants and do not invalidate that selection.
 
 ## Share a backend with application resources
 
@@ -125,8 +128,8 @@ For separate persistent configuration storage, pass a `Config` with the desired 
 
 ## Validation and scope
 
-The default store validates tenant writes against `Tenant` and performs uniqueness checks in the same transaction as insertion. Invalid input and attempted domain changes raise an input validation error; a duplicate canonical domain raises `UniqueViolationError` (409). Generic JSON, UUID and managed-field guards remain active. Failed validation or storage operations leave data unchanged. Expected validation failures use explicit [Hedra error classes](errors.md#validation-and-unexpected-failures); unexpected datastore failures propagate unchanged. Programmatic operations construct no HTTP response and do not terminate the process. A pure validator called directly retains its own error contract.
+The default store validates tenant reads and writes against `Tenant` and performs uniqueness checks in the same transaction as insertion. Invalid input and attempted domain changes raise an input validation error; a duplicate canonical domain raises `UniqueViolationError` (409). Invalid stored tenants raise `OutputValidationError` (500), which the generated HTTP routes redact as an internal server error. Generic JSON, UUID and managed-field guards remain active. Failed validation or storage operations leave data unchanged. Expected validation failures use explicit [Hedra error classes](errors.md#validation-and-unexpected-failures); unexpected datastore failures propagate unchanged. Programmatic operations construct no HTTP response and do not terminate the process. A pure validator called directly retains its own error contract.
 
 The pure schema and programmatic store check DNS syntax without imposing an app's deployment root. The [Tenant controller](tenants.md#domain-rules) additionally restricts HTTP creation to a direct deployment subdomain and excludes configured API/docs hostnames.
 
-Existing name-only tenant definitions need an explicitly assigned domain before use with the new REST API. No migration invents domains. There are no tenant-specific backend methods: persistence uses generic `Backend` operations. Creating a tenant definition does not add application tenant isolation. Environment resources, other backends and legacy migration remain outside this increment.
+Existing name-only or otherwise invalid tenant definitions must be corrected before programmatic or HTTP reads can return them. No migration invents domains or repairs rows. There are no tenant-specific backend methods: persistence uses generic `Backend` operations. Creating a tenant definition does not add application tenant isolation. Environment resources, other backends and legacy migration remain outside this increment.
