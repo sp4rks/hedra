@@ -402,7 +402,7 @@ test('tenant controller operations propagate injected datastore failures by iden
   }
 })
 
-test('tenant datastore writes propagate backend failures by identity', async () => {
+test('tenant datastore reads and writes propagate backend failures by identity', async () => {
   const id = crypto.randomUUID()
   const fields = { name: 'Acme', tenantDomain: 'acme.hedra.local' }
 
@@ -420,6 +420,8 @@ test('tenant datastore writes propagate backend failures by identity', async () 
     const store = new ConfigStore({ backend })
     const calls = [
       () => store.tenants.create(fields),
+      () => store.tenants.get(id),
+      () => store.tenants.list(),
       () => store.tenants.update(id, { name: 'Changed' }),
       () => store.tenants.replace(id, fields),
     ]

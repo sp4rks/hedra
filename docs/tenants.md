@@ -83,4 +83,4 @@ The exported `TenantController` implements `ControllerInterface`. Its constructo
 
 ## Existing tenant definitions
 
-Name-only definitions now need an explicitly assigned valid, unique `tenantDomain`. No migration invents domains. Back up existing data and assign domains before using the REST catalogue; a definition missing its domain fails output validation instead of being returned as a valid Tenant.
+Name-only definitions need an explicitly assigned valid, unique `tenantDomain`. The default store validates complete Tenant values on both programmatic `get`/`list` and HTTP reads. Back up existing data and correct invalid rows before reading them; a definition missing its domain raises an output-validation error, and a list containing it fails as a whole. HTTP responses redact these failures as a generic 500. No migration invents domains or repairs stored definitions. See [read validation](config-store.md#programmatic-operations).

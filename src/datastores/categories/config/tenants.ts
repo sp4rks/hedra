@@ -1,10 +1,8 @@
+import type { TenantOperationsInterface } from '#datastores/categories/config/config.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
 import { InputValidationError, OutputValidationError, parseInput, UniqueViolationError } from '#errors'
 import { ResourceId } from '#models/resource.ts'
-import { Tenant } from '#models/tenant.ts'
-
-const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true }).strict()
-const TenantChanges = TenantInput.omit({ tenantDomain: true }).partial()
+import { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
 
 /** Validates a tenant read from the backend. */
 function storedTenant(input: unknown): Tenant {
@@ -15,9 +13,21 @@ function storedTenant(input: unknown): Tenant {
   return result.data
 }
 
-export class TenantOperations extends ResourceOperations<Tenant> {
+export class TenantOperations extends ResourceOperations<Tenant> implements TenantOperationsInterface {
+  /** Returns a validated tenant, or null when it is absent. */
+  override async get(id: string): Promise<Tenant | null> {
+    const tenant = await super.get(id)
+
+    return tenant === null ? null : storedTenant(tenant)
+  }
+
+  /** Returns validated tenants matching the supplied scalar criteria. */
+  override async list(filter: Partial<Tenant> = {}): Promise<Tenant[]> {
+    return (await super.list(filter)).map(storedTenant)
+  }
+
   /** Creates a tenant if its canonical domain is not already in use. */
-  override async create(input: Parameters<ResourceOperations<Tenant>['create']>[0]): Promise<Tenant> {
+  override async create(input: TenantInput): Promise<Tenant> {
     const attributes = parseInput(TenantInput, input)
     const timestamp = new Date().toISOString()
     const tenant = parseInput(Tenant, {
@@ -36,10 +46,7 @@ export class TenantOperations extends ResourceOperations<Tenant> {
   }
 
   /** Changes a tenant name while retaining its domain and managed metadata. */
-  override async update(
-    id: string,
-    changes: Parameters<ResourceOperations<Tenant>['update']>[1],
-  ): Promise<Tenant | null> {
+  override async update(id: string, changes: TenantChanges): Promise<Tenant | null> {
     const key = parseInput(ResourceId, id)
     const fields = parseInput(TenantChanges, changes)
     const updated = await this.backend.update(this.name, key, (record) => {
@@ -54,10 +61,7 @@ export class TenantOperations extends ResourceOperations<Tenant> {
   }
 
   /** Replaces a tenant only when its domain stays unchanged. */
-  override async replace(
-    id: string,
-    input: Parameters<ResourceOperations<Tenant>['replace']>[1],
-  ): Promise<Tenant | null> {
+  override async replace(id: string, input: TenantInput): Promise<Tenant | null> {
     const key = parseInput(ResourceId, id)
     const fields = parseInput(TenantInput, input)
     const updated = await this.backend.update(this.name, key, (record) => {

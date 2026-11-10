@@ -17,10 +17,7 @@ import {
 } from '#errors'
 import { ResourceId } from '#models/resource.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
-import { Tenant } from '#models/tenant.ts'
-
-const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
-const TenantChanges = TenantInput.omit({ tenantDomain: true }).partial()
+import { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
 
 export class TenantController implements ControllerInterface {
   /** Uses app configuration and obtains its configuration datastore on demand. */
