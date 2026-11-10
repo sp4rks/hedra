@@ -10,6 +10,35 @@ import { Collection, Config, ConfigStore, Hedra, JsonApiResponse, Resource, Sqli
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 const headers = { host: 'deployment.hedra.local', 'content-type': 'application/json' }
 
+test('tenant HTTP reads redact invalid data from the default configuration store', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hedra-invalid-tenant-'))
+  const path = join(dir, 'db.sqlite')
+  const backend = new SqliteBackend(path)
+  const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: path }) })
+  const id = crypto.randomUUID()
+  const timestamp = '2026-01-01T00:00:00.000Z'
+
+  try {
+    await backend.insert('hedra_config_tenants', {
+      id,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      name: 'private invalid tenant',
+    })
+
+    for (const target of ['/tenants', `/tenants/${id}`]) {
+      const response = await app.request(`http://deployment.hedra.local${target}`, { headers })
+
+      expect(response.status).toBe(500)
+      expect(await response.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
+    }
+  } finally {
+    app.close()
+    backend.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('tenant REST CRUD uses the configuration catalogue', async () => {
   const backend = new SqliteBackend(':memory:')
   const store = new ConfigStore({ backend })

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import type { ConfigDatastore, Tenant } from '#hedra.ts'
-import { Collection, Config, ConfigStore, Hedra, Resource, ResourceOperations, SqliteBackend } from '#hedra.ts'
+import type { ConfigDatastore } from '#hedra.ts'
+import { Collection, Config, ConfigStore, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -13,7 +13,8 @@ test('Hedra accepts a structural configuration datastore and retains its identit
   const dir = mkdtempSync(join(tmpdir(), 'hedra-config-datastore-'))
   const path = join(dir, 'unused.sqlite')
   const backend = new SqliteBackend(':memory:')
-  const operations = new ResourceOperations<Tenant>('tenants', backend)
+  const store = new ConfigStore({ backend })
+  const operations = store.tenants
   const configDatastore = {
     tenants: {
       create: operations.create.bind(operations),
@@ -34,6 +35,7 @@ test('Hedra accepts a structural configuration datastore and retains its identit
     expect(existsSync(path)).toBe(false)
   } finally {
     app.close()
+    store.close()
     backend.close()
     rmSync(dir, { recursive: true, force: true })
   }
@@ -41,7 +43,8 @@ test('Hedra accepts a structural configuration datastore and retains its identit
 
 test('Hedra borrows a configuration datastore shared by apps', async () => {
   const backend = new SqliteBackend(':memory:')
-  const operations = new ResourceOperations<Tenant>('tenants', backend)
+  const store = new ConfigStore({ backend })
+  const operations = store.tenants
   let closed = false
   const configDatastore = {
     tenants: operations,
@@ -63,6 +66,7 @@ test('Hedra borrows a configuration datastore shared by apps', async () => {
   } finally {
     first.close()
     second.close()
+    store.close()
     backend.close()
   }
 })

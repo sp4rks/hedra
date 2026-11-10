@@ -4,7 +4,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { Collection, Config, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
+import {
+  Collection,
+  Config,
+  ConfigStore,
+  Hedra,
+  JsonApiResponse,
+  Resource,
+  SqliteBackend,
+  Tenant,
+  TenantChanges,
+} from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -92,7 +102,7 @@ test('ConfigStore exposes validated tenant resource operations', async () => {
       tenantDomain: 'acme.hedra.local',
     })
     expect(await config.tenants.get(tenant.id)).toEqual(tenant)
-    expect(await config.tenants.update(tenant.id, TenantInput.partial().parse({ name: ' New name ' }))).toEqual({
+    expect(await config.tenants.update(tenant.id, TenantChanges.parse({ name: ' New name ' }))).toEqual({
       id: tenant.id,
       createdAt: tenant.createdAt,
       updatedAt: expect.any(String),

@@ -1,17 +1,25 @@
 import type { Backend } from '#datastores/backend.ts'
-import type { ResourceOperations } from '#datastores/resource-operations.ts'
+import type { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
 import { Config } from '#config'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { TenantOperations } from '#datastores/categories/config/tenants.ts'
 import { ConfigurationError } from '#errors'
-import { Collection } from '#models/collection.ts'
-import { Tenant } from '#models/tenant.ts'
 
 export const tenantTable = 'hedra_config_tenants'
 
+/** Describes the configuration catalogue's tenant operations. */
+export interface TenantOperationsInterface {
+  create(input: TenantInput): Promise<Tenant>
+  get(id: string): Promise<Tenant | null>
+  list(filter?: Partial<Tenant>): Promise<Tenant[]>
+  update(id: string, changes: TenantChanges): Promise<Tenant | null>
+  replace(id: string, input: TenantInput): Promise<Tenant | null>
+  delete(id: string): Promise<boolean>
+}
+
 /** Stores tenants with valid, immutable domains and atomic domain uniqueness. */
 export interface ConfigDatastore {
-  readonly tenants: Pick<ResourceOperations<Tenant>, 'create' | 'get' | 'list' | 'update' | 'replace' | 'delete'>
+  readonly tenants: TenantOperationsInterface
 }
 
 export type ConfigStoreOptions = {
@@ -20,7 +28,7 @@ export type ConfigStoreOptions = {
 }
 
 export class ConfigStore implements ConfigDatastore {
-  readonly tenants: ResourceOperations<Tenant>
+  readonly tenants: TenantOperationsInterface
   private closeBackend?: () => void
 
   /** Binds tenant operations to a supplied or configured backend. */
@@ -37,9 +45,7 @@ export class ConfigStore implements ConfigDatastore {
       backend = owned
       this.closeBackend = () => owned.close()
     }
-    const tenants = new Collection(tenantTable, Tenant)
-
-    this.tenants = new TenantOperations(tenants.name, backend)
+    this.tenants = new TenantOperations(tenantTable, backend)
   }
 
   /** Closes an owned backend without closing a supplied backend. */
