@@ -23,8 +23,9 @@ Use Zod for "in plane" object definitions: models of data the application works 
 Routine options and dependency wiring, such as `HedraOptions`, `LoggerInterface` and `Backend`, use plain TypeScript types or interfaces. They do not need a Zod schema solely to describe their shape. Configuration values and other application data still require validation at their trust boundaries.
 
 - For application models, define the schema, then derive the type from it. Give both the same name. Never hand-write a type for a shape a schema describes.
-- Derive variants from the model schema (`.pick`, `.omit`, `.partial`, `.extend`) rather than declaring parallel ones.
+- Derive variants from the model schema (`.pick`, `.omit`, `.partial`, `.extend`) rather than declaring parallel ones. Mutation types describe allowed fields and retain runtime validation.
 - Parse application data at every trust boundary: request input, environment, configuration, stored data and application data returned by untrusted code. Use the parsed value from then on.
+- Domain-aware operations validate complete domain values they return, including stored reads and injected results, and return parsed values. Generic backends validate their storage contracts; domain operations own domain invariants.
 
 ```ts
 export const Widget = z.object({ id: z.uuid(), name: z.string().trim().min(1) })
@@ -48,7 +49,7 @@ src/
 tests/          mirrors src/
 ```
 
-- Routes validate public input and handle HTTP transport. REST controllers implement resource actions, protect server-owned fields and shape resource responses. Programmatic datastore operations stay independent of HTTP and persist through generic backends.
+- Routes validate public input and handle HTTP transport. REST controllers implement resource actions, protect server-owned fields and shape resource responses. Programmatic datastore operations stay independent of HTTP; generic backends own persistence and transactions.
 - Name every file for what it holds, never `index.ts`, so open tabs stay distinguishable. A module that grows into its own directory names its main file after the directory, as in `tenancy/tenancy.ts`.
 - Expose the public interface through deliberate exports from `src/hedra.ts`, the package entry point; everything else is internal. Write no barrel files that only re-export.
 - Import Hedra modules through a `#` alias from `src/` and from `tests/`, including within the same area. A `#` path maps to `src/`. Config is `#config` and `#config/*`. Errors are `#errors`.
@@ -65,7 +66,8 @@ tests/          mirrors src/
 - Write tests first for every behaviour change, with the `tdd` skill. Confirm a new test fails for the intended reason before making it pass.
 - Test at public seams (routes through `app.request`, controllers through their exports), never internals.
 - Name each test for the behaviour it specifies, such as `GET /health returns ok`, and cover failure paths as well as success.
+- Use real local dependencies such as in-memory SQLite when practical. Where relevant, type-check forbidden fields in pretyped values as well as object literals.
 
-`bun run test:coverage` runs the full suite and requires at least 90% line coverage and 85% function coverage in each reported file. These initial floors sit below the existing suite's lowest file coverage. `bun run check` includes this gate. Plain `bun test` and `bun run test` keep coverage disabled for focused runs.
+`bun run test:coverage` runs the full suite and requires at least 90% line coverage and 85% function coverage in each reported file. `bun run check` includes this gate. Plain `bun test` and `bun run test` keep coverage disabled for focused runs. Coverage supports behaviour and failure-path tests; it does not prove contract correctness.
 
 Coverage settings live in `bunfig.toml`. The report appears in the terminal and in the gitignored `coverage/lcov.info` file. Tests, examples and tooling scripts are excluded. [Bun's coverage](https://bun.com/docs/test/code-coverage) measures modules loaded in the test process; unimported source files and execution in spawned processes do not contribute.
