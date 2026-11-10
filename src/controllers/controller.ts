@@ -17,7 +17,7 @@ import { DatabaseFilter as FilterSchema, DatabaseScalar as ScalarSchema } from '
 import { HedraError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { ResourceId, ResourceTimestamp } from '#models/resource.ts'
 import { ResourceInput as InputSchema, QueryParams as QuerySchema } from '#models/rest.ts'
-import { getAssociationScope, getEmbeddedScope } from '#models/scope.ts'
+import { getAssociationScope, getEmbeddedTraversal } from '#models/scope.ts'
 
 export interface ControllerInterface {
   create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse>
@@ -65,7 +65,7 @@ export class BaseController implements ControllerInterface {
 
   /** Creates a resource with server-owned identity and timestamps. */
   async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
-    const scope = getEmbeddedScope(context)
+    const scope = getEmbeddedTraversal(context)
 
     if (scope)
       return (await embeddedMutate(
@@ -105,7 +105,7 @@ export class BaseController implements ControllerInterface {
 
   /** Returns one resource. */
   async id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse> {
-    const scope = getEmbeddedScope(context)
+    const scope = getEmbeddedTraversal(context)
 
     if (scope) return await embeddedId(this.backend, collection, context, scope)
     const key = parseInput(ResourceId, id)
@@ -145,7 +145,7 @@ export class BaseController implements ControllerInterface {
     parseInput(FilterSchema, filter)
     if (Object.getOwnPropertySymbols(filter).length) throw new InputValidationError('Filter keys must be strings')
     const entries = Object.entries(filter).map(([key, value]) => [key, parseInput(ScalarSchema, value)] as const)
-    const scope = getEmbeddedScope(context)
+    const scope = getEmbeddedTraversal(context)
     const url = z.url().safeParse(baseUrl)
 
     if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
@@ -175,7 +175,7 @@ export class BaseController implements ControllerInterface {
 
   /** Updates one resource. */
   async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
-    const scope = getEmbeddedScope(context)
+    const scope = getEmbeddedTraversal(context)
 
     if (scope)
       return (await embeddedMutate(
@@ -227,7 +227,7 @@ export class BaseController implements ControllerInterface {
 
   /** Deletes one resource. */
   async delete(context: Context, collection: Collection, id: string): Promise<void> {
-    const scope = getEmbeddedScope(context)
+    const scope = getEmbeddedTraversal(context)
 
     if (scope) {
       await embeddedMutate(this.backend, collection, context, scope, 'delete')

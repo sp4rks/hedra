@@ -273,7 +273,7 @@ test('direct controller and scope input failures throw Hedra errors', async () =
     await expect(controller.id(context, new Collection('items', Resource), 'invalid')).rejects.toBeInstanceOf(
       HedraError,
     )
-    context.set('hedraScope' as never, { rootId: 'invalid' } as never)
+    context.set('hedraResourceScope' as never, { rootId: 'invalid' } as never)
     expect(() => getEmbeddedScope(context)).toThrow(HedraError)
   } finally {
     backend.close()
