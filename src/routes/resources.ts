@@ -16,7 +16,7 @@ import {
 import { embeddedFields, inputModel, publicItem } from '#models/embedded.ts'
 import { ResourceId } from '#models/resource.ts'
 import { ErrorResponse } from '#models/rest.ts'
-import { setAssociationScope, setEmbeddedScope } from '#models/scope.ts'
+import { getAssociationScope, setAssociationScope, setEmbeddedTraversal, setResourceScope } from '#models/scope.ts'
 
 /** Converts an input validation failure into the public client error. */
 function input<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -145,6 +145,7 @@ export function checkRoutes(model: z.ZodObject, output: z.ZodObject, ancestors =
 /** Installs parsed root and embedded selectors into the request context. */
 function scope(
   context: Context,
+  collection: Collection,
   steps: RouteStep[],
   dictionarySelector?: string,
   rootParameter = 'r0',
@@ -159,8 +160,21 @@ function scope(
     return { field, ...(selector === undefined ? {} : { selector }) }
   })
 
-  setEmbeddedScope(context, { rootId, steps: values })
+  setEmbeddedTraversal(context, { rootId, steps: values })
   if (associations.length) associationScope(context, associations)
+  const publicSteps = values.map(({ field, selector }) =>
+    field.kind === 'array'
+      ? { field: field.name, kind: 'array' as const, ...(selector === undefined ? {} : { id: selector }) }
+      : field.kind === 'dictionary'
+        ? { field: field.name, kind: 'dictionary' as const, ...(selector === undefined ? {} : { key: selector }) }
+        : { field: field.name, kind: 'single' as const },
+  )
+
+  setResourceScope(context, {
+    collection: collection.name,
+    target: { kind: 'embedded', rootId, steps: publicSteps },
+    associations: getAssociationScope(context) ?? [],
+  })
 }
 
 /** Installs validated independent-resource ancestors for association traversal. */
@@ -199,7 +213,7 @@ function registerEmbedded(
       app.get(
         targetPath,
         handler(async (context) => {
-          scope(context, parentSteps, undefined, rootParameter, associations)
+          scope(context, collection, parentSteps, undefined, rootParameter, associations)
 
           return context.json(
             await collection.controller.list(
@@ -223,7 +237,7 @@ function registerEmbedded(
             throw new InputValidationError()
           key = dictionaryKey(field, params.get('key'))
         } else if ([...params.keys()].length) throw new InputValidationError()
-        scope(context, parentSteps, key, rootParameter, associations)
+        scope(context, collection, parentSteps, key, rootParameter, associations)
         const value = await body(context, field.model, false)
         const response = await collection.controller.create(context, collection, value as never)
 
@@ -235,7 +249,7 @@ function registerEmbedded(
     app.get(
       itemPath,
       handler(async (context) => {
-        scope(context, itemSteps, undefined, rootParameter, associations)
+        scope(context, collection, itemSteps, undefined, rootParameter, associations)
 
         return context.json(
           await collection.controller.id(
@@ -249,7 +263,7 @@ function registerEmbedded(
     app.patch(
       itemPath,
       handler(async (context) => {
-        scope(context, itemSteps, undefined, rootParameter, associations)
+        scope(context, collection, itemSteps, undefined, rootParameter, associations)
         const value = await body(context, field.model, true)
 
         return context.json(
@@ -265,7 +279,7 @@ function registerEmbedded(
     app.delete(
       itemPath,
       handler(async (context) => {
-        scope(context, itemSteps, undefined, rootParameter, associations)
+        scope(context, collection, itemSteps, undefined, rootParameter, associations)
         await collection.controller.delete(
           context,
           collection,
@@ -297,6 +311,11 @@ export function registerAssociationRoutes(
       collectionPath,
       handler(async (context) => {
         associationScope(context, ancestors)
+        setResourceScope(context, {
+          collection: target.name,
+          target: { kind: 'collection' },
+          associations: getAssociationScope(context) ?? [],
+        })
 
         return context.json(
           await target.controller.list(
@@ -312,6 +331,11 @@ export function registerAssociationRoutes(
       collectionPath,
       handler(async (context) => {
         associationScope(context, ancestors)
+        setResourceScope(context, {
+          collection: target.name,
+          target: { kind: 'collection' },
+          associations: getAssociationScope(context) ?? [],
+        })
         const value = await body(context, target.model, false)
         const response = await target.controller.create(context, target, value as never)
 
@@ -326,6 +350,12 @@ export function registerAssociationRoutes(
         associationScope(context, ancestors)
         const id = input(ResourceId, context.req.param(parameter))
 
+        setResourceScope(context, {
+          collection: target.name,
+          target: { kind: 'resource', id },
+          associations: getAssociationScope(context) ?? [],
+        })
+
         return context.json(await target.controller.id(context, target, id))
       }),
     )
@@ -334,6 +364,12 @@ export function registerAssociationRoutes(
       handler(async (context) => {
         associationScope(context, ancestors)
         const id = input(ResourceId, context.req.param(parameter))
+
+        setResourceScope(context, {
+          collection: target.name,
+          target: { kind: 'resource', id },
+          associations: getAssociationScope(context) ?? [],
+        })
         const value = await body(context, target.model, true)
 
         return context.json(await target.controller.update(context, target, value as never, id))
@@ -344,6 +380,12 @@ export function registerAssociationRoutes(
       handler(async (context) => {
         associationScope(context, ancestors)
         const id = input(ResourceId, context.req.param(parameter))
+
+        setResourceScope(context, {
+          collection: target.name,
+          target: { kind: 'resource', id },
+          associations: getAssociationScope(context) ?? [],
+        })
 
         await target.controller.delete(context, target, id)
 
@@ -400,6 +442,7 @@ export function registerRoutes(app: Hono, collection: Collection, before?: (cont
     path,
     handler(async (context) => {
       before?.(context)
+      setResourceScope(context, { collection: collection.name, target: { kind: 'collection' }, associations: [] })
 
       return context.json(
         await collection.controller.list(
@@ -415,6 +458,7 @@ export function registerRoutes(app: Hono, collection: Collection, before?: (cont
     path,
     handler(async (context) => {
       before?.(context)
+      setResourceScope(context, { collection: collection.name, target: { kind: 'collection' }, associations: [] })
       const value = await body(context, collection.model, false)
       const response = await collection.controller.create(context, collection, value as never)
 
@@ -429,6 +473,8 @@ export function registerRoutes(app: Hono, collection: Collection, before?: (cont
       before?.(context)
       const id = input(ResourceId, context.req.param('id'))
 
+      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id }, associations: [] })
+
       return context.json(await collection.controller.id(context, collection, id))
     }),
   )
@@ -437,6 +483,8 @@ export function registerRoutes(app: Hono, collection: Collection, before?: (cont
     handler(async (context) => {
       before?.(context)
       const id = input(ResourceId, context.req.param('id'))
+
+      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id }, associations: [] })
       const value = await body(context, collection.model, true)
 
       return context.json(await collection.controller.update(context, collection, value as never, id))
@@ -447,6 +495,8 @@ export function registerRoutes(app: Hono, collection: Collection, before?: (cont
     handler(async (context) => {
       before?.(context)
       const id = input(ResourceId, context.req.param('id'))
+
+      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id }, associations: [] })
 
       await collection.controller.delete(context, collection, id)
 

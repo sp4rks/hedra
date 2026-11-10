@@ -5,7 +5,7 @@ import type { Backend, DatabaseRecord } from '#datastores/backend.ts'
 import type { Collection } from '#models/collection.ts'
 import type { EmbeddedField } from '#models/embedded.ts'
 import type { JsonApiListResponse, JsonApiResponse, ResourceInput } from '#models/rest.ts'
-import type { EmbeddedScope, EmbeddedStep } from '#models/scope.ts'
+import type { EmbeddedTraversal, TraversalStep } from '#models/scope.ts'
 import { assertAssociationScope } from '#controllers/associations.ts'
 import { project } from '#controllers/projection.ts'
 import { validateCandidate } from '#controllers/validation.ts'
@@ -101,7 +101,7 @@ export function prepareEmbedded(
 }
 
 /** Retrieves an embedded item without accepting another owner's ID. */
-function selected(parent: ObjectValue, step: EmbeddedStep): ObjectValue {
+function selected(parent: ObjectValue, step: TraversalStep): ObjectValue {
   const container = parent[step.field.name]
   let item: unknown
 
@@ -119,7 +119,7 @@ function selected(parent: ObjectValue, step: EmbeddedStep): ObjectValue {
 }
 
 /** Finds the parent object and every containing resource in a nested path. */
-function parentOf(root: ObjectValue, steps: EmbeddedStep[]): { parent: ObjectValue; ancestors: ObjectValue[] } {
+function parentOf(root: ObjectValue, steps: TraversalStep[]): { parent: ObjectValue; ancestors: ObjectValue[] } {
   let parent = root
   const ancestors = [root]
 
@@ -141,7 +141,7 @@ async function rootRecord(
   backend: Backend,
   collection: Collection,
   context: Context,
-  scope: EmbeddedScope,
+  scope: EmbeddedTraversal,
 ): Promise<DatabaseRecord> {
   const ancestors = getAssociationScope(context)
   const records = ancestors
@@ -175,7 +175,7 @@ export async function embeddedId(
   backend: Backend,
   collection: Collection,
   context: Context,
-  scope: EmbeddedScope,
+  scope: EmbeddedTraversal,
 ): Promise<JsonApiResponse> {
   const root = await rootRecord(backend, collection, context, scope)
   const step = scope.steps.at(-1)
@@ -193,7 +193,7 @@ export async function embeddedList(
   backend: Backend,
   collection: Collection,
   context: Context,
-  scope: EmbeddedScope,
+  scope: EmbeddedTraversal,
   baseUrl: string,
   filter: Record<string, unknown> = {},
 ): Promise<JsonApiListResponse> {
@@ -231,7 +231,7 @@ export async function embeddedMutate(
   backend: Backend,
   collection: Collection,
   context: Context,
-  scope: EmbeddedScope,
+  scope: EmbeddedTraversal,
   operation: 'create' | 'update' | 'delete',
   attributes: ObjectValue = {},
 ): Promise<JsonApiResponse | undefined> {

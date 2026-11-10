@@ -28,3 +28,5 @@ in [ADR 0012](0012-atomic-candidate-validation.md) and errors in
 [ADR 0025](0025-explicit-validation-errors.md). Candidate validation and output checks still run
 inside mutation transactions so failures roll back the entire write. See the
 [embedded-resource reference](../web-layer.md) for supported declarations and routes.
+
+[ADR 0028](0028-data-only-resource-scope.md) revises the public scope metadata exports while retaining this schema-locality decision.

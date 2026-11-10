@@ -31,7 +31,7 @@ test('custom controllers can inspect the validated embedded route scope', async 
 
       if (scope) {
         rootId = scope.rootId
-        field = scope.steps[0]?.field.name
+        field = scope.steps[0]?.field
       }
 
       return super.create(context, collection, input)
