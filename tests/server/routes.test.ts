@@ -490,6 +490,123 @@ test('embedded fields excluded by explicit output policy have no generated route
   }
 })
 
+test('registration rejects incompatible embedded output containers and missing UUID identities', () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ config: new Config(quiet), backend })
+  const Note = EmbeddedResource.extend({ text: z.string() })
+  const array = Resource.extend({ notes: z.array(Note) })
+  const dictionary = Resource.extend({ notes: z.record(z.string(), Note) })
+  const single = Resource.extend({ notes: Note })
+  const cases = [
+    { model: array, output: array.extend({ notes: z.record(z.string(), Note) }), error: 'shape is incompatible' },
+    { model: dictionary, output: dictionary.extend({ notes: z.array(Note) }), error: 'shape is incompatible' },
+    { model: single, output: single.extend({ notes: z.array(Note) }), error: 'must retain its UUID' },
+    { model: single, output: single.extend({ notes: Note.omit({ id: true }) }), error: 'must retain its UUID' },
+    {
+      model: single,
+      output: single.extend({ notes: Note.extend({ id: z.uuid().optional() }) }),
+      error: 'must retain its UUID',
+    },
+    { model: single, output: single.extend({ notes: Note.extend({ id: z.string() }) }), error: 'must retain its UUID' },
+  ]
+
+  try {
+    for (const { model, output, error } of cases) {
+      const cars = new Collection('cars', model, { outputValidator: output })
+
+      expect(() => app.register(cars)).toThrow(`Embedded output ${error}: notes`)
+      expect(() => cars.controller).toThrow('registered')
+    }
+    const cars = new Collection('cars', single)
+
+    app.register(cars)
+    expect(cars.controller).toBeDefined()
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
+test('wrapped explicit embedded output preserves visible routes and hides nested fields', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ config: new Config(quiet), backend })
+  const Secret = EmbeddedResource.extend({ value: z.string() })
+  const Note = EmbeddedResource.extend({ text: z.string(), secrets: z.array(Secret).default([]) })
+  const Car = Resource.extend({
+    make: z.string(),
+    notes: z.array(Note).nullable().default([]),
+    namedNotes: z.record(z.string(), Note).optional().default({}),
+    summary: Note.nullable().optional(),
+  })
+  const publicNote = z.object({ id: z.uuid(), text: z.string() })
+  const output = Car.extend({
+    notes: z.array(publicNote).nullable().default([]),
+    namedNotes: z.record(z.string(), publicNote).optional().default({}),
+    summary: publicNote.nullable().optional(),
+  })
+  const headers = { 'content-type': 'application/json' }
+
+  try {
+    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const created = await app.request('/cars', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        make: 'Toyota',
+        notes: [{ text: 'array', secrets: [{ value: 'hidden' }] }],
+        namedNotes: { service: { text: 'dictionary' } },
+        summary: { text: 'single' },
+      }),
+    })
+    const car = (
+      (await created.json()) as {
+        data: {
+          id: string
+          notes: Array<{ id: string; text: string }>
+          namedNotes: Record<string, { text: string }>
+          summary: { text: string }
+        }
+      }
+    ).data
+
+    expect(created.status).toBe(201)
+    const firstNote = car.notes[0]
+
+    if (!firstNote) throw new Error('Expected an embedded note')
+    expect(z.uuid().safeParse(firstNote.id).success).toBe(true)
+    expect(firstNote).toEqual({ id: firstNote.id, text: 'array' })
+    expect(car.namedNotes.service?.text).toBe('dictionary')
+    expect(car.summary.text).toBe('single')
+    const notePath = `/cars/${car.id}/notes/${firstNote.id}`
+    const note = await app.request(notePath)
+
+    expect(note.status).toBe(200)
+    expect(((await note.json()) as { data: unknown }).data).toEqual(firstNote)
+    expect((await app.request(`${notePath}/secrets`)).status).toBe(404)
+    const namedNote = await app.request(`/cars/${car.id}/namedNotes/service`)
+    const summary = await app.request(`/cars/${car.id}/summary`)
+
+    expect(namedNote.status).toBe(200)
+    expect(((await namedNote.json()) as { data: unknown }).data).toEqual(car.namedNotes.service)
+    expect(summary.status).toBe(200)
+    expect(((await summary.json()) as { data: unknown }).data).toEqual(car.summary)
+    const updated = await app.request(`/cars/${car.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ make: 'Honda' }),
+    })
+    const changed = ((await updated.json()) as { data: typeof car }).data
+
+    expect(updated.status).toBe(200)
+    expect(changed.notes).toEqual(car.notes)
+    expect(changed.namedNotes).toEqual(car.namedNotes)
+    expect(changed.summary).toEqual(car.summary)
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
 test('create applies model cross-field refinements before writing a resource', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
