@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { HedraError } from '#errors'
 import { SqliteBackend } from '#hedra.ts'
 
 test('SqliteBackend stores arbitrary JSON records by table', async () => {
@@ -62,7 +63,16 @@ test('SqliteBackend rejects duplicate primary keys without replacing data', asyn
 
   try {
     await backend.insert('items', { id: 'one', name: 'Original' })
-    await expect(backend.insert('items', { id: 'one', name: 'Replacement' })).rejects.toThrow()
+    let error: unknown
+
+    try {
+      await backend.insert('items', { id: 'one', name: 'Replacement' })
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toMatchObject({ name: 'SQLiteError', code: 'SQLITE_CONSTRAINT_PRIMARYKEY' })
+    expect(error).not.toBeInstanceOf(HedraError)
     expect(await backend.select('items')).toEqual([{ id: 'one', name: 'Original' }])
   } finally {
     backend.close()

@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import type { Backend, ControllerInterface } from '#hedra.ts'
-import { ConfigurationError, ConnectionError } from '#errors'
+import { ConnectionError, HedraError } from '#errors'
 import {
   BaseController,
   Collection,
@@ -45,19 +45,6 @@ test('Hedra keeps separate supplied configurations and app identities', () => {
   expect(second.config.deploymentDomain).toBe('two.example')
   expect(first.instanceId).not.toBe(second.instanceId)
   expect(first.instanceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
-})
-
-test('invalid configuration throws and leaves the process running', () => {
-  let error: unknown
-
-  try {
-    new Hedra({ config: new Config({ ...quiet, HEDRA_DEPLOYMENT_DOMAIN: 'not a domain' }) })
-  } catch (caught) {
-    error = caught
-  }
-
-  expect(error).toBeInstanceOf(ConfigurationError)
-  expect(process.exitCode).toBeUndefined()
 })
 
 test('new Hedra uses the configured listen port', () => {
@@ -209,13 +196,14 @@ test('failed registration leaves a collection available for a later successful r
 
 test('a throwing controller constructor leaves the collection available for registration', async () => {
   const model = Resource.extend({ make: z.string() })
+  const cause = new Error('constructor failed')
   let failing = true
 
   class CustomController extends BaseController {
     /** Deliberately fails the first construction. */
     constructor(backend: Backend) {
       super(backend)
-      if (failing) throw new Error('constructor failed')
+      if (failing) throw cause
     }
   }
 
@@ -223,7 +211,15 @@ test('a throwing controller constructor leaves the collection available for regi
   const cars = new Collection('cars', model, { controller: CustomController })
 
   try {
-    expect(() => app.register(cars)).toThrow('constructor failed')
+    let caught: unknown
+
+    try {
+      app.register(cars)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBe(cause)
+    expect(() => cars.controller).toThrow(HedraError)
     expect(() => cars.controller).toThrow('registered')
     failing = false
     app.register(cars)

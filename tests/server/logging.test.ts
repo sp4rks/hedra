@@ -52,27 +52,16 @@ test('Logger constructs without arguments from the process environment', () => {
   expect(JSON.parse(result.stdout.toString())).toMatchObject({ msg: 'visible' })
 })
 
-test('Logger emits configured default JSON/info output', () => {
-  const entry = join(import.meta.dir, '../../src/hedra.ts')
-  const output = captureScript(`
-    import { Config, Logger } from ${JSON.stringify(entry)}
-    const logger = new Logger(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }))
-    logger.debug('hidden')
-    logger.info('visible')
-  `)
-
-  expect(JSON.parse(output)).toMatchObject({ msg: 'visible' })
-})
-
-test('Logger binds initial context during creation', () => {
+test('Logger emits configured default JSON/info output with initial context', () => {
   const entry = join(import.meta.dir, '../../src/hedra.ts')
   const output = captureScript(`
     import { Config, Logger } from ${JSON.stringify(entry)}
     const logger = new Logger(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), undefined, { instanceId: 'test-instance' })
-    logger.info('Ready')
+    logger.debug('hidden')
+    logger.info('visible')
   `)
 
-  expect(JSON.parse(output)).toMatchObject({ msg: 'Ready', instanceId: 'test-instance' })
+  expect(JSON.parse(output)).toMatchObject({ msg: 'visible', instanceId: 'test-instance' })
 })
 
 test('Logger honors explicit library, format and level settings', () => {

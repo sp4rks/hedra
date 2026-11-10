@@ -43,6 +43,8 @@ test('Config prints each setting with its source', () => {
 test('Config uses Hedra defaults when variables are unset', () => {
   const config = new Config({})
 
+  expect(config).toBeInstanceOf(Config)
+  expect(Config.name).toBe('Config')
   expect(config.deploymentDomain).toBe('hedra.local')
   expect(config.deploymentApiDomain).toBe('deployment.hedra.local')
   expect(config.deploymentDocsDomain).toBe('docs.hedra.local')
@@ -52,6 +54,7 @@ test('Config uses Hedra defaults when variables are unset', () => {
   expect(config.serverLogFormat).toBe('json')
   expect(config.serverLogLevel).toBe('info')
   expect(config.serverHttpLogEnabled).toBe(true)
+  expect(config.serverPrintRoutes).toBe(false)
   expect(config.serverRequestTimeout).toBe(30000)
   expect(config.serverListenIp).toBe('0.0.0.0')
   expect(config.serverListenPort).toBe(3000)
@@ -64,6 +67,9 @@ test('Config prefers a trimmed environment value over the default', () => {
     HEDRA_SERVER_LISTEN_IP: ' ::1 ',
     HEDRA_SERVER_LISTEN_PORT: ' 8080 ',
     HEDRA_SERVER_SILENT_STARTUP: 'true',
+    HEDRA_SERVER_LOG_LIBRARY: ' pino ',
+    HEDRA_SERVER_HTTP_LOGGING: 'false',
+    HEDRA_SERVER_PRINT_ROUTES: ' true ',
   })
 
   expect(config.deploymentDomain).toBe('example.com')
@@ -71,7 +77,13 @@ test('Config prefers a trimmed environment value over the default', () => {
   expect(config.serverListenIp).toBe('::1')
   expect(config.serverListenPort).toBe(8080)
   expect(config.serverSilentStartup).toBe(true)
+  expect(config.serverLogLibrary).toBe('pino')
+  expect(config.serverHttpLogEnabled).toBe(false)
+  expect(config.serverPrintRoutes).toBe(true)
   expect(config.deploymentApiDomain).toBe('deployment.hedra.local')
+  expect(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LIBRARY: 'pino' }).serverLogLibrary).toBe(
+    'pino',
+  )
 })
 
 test('Config treats a blank environment value as unset', () => {
@@ -80,11 +92,13 @@ test('Config treats a blank environment value as unset', () => {
     HEDRA_SERVER_LISTEN_IP: '   ',
     HEDRA_SERVER_LISTEN_PORT: '   ',
     HEDRA_SERVER_SILENT_STARTUP: 'true',
+    HEDRA_SERVER_LOG_LIBRARY: '  ',
   })
 
   expect(config.serverEnv).toBe('dev')
   expect(config.serverListenIp).toBe('0.0.0.0')
   expect(config.serverListenPort).toBe(3000)
+  expect(config.serverLogLibrary).toBe('pino')
 })
 
 test('SQLite path uses the default when unset or blank', () => {
@@ -118,6 +132,7 @@ test('Config rejects an invalid deployment domain', () => {
     title: 'configuration error',
     detail: 'HEDRA_DEPLOYMENT_DOMAIN has invalid value: not a domain',
   })
+  expect(process.exitCode).toBeUndefined()
 })
 
 test('Config rejects a server env outside the allowed set', () => {
@@ -169,6 +184,8 @@ test('Config rejects a port outside 1 to 65535', () => {
   expect(error).toMatchObject({
     detail: 'HEDRA_SERVER_LISTEN_PORT has invalid value: 0',
   })
+  expect(error).toBeInstanceOf(ConfigurationError)
+  expect(() => new Config({ HEDRA_SERVER_LISTEN_PORT: 3000 } as never)).toThrow()
 })
 
 test('Config reports the original value for a non-numeric port', () => {
@@ -246,6 +263,12 @@ test('Config decodes true and false and rejects other boolean values', () => {
 
   expect(config.serverSilentStartup).toBe(true)
   expect(config.serverHttpLogEnabled).toBe(false)
+  expect(new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_PRINT_ROUTES: 'true' }).serverPrintRoutes).toBe(
+    true,
+  )
+  expect(
+    new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_PRINT_ROUTES: 'false' }).serverPrintRoutes,
+  ).toBe(false)
 })
 
 test('Config rejects an invalid logging library, format or level', () => {
