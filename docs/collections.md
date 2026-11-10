@@ -86,6 +86,10 @@ const accounts = new Collection('accounts', Account, {
 
 The output validator defines the public fields. The default projection uses declared field validators without carrying object-level refinements that may depend on omitted private fields. Supply output-specific refinements explicitly when needed. Define public fields within ordinary nested objects explicitly too. Hidden embedded fields receive no exposing nested routes; exposed embedded output definitions must retain a compatible container and identity shape.
 
+The internal embedded model module supplies schema definitions to routes and controllers; mutation,
+complete-candidate validation and output projection keep their distinct policies. See the
+[schema interpretation decision](adr/0027-embedded-schema-interpretation.md).
+
 ## Controller selection and lifecycle
 
 The optional collection options object accepts a `controller` class implementing `ControllerInterface`, constructed with `(backend)`, an `outputValidator`, and declared `associations`. Custom controllers retain their own extra method types and remain independent of resource models. Generated handlers pass validated ancestry in their request context; controllers enforce scope and can delegate to BaseController's resource behaviour.
