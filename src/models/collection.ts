@@ -14,39 +14,14 @@ type Options<C extends ControllerInterface> = {
   associations?: Collection[]
 }
 
-const factories = new WeakMap<object, (backend: Backend) => unknown>()
-const controllers = new WeakMap<object, unknown>()
-
-/** Checks whether a collection has already been attached to an app. */
-export function isAttached(collection: object): boolean {
-  return controllers.has(collection)
-}
-
-/** Constructs and attaches the collection's selected controller. */
-export function attachCollection(collection: object, backend: Backend): void {
-  bindCollection(collection, createCollectionController(collection, backend))
-}
-
-/** Constructs a controller before any collection is attached. */
-export function createCollectionController(collection: object, backend: Backend): unknown {
-  const create = factories.get(collection)
-
-  if (!create) throw new ConfigurationError('Expected a Collection')
-
-  return create(backend)
-}
-
-/** Attaches a successfully constructed controller. */
-export function bindCollection(collection: object, controller: unknown): void {
-  controllers.set(collection, controller)
-}
-
 export class Collection<S extends z.ZodObject = z.ZodObject, C extends ControllerInterface = ControllerInterface> {
   readonly name: string
   readonly model: S
   readonly endpoint: string
   readonly outputValidator: z.ZodObject
   readonly associations: readonly Collection[]
+  readonly #controllerConstructor: ControllerConstructor<C>
+  #controller?: C
 
   /** Defines a named resource collection and selects its controller and public output. */
   constructor(
@@ -76,19 +51,42 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
 
     if (!parsedOptions.success) throw new ConfigurationError('configuration error', parsedOptions.error.issues)
     const parsed = parsedOptions.data
-    const selected = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
 
     this.outputValidator = parsed.outputValidator ?? publicModel(model)
     this.associations = Object.freeze(parsed.associations ?? [])
-    factories.set(this, (backend) => new selected(backend))
+    this.#controllerConstructor = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
+  }
+
+  /**
+   * Checks whether this collection has already been attached to an app.
+   * @internal
+   */
+  get isAttached(): boolean {
+    return this.#controller !== undefined
+  }
+
+  /**
+   * Constructs the selected controller without attaching it.
+   * @internal
+   */
+  createController(backend: Backend): C {
+    return new this.#controllerConstructor(backend)
+  }
+
+  /**
+   * Attaches a successfully constructed controller.
+   * @internal
+   */
+  bindController(controller: C): void {
+    this.#controller = controller
   }
 
   /** Returns the controller created during registration. */
   get controller(): C {
-    const controller = controllers.get(this)
+    const controller = this.#controller
 
     if (!controller) throw new ConfigurationError('Collection must be registered before use')
 
-    return controller as C
+    return controller
   }
 }
