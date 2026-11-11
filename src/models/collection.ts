@@ -3,8 +3,9 @@ import { z } from 'zod'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import { BaseController } from '#controllers/controller.ts'
+import { defaultOutputValidator } from '#controllers/projection.ts'
 import { ConfigurationError } from '#errors'
-import { assertResourceModel, publicModel } from '#models/resource.ts'
+import { assertResourceModel } from '#models/resource.ts'
 
 type ControllerConstructor<C extends ControllerInterface> = new (backend: Backend) => C
 type Options<C extends ControllerInterface> = {
@@ -51,7 +52,7 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
     const parsed = parsedOptions.data
 
     this.endpoint = `/${this.name}`
-    this.outputValidator = parsed.outputValidator ?? publicModel(model)
+    this.outputValidator = parsed.outputValidator ?? defaultOutputValidator(model)
     this.associations = Object.freeze(parsed.associations ?? [])
     this.#controllerConstructor = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
   }

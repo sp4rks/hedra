@@ -7,6 +7,11 @@ import type { ResourceInput } from '#models/rest.ts'
 import { InputValidationError, OutputValidationError } from '#errors'
 import { ResourceInput as InputSchema } from '#models/rest.ts'
 
+/** Selects declared root fields without changing their nested schema semantics. */
+export function defaultOutputValidator(model: z.ZodObject): z.ZodObject {
+  return z.object(Object.fromEntries(Object.entries(model.shape).filter(([key]) => key !== 'password')))
+}
+
 /** Serializes a value only when JSON preserves it without loss. */
 export function jsonString(value: unknown, ErrorClass: typeof HedraError = InputValidationError): string {
   const data = JSON.stringify(value)
