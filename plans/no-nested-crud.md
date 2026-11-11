@@ -127,4 +127,24 @@ merging into main. Show the user source-code-only diffs from the implementation 
   private input or a different public shape.
 - Existing data and main remain unchanged. No automatic migration, push or deployment occurred.
 
-Lead and independent final acceptance are pending.
+## Review and final acceptance
+
+Independent review found private-field exposure through tuples/intersections, then through dynamic
+dictionary alternatives inside composed containers. The same coder fixed those findings in
+baefd7d and 4cec6dd, with red/green public HTTP regressions for fixed/rest tuples, object and array
+unions, composed intersections, preprocessing, wrappers, cycles and harmless schema reuse. Default
+output now fails closed for ambiguous dynamic compositions; explicit public schemas remain
+available. Ordinary dictionary entries named password retain their data meaning.
+
+The final bun run check passed with 250 tests, typecheck, Biome and all per-file coverage gates.
+Lead reran all three documented examples after 4cec6dd; all pass. Local link/anchor checks pass.
+Lead review found no remaining actionable issues against this plan. The configured independent
+reviewer re-reviewed 4cec6dd, confirmed the findings resolved with six focused HTTP probes and
+returned no actionable findings and a ship verdict.
+
+Accepted on feature/no-nested-crud. Both embedded modules, all generated nested routes, parent
+declarations and obsolete scope APIs are removed. Root CRUD, complete-candidate validation,
+confidentiality, lifecycle and programmatic reference deletion guards remain. Existing data is
+unchanged. A source-only patch is prepared from the implementation worktree against f1d05cb.
+No merge into main, push, deployment or automatic migration has been performed. Main merge
+requires explicit user approval.
