@@ -162,4 +162,13 @@ findings. Report the branch and migration implications; merge into main only aft
   The Mermaid source has accessible labels; no dedicated diagram renderer is configured or run.
 - No database migration, data deletion, push or merge into main has been performed.
 
-Independent review and final lead acceptance are pending.
+## Review and acceptance
+
+Lead reviewed the fixed implementation against the plan, connected models/routes/controllers,
+updated regression coverage and runnable documentation. No actionable findings remain. The
+configured independent reviewer reviewed `37a5b5d..d58881c` with the reviewer skill and returned
+no actionable findings and a ship verdict, relying on the recorded passing checks and example runs.
+
+Accepted on `feature/parent-collections`. The declaration, storage, scoped dispatch, public output,
+registration cleanup and root reference-deletion contracts match the clarified request. The user
+must approve before merging into main; no push, deployment or automatic migration is included.
