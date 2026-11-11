@@ -2,7 +2,8 @@ import type { Context } from 'hono'
 import { z } from 'zod'
 
 import type { ResourceReference } from '#models/association.ts'
-import { parseInput } from '#errors'
+import type { Collection } from '#models/collection.ts'
+import { InputValidationError, parseInput } from '#errors'
 import { ResourceReference as ReferenceSchema } from '#models/association.ts'
 import { EmbeddedField } from '#models/embedded.ts'
 import { ResourceId } from '#models/resource.ts'
@@ -33,7 +34,7 @@ export const EmbeddedScope = z.strictObject({
 })
 export const AssociationScope = z.array(ReferenceSchema)
 export const ResourceScope = z.strictObject({
-  collection: ReferenceSchema.shape.collection,
+  collection: FieldName,
   target: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('collection') }),
     z.strictObject({ kind: z.literal('resource'), id: ResourceId }),
@@ -54,6 +55,7 @@ export type TraversalStep = z.infer<typeof TraversalStep>
 export type EmbeddedTraversal = z.infer<typeof EmbeddedTraversal>
 
 const traversals = new WeakMap<Context, EmbeddedTraversal>()
+const containingCollections = new WeakMap<Context, { root: Collection; target: Collection }>()
 const associationAncestors = new WeakMap<Context, ResourceReference[]>()
 
 /** Stores the generated request's resource address. */
@@ -69,8 +71,58 @@ export function getResourceScope(context: Context): ResourceScope | undefined {
 }
 
 /** Stores route-discovered traversal metadata for the default controller. */
-export function setEmbeddedTraversal(context: Context, scope: EmbeddedTraversal): void {
+export function setEmbeddedTraversal(
+  context: Context,
+  scope: EmbeddedTraversal,
+  root: Collection,
+  target: Collection,
+): void {
   traversals.set(context, scope)
+  containingCollections.set(context, { root, target })
+}
+
+/** Resolves a contained collection only within its generated route. */
+export function getContainingCollection(
+  context: Context,
+  collection: Collection,
+): { root: Collection; scope: EmbeddedTraversal } | undefined {
+  const containing = containingCollections.get(context)
+
+  if (!collection.parent && !containing) return undefined
+  const traversal = getEmbeddedTraversal(context)
+  const address = getResourceScope(context)
+
+  if (!containing || containing.target !== collection || !traversal || address?.target.kind !== 'embedded') {
+    throw new InputValidationError('Contained collection needs parent scope')
+  }
+  const steps = traversal.steps.map(({ field, selector }) =>
+    field.kind === 'array'
+      ? { field: field.name, kind: 'array', ...(selector === undefined ? {} : { id: selector }) }
+      : field.kind === 'dictionary'
+        ? { field: field.name, kind: 'dictionary', ...(selector === undefined ? {} : { key: selector }) }
+        : { field: field.name, kind: 'single' },
+  )
+
+  if (
+    address.collection !== collection.name ||
+    address.target.rootId !== traversal.rootId ||
+    !Bun.deepEquals(address.target.steps, steps) ||
+    !Bun.deepEquals(address.associations, associationAncestors.get(context) ?? [])
+  )
+    throw new InputValidationError('Contained scope does not match route')
+  let current: Collection | undefined = collection
+
+  for (const step of [...traversal.steps].reverse()) {
+    if (!current?.parent || current.name !== step.field.name || current.model !== step.field.model) {
+      throw new InputValidationError('Contained scope does not match collection')
+    }
+    current = current.parent
+  }
+  if (current !== containing.root || containing.root.parent) {
+    throw new InputValidationError('Contained scope does not match root')
+  }
+
+  return { root: containing.root, scope: traversal }
 }
 
 /** Returns internal route-discovered traversal metadata. */

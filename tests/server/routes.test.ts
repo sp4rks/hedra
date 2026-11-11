@@ -1,7 +1,7 @@
 import { expect, setSystemTime, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, Config, EmbeddedResource, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { Collection, Config, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -45,11 +45,14 @@ test('registration exposes validated resource CRUD routes', async () => {
 test('parent creation prepares embedded items and keeps their metadata server-owned', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string().trim().min(1) })
+  const Note = Resource.extend({ text: z.string().trim().min(1) })
   const Car = Resource.extend({ make: z.string(), notes: z.array(Note).default([]) })
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('notes', Note, { parent: cars })
+    app.register(cars)
     const response = await app.request('/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -72,7 +75,7 @@ test('parent creation prepares embedded items and keeps their metadata server-ow
 test('nested array routes address only the owning resource and update one item', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string().min(1) })
+  const Note = Resource.extend({ text: z.string().min(1) })
   const Car = Resource.extend({ make: z.string(), notes: z.array(Note).default([]) })
   const create = async (make: string) => {
     const response = await app.request('/cars', {
@@ -85,7 +88,10 @@ test('nested array routes address only the owning resource and update one item',
   }
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('notes', Note, { parent: cars })
+    app.register(cars)
     const first = await create('Toyota')
     const second = await create('Honda')
     const response = await app.request(`/cars/${first}/notes`, {
@@ -116,7 +122,7 @@ test('nested array routes address only the owning resource and update one item',
 test('dictionary and singleton routes preserve keys and owned identities', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({
     make: z.string(),
     namedNotes: z.record(z.string(), Note).default({}),
@@ -124,7 +130,11 @@ test('dictionary and singleton routes preserve keys and owned identities', async
   })
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('namedNotes', Note, { parent: cars })
+    new Collection('summary', Note, { parent: cars })
+    app.register(cars)
     const response = await app.request('/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -171,12 +181,16 @@ test('dictionary and singleton routes preserve keys and owned identities', async
 test('occupied embedded dictionary keys and singleton slots return conflict', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ namedNotes: z.record(z.string(), Note).default({}), summary: Note.optional() })
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('namedNotes', Note, { parent: cars })
+    new Collection('summary', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', { method: 'POST', headers, body: '{}' })
     const car = ((await created.json()) as { data: { id: string } }).data
     const dictionaryPath = `/cars/${car.id}/namedNotes?key=service`
@@ -196,12 +210,16 @@ test('occupied embedded dictionary keys and singleton slots return conflict', as
 test('nested creation initializes nullable arrays and dictionaries atomically', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ notes: z.array(Note).nullable(), namedNotes: z.record(z.string(), Note).nullable() })
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('notes', Note, { parent: cars })
+    new Collection('namedNotes', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers,
@@ -237,7 +255,7 @@ test('nested creation initializes nullable arrays and dictionaries atomically', 
 test('parent container replacement preserves addressed identities and rejects foreign ones atomically', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string().min(1) })
+  const Note = Resource.extend({ text: z.string().min(1) })
   const Car = Resource.extend({
     make: z.string(),
     notes: z.array(Note).default([]),
@@ -246,7 +264,11 @@ test('parent container replacement preserves addressed identities and rejects fo
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('notes', Note, { parent: cars })
+    new Collection('namedNotes', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers,
@@ -294,12 +316,15 @@ test('parent container replacement preserves addressed identities and rejects fo
 test('parent dictionary input rejects unsafe keys without changing the resource', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ make: z.string(), namedNotes: z.record(z.string(), Note).default({}) })
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('namedNotes', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', { method: 'POST', headers, body: JSON.stringify({ make: 'Toyota' }) })
     const car = ((await created.json()) as { data: { id: string } }).data
     const invalid = await app.request(`/cars/${car.id}`, {
@@ -373,11 +398,15 @@ test('unknown literal filter keys cannot silently select every resource', async 
 test('nested deletion preserves required singletons and minimum-sized containers', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ make: z.string(), notes: z.array(Note).min(1), summary: Note })
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('notes', Note, { parent: cars })
+    new Collection('summary', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -397,13 +426,16 @@ test('nested deletion preserves required singletons and minimum-sized containers
 test('embedded mutations update ancestor timestamps without changing siblings', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ make: z.string(), notes: z.array(Note).default([]) })
   const headers = { 'content-type': 'application/json' }
 
   try {
     setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('notes', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers,
@@ -442,11 +474,14 @@ test('embedded mutations update ancestor timestamps without changing siblings', 
 test('embedded output follows the owner policy without leaking nested passwords', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string(), password: z.string() })
+  const Note = Resource.extend({ text: z.string(), password: z.string() })
   const Car = Resource.extend({ make: z.string(), notes: z.array(Note).default([]) })
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('notes', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -469,12 +504,15 @@ test('embedded output follows the owner policy without leaking nested passwords'
 test('embedded fields excluded by explicit output policy have no generated route', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ make: z.string(), notes: z.array(Note).default([]) })
   const output = Car.omit({ notes: true })
 
   try {
-    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const cars = new Collection('cars', Car, { outputValidator: output })
+
+    new Collection('notes', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -493,7 +531,7 @@ test('embedded fields excluded by explicit output policy have no generated route
 test('registration rejects incompatible embedded output containers and missing UUID identities', () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const array = Resource.extend({ notes: z.array(Note) })
   const dictionary = Resource.extend({ notes: z.record(z.string(), Note) })
   const single = Resource.extend({ notes: Note })
@@ -530,8 +568,8 @@ test('registration rejects incompatible embedded output containers and missing U
 test('wrapped explicit embedded output preserves visible routes and hides nested fields', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Secret = EmbeddedResource.extend({ value: z.string() })
-  const Note = EmbeddedResource.extend({ text: z.string(), secrets: z.array(Secret).default([]) })
+  const Secret = Resource.extend({ value: z.string() })
+  const Note = Resource.extend({ text: z.string(), secrets: z.array(Secret).default([]) })
   const Car = Resource.extend({
     make: z.string(),
     notes: z.array(Note).nullable().default([]),
@@ -547,7 +585,13 @@ test('wrapped explicit embedded output preserves visible routes and hides nested
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const cars = new Collection('cars', Car, { outputValidator: output })
+    const notes = new Collection('notes', Note, { parent: cars })
+
+    new Collection('secrets', Secret, { parent: notes })
+    new Collection('namedNotes', Note, { parent: cars })
+    new Collection('summary', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers,
@@ -657,14 +701,15 @@ test('update validates the complete candidate atomically', async () => {
 test('embedded mutations validate the complete owning candidate atomically', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ start: z.number(), end: z.number() }).refine(
-    (value) => value.end > value.start,
-  )
+  const Note = Resource.extend({ start: z.number(), end: z.number() }).refine((value) => value.end > value.start)
   const Car = Resource.extend({ make: z.string(), notes: z.array(Note).default([]) })
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car))
+    const cars = new Collection('cars', Car)
+
+    new Collection('notes', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers,
@@ -755,12 +800,12 @@ test('embedded model transforms cannot change server-owned identity or audit tim
   const app = new Hedra({ config: new Config(quiet), backend })
   const spoofId = '00000000-0000-4000-8000-000000000000'
   const spoofTime = '2000-01-01T00:00:00.000Z'
-  const Note = EmbeddedResource.extend({ text: z.string() }).overwrite((value) => ({
+  const Note = Resource.extend({ text: z.string() }).overwrite((value) => ({
     ...value,
     createdAt: spoofTime,
     updatedAt: spoofTime,
   }))
-  const UnsafeNote = EmbeddedResource.extend({ text: z.string() }).overwrite((value) => ({ ...value, id: spoofId }))
+  const UnsafeNote = Resource.extend({ text: z.string() }).overwrite((value) => ({ ...value, id: spoofId }))
   const SafeCar = Resource.extend({ notes: z.array(Note) })
   const UnsafeCar = Resource.extend({ notes: z.array(UnsafeNote) })
   const headers = { 'content-type': 'application/json' }
@@ -822,7 +867,7 @@ test('output validation cannot map a dictionary key to a different embedded iden
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
   const safeApp = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ name: z.string(), namedNotes: z.record(z.string(), Note) })
   let swap = false
   let projections = 0
@@ -838,7 +883,10 @@ test('output validation cannot map a dictionary key to a different embedded iden
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const cars = new Collection('cars', Car, { outputValidator: output })
+
+    new Collection('namedNotes', Note, { parent: cars })
+    app.register(cars)
     safeApp.register(new Collection('cars', Car))
     const created = await app.request('/cars', {
       method: 'POST',
@@ -897,7 +945,7 @@ test('output validation cannot change a resource identity', async () => {
 test('array output may reorder existing identities but cannot duplicate them', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ notes: z.array(Note) })
   let duplicate = false
   const output = Resource.extend({
@@ -909,7 +957,10 @@ test('array output may reorder existing identities but cannot duplicate them', a
   })
 
   try {
-    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const cars = new Collection('cars', Car, { outputValidator: output })
+
+    new Collection('notes', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -936,14 +987,17 @@ test('array output may reorder existing identities but cannot duplicate them', a
 test('output validation cannot change a singleton embedded identity', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const Car = Resource.extend({ summary: Note })
   const output = Resource.extend({
     summary: Note.overwrite((value) => ({ ...value, id: '00000000-0000-4000-8000-000000000000' })),
   })
 
   try {
-    app.register(new Collection('cars', Car, { outputValidator: output }))
+    const cars = new Collection('cars', Car, { outputValidator: output })
+
+    new Collection('summary', Note, { parent: cars })
+    app.register(cars)
     const created = await app.request('/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

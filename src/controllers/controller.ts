@@ -17,7 +17,7 @@ import { DatabaseFilter as FilterSchema, DatabaseScalar as ScalarSchema } from '
 import { HedraError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { ResourceId, ResourceTimestamp } from '#models/resource.ts'
 import { ResourceInput as InputSchema, QueryParams as QuerySchema } from '#models/rest.ts'
-import { getAssociationScope, getEmbeddedTraversal } from '#models/scope.ts'
+import { getAssociationScope, getContainingCollection } from '#models/scope.ts'
 
 export interface ControllerInterface {
   create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse>
@@ -65,14 +65,14 @@ export class BaseController implements ControllerInterface {
 
   /** Creates a resource with server-owned identity and timestamps. */
   async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
-    const scope = getEmbeddedTraversal(context)
+    const contained = getContainingCollection(context, collection)
 
-    if (scope)
+    if (contained)
       return (await embeddedMutate(
         this.backend,
-        collection,
+        contained.root,
         context,
-        scope,
+        contained.scope,
         'create',
         attributes(input),
       )) as JsonApiResponse
@@ -105,9 +105,9 @@ export class BaseController implements ControllerInterface {
 
   /** Returns one resource. */
   async id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse> {
-    const scope = getEmbeddedTraversal(context)
+    const contained = getContainingCollection(context, collection)
 
-    if (scope) return await embeddedId(this.backend, collection, context, scope)
+    if (contained) return await embeddedId(this.backend, contained.root, context, contained.scope)
     const key = parseInput(ResourceId, id)
     const ancestors = getAssociationScope(context)
     const rows = ancestors
@@ -132,6 +132,7 @@ export class BaseController implements ControllerInterface {
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
+    const contained = getContainingCollection(context, collection)
     const options = queryParams === undefined ? {} : queryParams
 
     parseInput(QuerySchema, options)
@@ -145,13 +146,19 @@ export class BaseController implements ControllerInterface {
     parseInput(FilterSchema, filter)
     if (Object.getOwnPropertySymbols(filter).length) throw new InputValidationError('Filter keys must be strings')
     const entries = Object.entries(filter).map(([key, value]) => [key, parseInput(ScalarSchema, value)] as const)
-    const scope = getEmbeddedTraversal(context)
     const url = z.url().safeParse(baseUrl)
 
     if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
 
-    if (scope)
-      return await embeddedList(this.backend, collection, context, scope, url.data, Object.fromEntries(entries))
+    if (contained)
+      return await embeddedList(
+        this.backend,
+        contained.root,
+        context,
+        contained.scope,
+        url.data,
+        Object.fromEntries(entries),
+      )
     const ancestors = getAssociationScope(context)
     const records = ancestors
       ? await this.backend.transaction((transaction) => {
@@ -175,14 +182,14 @@ export class BaseController implements ControllerInterface {
 
   /** Updates one resource. */
   async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
-    const scope = getEmbeddedTraversal(context)
+    const contained = getContainingCollection(context, collection)
 
-    if (scope)
+    if (contained)
       return (await embeddedMutate(
         this.backend,
-        collection,
+        contained.root,
         context,
-        scope,
+        contained.scope,
         'update',
         attributes(input),
       )) as JsonApiResponse
@@ -227,10 +234,10 @@ export class BaseController implements ControllerInterface {
 
   /** Deletes one resource. */
   async delete(context: Context, collection: Collection, id: string): Promise<void> {
-    const scope = getEmbeddedTraversal(context)
+    const contained = getContainingCollection(context, collection)
 
-    if (scope) {
-      await embeddedMutate(this.backend, collection, context, scope, 'delete')
+    if (contained) {
+      await embeddedMutate(this.backend, contained.root, context, contained.scope, 'delete')
 
       return
     }

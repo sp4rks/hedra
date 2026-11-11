@@ -12,7 +12,6 @@ import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore, tenantTable } from '#datastores/categories/config/config.ts'
 import { ConfigurationError, ConnectionError } from '#errors'
 import { Collection } from '#models/collection.ts'
-import { embeddedFields } from '#models/embedded.ts'
 import { Tenant } from '#models/tenant.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
 import { Logger } from '#server/logger.ts'
@@ -126,12 +125,13 @@ export class Hedra extends Hono {
   register<S extends z.ZodObject, C extends ControllerInterface>(collection: Collection<S, C>): void {
     if (this.closed) throw new ConfigurationError('Hedra is closed')
     if (!(collection instanceof Collection)) throw new ConfigurationError('Expected a Collection')
-    if (this.collections.has(collection.name))
+    if ((!collection.parent && this.collections.has(collection.name)) || (collection.parent && collection.isAttached))
       throw new ConfigurationError(`Collection already registered: ${collection.name}`)
 
     const collectionsByName = new Map(this.collections)
     const pending: Collection[] = []
     const visiting = new Set<Collection>()
+    const visited = new Set<Collection>()
 
     /**
      * Validates a collection and its association graph, queuing targets before their source.
@@ -143,17 +143,21 @@ export class Hedra extends Hono {
      */
     const visit = (candidate: Collection): void => {
       if (visiting.has(candidate)) throw new ConfigurationError('Cyclic association definitions are not supported')
-      const known = collectionsByName.get(candidate.name)
+      if (visited.has(candidate)) return
+      const known = candidate.parent ? undefined : collectionsByName.get(candidate.name)
 
       if (known && known !== candidate) throw new ConfigurationError(`Collection already registered: ${candidate.name}`)
       if (known) return
-      if (candidate.name === tenantTable || candidate.name === associationTable || candidate.name === 'tenants')
+      if (
+        !candidate.parent &&
+        (candidate.name === tenantTable || candidate.name === associationTable || candidate.name === 'tenants')
+      )
         throw new ConfigurationError('Collection name is reserved')
       if (candidate.isAttached) throw new ConfigurationError('Collection is already attached to an app')
 
       checkRoutes(candidate.model, candidate.outputValidator)
 
-      const embeddedNames = new Set(embeddedFields(candidate.model).map((field) => field.name))
+      const embeddedNames = new Set(candidate.children.map((child) => child.name))
       const associationNames = new Set<string>()
 
       if (candidate.associations.length && embeddedNames.has('associations'))
@@ -164,15 +168,26 @@ export class Hedra extends Hono {
           throw new ConfigurationError(`Ambiguous association path: ${target.name}`)
         associationNames.add(target.name)
       }
-      collectionsByName.set(candidate.name, candidate)
+      if (!candidate.parent) collectionsByName.set(candidate.name, candidate)
       visiting.add(candidate)
 
       for (const target of candidate.associations) visit(target)
+
+      for (const child of candidate.children) visit(child)
       visiting.delete(candidate)
+      visited.add(candidate)
       pending.push(candidate)
     }
 
-    visit(collection)
+    let root: Collection = collection
+    const parents = new Set<Collection>()
+
+    while (root.parent) {
+      if (parents.has(root)) throw new ConfigurationError('Cyclic parent definitions are not supported')
+      parents.add(root)
+      root = root.parent
+    }
+    visit(root)
 
     if (this.config.serverPrintRoutes) {
       this.log.info(`Registering collection: ${collection.name}`)
@@ -193,12 +208,12 @@ export class Hedra extends Hono {
 
       for (const [item, controller] of controllers) {
         item.bindController(controller)
-        this.collections.set(item.name, item)
+        if (!item.parent) this.collections.set(item.name, item)
       }
 
-      for (const item of pending) registerRoutes(this, item)
+      for (const item of pending) if (!item.parent) registerRoutes(this, item)
 
-      for (const item of pending) registerAssociationRoutes(this, item, this.associations)
+      for (const item of pending) if (!item.parent) registerAssociationRoutes(this, item, this.associations)
     } catch (error) {
       if (opened) {
         this.closeBackend?.()
