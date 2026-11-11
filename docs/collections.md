@@ -63,18 +63,27 @@ QueryParams accepts only `filter`, a dictionary of top-level scalar equality cri
 
 ## Public output
 
-Every returned resource passes through its output validator, including each list item. Default projection omits passwords and undeclared fields, including within nested resource data. Private values remain stored. Projection uses a clone so output transforms cannot mutate storage, and failures never fall back to raw data.
+BaseController projects every returned resource through the collection's output validator, including each list item. Its default includes the model's declared top-level fields except `password` and strips undeclared top-level fields. The default object does not carry the model's object-level refinements, which may depend on the omitted password.
 
-Set an explicit output validator for other privacy rules:
+Nested fields keep their declared Zod schemas. Their passwords, dictionary entries, defaults, catch fallbacks and transformations follow those schemas; a loose nested object can expose undeclared fields. Hedra does not infer nested privacy or reject unions and intersections merely because their public shape is ambiguous. Fields such as `token` are public by default too.
+
+Select an explicit output validator for resource-specific privacy. BaseController applies it to create, item reads, lists and updates:
 
 ```ts
-const Account = Resource.extend({ email: z.email(), password: z.string(), token: z.string() })
+const Profile = z.object({ displayName: z.string(), password: z.string(), token: z.string() }).loose()
+const Account = Resource.extend({ email: z.email(), password: z.string(), token: z.string(), profile: Profile })
 const accounts = new Collection('accounts', Account, {
-  outputValidator: Account.omit({ password: true, token: true }).strip(),
+  outputValidator: Account.omit({ password: true, token: true })
+    .extend({ profile: Profile.pick({ displayName: true }).strip() })
+    .strip(),
 })
 ```
 
-An explicit output schema defines its own public fields, including nested fields. Default output omits object-level refinements and derives schemas that expose declared public fields. Ambiguous combinations of dynamic dictionaries and structured objects fail output validation; supply an explicit output validator for them. Transforms that require hidden input or change the public shape may also need an explicit output validator. An exposed root ID must remain equal to the stored ID. Nested values have no separate identity contract.
+An explicit output validator defines its public fields, including nested fields, and can deliberately expose a top-level password. Custom controllers own their response policy; methods that delegate to BaseController use the selected collection validator. Protect every response path when implementing custom methods. Models describe stored data and do not confer secrecy on a field or resource type.
+
+Projection uses a clone so output transforms cannot mutate storage. Invalid output raises an error without falling back to raw data; create and update validate output before their transactions commit. Private values remain stored. An exposed root ID must remain equal to the stored ID; nested values have no separate identity contract. Run `bun run examples/08-public-output.ts` from the repository root for a complete example.
+
+When updating an existing application, review nested response schemas before adopting this policy. Previous default output recursively hid nested passwords and undeclared object fields; those values can now appear if their declared schemas allow them. Select an explicit nested output schema or enforce the equivalent policy in the controller. See [controller-owned public output](adr/0031-controller-owned-public-output.md).
 
 ## Resource scope
 
@@ -103,9 +112,10 @@ From the repository root with Bun and dependencies installed:
 bun run examples/05-resource-controller.ts
 bun run examples/06-nested-data.ts
 bun run examples/07-resource-scope.ts
+bun run examples/08-public-output.ts
 ```
 
-Each example uses in-memory SQLite, makes requests without a listener and closes its resources. The nested-data example replaces parent attributes and exercises programmatic association deletion guards. The scope example shows a custom controller and its additional typed method.
+Each example uses in-memory SQLite, makes requests without a listener and closes its resources. The nested-data example replaces parent attributes and exercises programmatic association deletion guards. The scope example shows a custom controller and its additional typed method. The public-output example selects nested public fields and checks that secrets remain stored while create, read, list and update responses omit them.
 
 ## Updating existing callers
 

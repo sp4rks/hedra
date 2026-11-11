@@ -28,3 +28,7 @@ and nested CRUD, and the nested route/scope portions of [ADR 0010](0010-resource
 [ADR 0027](0027-embedded-schema-interpretation.md) and [ADR 0028](0028-data-only-resource-scope.md).
 [Generic transactions](0011-backend-owned-multi-record-transactions.md) and
 [complete-candidate validation](0012-atomic-candidate-validation.md) remain.
+
+[ADR 0031](0031-controller-owned-public-output.md) supersedes this decision's recursive default
+output privacy and rejection of ambiguous dynamic compositions. Controllers retain output
+validation and write rollback; nested public fields become an explicit application policy.

@@ -115,7 +115,7 @@ Unlinking preserves both resources and unrelated links. There are no generated H
 
 ## Output and lifecycle
 
-Public output preserves password filtering, explicit output schemas and failure rollback. Nested values have no special identity restrictions; an exposed root ID must still identify the addressed resource. See [public output](collections.md#public-output).
+BaseController's default output omits a top-level password and undeclared top-level fields. Nested values follow their declared Zod schemas; consuming applications select an explicit output validator or use custom controller logic for nested secrets and other private fields. Output failures still roll back writes, and an exposed root ID must identify the addressed resource. See [public output](collections.md#public-output) for the policy and migration from recursive filtering.
 
 Custom controllers use [ResourceScope](collections.md#resource-scope) to inspect the addressed collection or UUID. Closing Hedra invalidates its controllers and association handles; borrowed dependencies remain the creator's responsibility. See [storage transactions](backends.md#transactions-across-records).
 
