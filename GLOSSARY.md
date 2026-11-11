@@ -8,7 +8,7 @@ Hedra lets consuming applications define their data and expose it through collec
 The definition of the shape and validity of a resource type.
 
 **Collection**:
-A named set of one resource type, associating its model, storage name, endpoint and controller.
+A named set of one resource type, associating its model, storage placement, endpoint and controller.
 
 **Resource**:
 An identifiable item governed by a model, such as one car or tenant. A resource can be independently stored or contained within another resource.

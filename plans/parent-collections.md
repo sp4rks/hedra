@@ -30,9 +30,13 @@ fields from the parent's inferred type. Plain nested Zod objects remain ordinary
 - Add optional readonly `Collection.parent`. Record declared children internally so registering
   either a root or its descendant discovers the same complete tree and constructs all controllers
   before binding any. Define children before registering their parent; reject additions after the
-  parent is attached. Keep existing names and instance-ownership rules.
+  parent is attached. Keep instance-ownership rules. Root names remain globally unique; contained
+  names are unique among siblings, so different containing paths can reuse fields such as notes.
+- Root/storage names retain lowercase-only collection grammar. Contained collection names follow
+  existing embedded field grammar (`^[A-Za-z][A-Za-z0-9_-]*$`), preserving fields such as namedNotes.
+  ResourceScope.collection accepts those child names; independent ResourceReference stays strict.
 - A child's model must match the item model at `parent.model.shape[child.name]`. Reject missing,
-  mismatched or unsupported containers, duplicate child names and cyclic definitions before
+  mismatched or unsupported containers, duplicate sibling names and cyclic definitions before
   opening storage or binding controllers.
 - Child endpoints are nested under their parent item, without a standalone root endpoint or table.
   Singleton parents add no redundant item selector. Dictionary keys remain URL-safe selectors;
@@ -141,3 +145,21 @@ documented repository-root starting point. Lead reviews the fixed range against 
 configured independent reviewer applies the reviewer skill. Return confirmed findings to the same
 coder, rerun affected checks and re-review. Acceptance requires passing checks and no actionable
 findings. Report the branch and migration implications; merge into main only after user approval.
+
+## Verification before independent review
+
+- Implementation commit: `4f4a2ed`; main baseline: `37a5b5d`.
+- Coder ran integrated `bun run check`: 275 passing tests, 99.73% line coverage and 99.18%
+  function coverage, with typecheck and Biome passing. Local-server/subprocess tests needed the
+  approved unsandboxed run because the sandbox returned EPERM.
+- Red/green evidence covers contained CRUD, camelCase names, reused fields at distinct parent
+  paths, undeclared fields beside association routes, detached child declarations and public/private
+  scope mismatch. Existing route, metadata, output, validation, deep-scope, lifecycle and association
+  coverage now uses explicit parent declarations.
+- Lead ran both changed examples from the feature repository root successfully:
+  `bun run examples/06-embedded-resources.ts` and `bun run examples/07-resource-scope.ts`.
+- All 52 local links and Markdown heading anchors in the affected reference/decision pages exist.
+  The Mermaid source has accessible labels; no dedicated diagram renderer is configured or run.
+- No database migration, data deletion, push or merge into main has been performed.
+
+Independent review and final lead acceptance are pending.
