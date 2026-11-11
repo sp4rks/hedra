@@ -126,6 +126,181 @@ test('default output hides nested passwords and unknown fields without changing 
   }
 })
 
+test('tuple and intersection outputs hide private and undeclared fields while retaining stored values', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
+  const Note = Resource.extend({ text: z.string(), password: z.string() }).loose()
+  const model = Resource.extend({
+    notes: z.tuple([Note]).rest(Note),
+    selected: z.intersection(Note, z.object({ extra: z.string() })),
+  })
+  const fixed = {
+    id: crypto.randomUUID(),
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    text: 'fixed',
+    password: 'private-fixed',
+    secret: 'unknown-fixed',
+  }
+  const rest = { ...fixed, id: crypto.randomUUID(), text: 'rest', password: 'private-rest', secret: 'unknown-rest' }
+  const selected = { ...fixed, extra: 'declared' }
+  const { password: _fixedPassword, secret: _fixedSecret, ...publicFixed } = fixed
+  const { password: _restPassword, secret: _restSecret, ...publicRest } = rest
+
+  try {
+    app.register(new Collection('projects', model))
+    const response = await app.request('/projects', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ notes: [fixed, rest], selected }),
+    })
+    const data = ((await response.json()) as { data: { id: string; notes: unknown[]; selected: unknown } }).data
+
+    expect(response.status).toBe(201)
+    expect(data.notes).toEqual([publicFixed, publicRest])
+    expect(data.selected).toEqual({ ...publicFixed, extra: 'declared' })
+    const stored = (await backend.select('projects', { id: data.id }))[0]
+
+    expect(stored?.notes).toEqual([fixed, rest])
+    expect(stored?.selected).toEqual(selected)
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
+test('ambiguous record intersections fail closed unless the public shape is explicit', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const app = new Hedra({ config, backend })
+  const explicit = new Hedra({ config, backend })
+  const Note = Resource.extend({ text: z.string(), password: z.string() }).loose()
+  const model = Resource.extend({ note: z.intersection(Note, z.record(z.string(), z.string())) })
+  const output = Resource.extend({ note: Note.omit({ password: true }).strip() })
+  const note = {
+    id: crypto.randomUUID(),
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    text: 'visible',
+    password: 'private',
+    secret: 'unknown',
+  }
+
+  try {
+    app.register(new Collection('projects', model))
+    const rejected = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ note }) })
+
+    expect(rejected.status).toBe(500)
+    expect(await rejected.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
+    expect(await backend.select('projects')).toEqual([])
+    explicit.register(new Collection('projects', model, { outputValidator: output }))
+    const created = await explicit.request('/projects', { method: 'POST', headers, body: JSON.stringify({ note }) })
+    const data = ((await created.json()) as { data: { id: string; note: Record<string, unknown> } }).data
+
+    expect(created.status).toBe(201)
+    expect(data.note.password).toBeUndefined()
+    expect(data.note.secret).toBeUndefined()
+    expect((await backend.select('projects', { id: data.id }))[0]?.note).toEqual(note)
+  } finally {
+    app.close()
+    explicit.close()
+    backend.close()
+  }
+})
+
+test('wrapped or opaque intersection branches fail closed for default output', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const Note = Resource.extend({ text: z.string(), password: z.string() }).loose()
+  const note = {
+    id: crypto.randomUUID(),
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    text: 'visible',
+    password: 'private',
+    secret: 'unknown',
+  }
+  const branches = [
+    z.record(z.string(), z.string()).optional(),
+    z.union([z.record(z.string(), z.string()), z.string()]),
+    z.lazy(() => z.record(z.string(), z.string())),
+    z.any(),
+    z.unknown(),
+  ]
+
+  try {
+    for (const branch of branches) {
+      const app = new Hedra({ config, backend })
+      const model = Resource.extend({ note: z.intersection(Note, branch) })
+
+      try {
+        app.register(new Collection('projects', model))
+        const response = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ note }) })
+
+        expect(response.status).toBe(500)
+        expect(await response.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
+        expect(await backend.select('projects')).toEqual([])
+      } finally {
+        app.close()
+      }
+    }
+  } finally {
+    backend.close()
+  }
+})
+
+test('ambiguous unions fail closed without hiding ordinary dictionary keys', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const Note = Resource.extend({ text: z.string(), password: z.string() }).loose()
+  const note = {
+    id: crypto.randomUUID(),
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    text: 'visible',
+    password: 'private',
+    secret: 'unknown',
+  }
+  const record = z.record(z.string(), z.string())
+  const choices = [
+    z.union([record, Note]),
+    z.union([Note, record]),
+    z.union([z.any(), Note]),
+    z.union([record.optional(), Note.readonly()]),
+  ]
+
+  try {
+    for (const choice of choices) {
+      const app = new Hedra({ config, backend })
+
+      try {
+        app.register(new Collection('projects', Resource.extend({ note: choice })))
+        const response = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ note }) })
+
+        expect(response.status).toBe(500)
+        expect(await response.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
+        expect(await backend.select('projects')).toEqual([])
+      } finally {
+        app.close()
+      }
+    }
+    const app = new Hedra({ config, backend })
+
+    try {
+      app.register(new Collection('projects', Resource.extend({ values: z.union([record, z.string()]) })))
+      const values = { password: 'ordinary dictionary value' }
+      const response = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ values }) })
+
+      expect(response.status).toBe(201)
+      expect(((await response.json()) as { data: { values: unknown } }).data.values).toEqual(values)
+    } finally {
+      app.close()
+    }
+  } finally {
+    backend.close()
+  }
+})
+
 test('dictionary keys are data while unsafe prototype keys cannot be silently lost', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
@@ -244,6 +419,7 @@ test('default projection protects private fields through ordinary Zod wrappers',
     defaultNote: Note.default(note),
     catchNote: Note.catch(note),
     transformedNote: Note.transform((value) => value),
+    preprocessedNote: z.preprocess((value) => value, Note),
   })
 
   try {
@@ -251,13 +427,13 @@ test('default projection protects private fields through ordinary Zod wrappers',
     const created = await app.request('/projects', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ note, transformedNote: note }),
+      body: JSON.stringify({ note, transformedNote: note, preprocessedNote: note }),
     })
     const data = ((await created.json()) as { data: Record<string, Record<string, unknown>> }).data
 
     expect(created.status).toBe(201)
 
-    for (const field of ['note', 'defaultNote', 'catchNote', 'transformedNote']) {
+    for (const field of ['note', 'defaultNote', 'catchNote', 'transformedNote', 'preprocessedNote']) {
       expect(data[field]?.password).toBeUndefined()
       expect(data[field]?.secret).toBeUndefined()
     }
@@ -271,6 +447,7 @@ test('default projection protects private fields through ordinary Zod wrappers',
       note,
       catchNote: { invalid: true },
       transformedNote: note,
+      preprocessedNote: note,
     })
     const loaded = await app.request(`/projects/${storedId}`)
     const fallback = ((await loaded.json()) as { data: Record<string, Record<string, unknown>> }).data
