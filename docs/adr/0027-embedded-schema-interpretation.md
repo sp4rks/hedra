@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0029
 ---
 
 # Keep embedded-schema interpretation in the embedded model module
@@ -30,3 +30,7 @@ inside mutation transactions so failures roll back the entire write. See the
 [embedded-resource reference](../web-layer.md) for supported declarations and routes.
 
 [ADR 0028](0028-data-only-resource-scope.md) revises the public scope metadata exports while retaining this schema-locality decision.
+
+[ADR 0029](0029-parent-declared-contained-collections.md) replaces marker-based resource kinds with
+one Resource schema and explicit parent-declared collections. Container interpretation stays in
+the embedded model module; schema nesting alone no longer creates routes.

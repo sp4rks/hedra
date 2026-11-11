@@ -6,7 +6,6 @@ import type { Collection as CollectionType, ResourceScope } from '#hedra.ts'
 import {
   BaseController,
   Collection,
-  EmbeddedResource,
   getResourceScope,
   Hedra,
   JsonApiResponse,
@@ -30,7 +29,7 @@ class ScopedController extends BaseController {
   }
 }
 
-const Note = EmbeddedResource.extend({ text: z.string() })
+const Note = Resource.extend({ text: z.string() })
 const Label = Resource.extend({
   name: z.string(),
   notes: z.array(Note).default([]),
@@ -40,6 +39,9 @@ const Label = Resource.extend({
 const Project = Resource.extend({ title: z.string() })
 const labels = new Collection('labels', Label, { controller: ScopedController })
 const projects = new Collection('projects', Project, { controller: ScopedController, associations: [labels] })
+const notes = new Collection('notes', Note, { parent: labels, controller: ScopedController })
+const namedNotes = new Collection('namedNotes', Note, { parent: labels, controller: ScopedController })
+const summary = new Collection('summary', Note, { parent: labels, controller: ScopedController })
 const backend = new SqliteBackend(':memory:')
 const app = new Hedra({ backend })
 const headers = { 'content-type': 'application/json' }
@@ -81,8 +83,8 @@ try {
   assert.equal(createdLabel.status, 201)
   assert(note)
   assert.equal((await app.request(`${path}/notes/${note.id}`)).status, 200)
-  assert.deepEqual(labels.controller.lastScope(), {
-    collection: 'labels',
+  assert.deepEqual(notes.controller.lastScope(), {
+    collection: 'notes',
     target: {
       kind: 'embedded',
       rootId: label.id,
@@ -95,8 +97,8 @@ try {
   const key = 'release plan'
 
   assert.equal((await app.request(`${path}/namedNotes/${encodeURIComponent(key)}`)).status, 200)
-  assert.deepEqual(labels.controller.lastScope(), {
-    collection: 'labels',
+  assert.deepEqual(namedNotes.controller.lastScope(), {
+    collection: 'namedNotes',
     target: {
       kind: 'embedded',
       rootId: label.id,
@@ -108,14 +110,14 @@ try {
 
   // The singleton field is its selector, so no item id or dictionary key appears.
   assert.equal((await app.request(`${path}/summary`)).status, 200)
-  assert.deepEqual(labels.controller.lastScope(), {
-    collection: 'labels',
+  assert.deepEqual(summary.controller.lastScope(), {
+    collection: 'summary',
     target: { kind: 'embedded', rootId: label.id, steps: [{ field: 'summary', kind: 'single' }] },
     associations: ancestors,
   })
   assert.equal((await app.request(`/labels/${label.id}/summary`)).status, 200)
-  assert.deepEqual(labels.controller.lastScope(), {
-    collection: 'labels',
+  assert.deepEqual(summary.controller.lastScope(), {
+    collection: 'summary',
     target: { kind: 'embedded', rootId: label.id, steps: [{ field: 'summary', kind: 'single' }] },
     associations: [],
   })

@@ -4,16 +4,16 @@ Register a Collection to expose its resource operations. Web handlers validate r
 
 The [Tenant API](tenants.md) is built in and uses the configuration catalogue without application collection registration.
 
-## Define independent and embedded resources
+## Define root and contained collections
 
-`Resource` has independent storage, a collection and a root route. `EmbeddedResource` is owned by its containing document and has only nested routes. Both have server-managed UUIDs and ISO creation/update timestamps. The containing model chooses a single embedded value, array or dictionary.
+Use `Resource` for every identifiable item. A Collection without `parent` has its own storage and root routes. A Collection with `parent` stores its items inside the parent document and has nested routes. Both have server-managed UUIDs and ISO creation/update timestamps. The parent's model explicitly describes a single contained value, array or dictionary.
 
 ```ts
 import { z } from 'zod'
 
-import { Collection, EmbeddedResource, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { Collection, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 
-const Note = EmbeddedResource.extend({ text: z.string().trim().min(1) })
+const Note = Resource.extend({ text: z.string().trim().min(1) })
 const Label = Resource.extend({ name: z.string().min(1) })
 const Project = Resource.extend({
   title: z.string().min(1),
@@ -23,13 +23,32 @@ const Project = Resource.extend({
 })
 const labels = new Collection('labels', Label)
 const projects = new Collection('projects', Project, { associations: [labels] })
+
+new Collection('notes', Note, { parent: projects })
+new Collection('namedNotes', Note, { parent: projects })
+new Collection('summary', Note, { parent: projects })
+
 const backend = new SqliteBackend(':memory:')
 const app = new Hedra({ backend })
 
 app.register(projects)
 ```
 
-Registration also exposes the referenced labels collection. Notes remain in each project's JSON document, so `/notes` is absent. Use a direct EmbeddedResource field, `z.array(EmbeddedResourceModel)` or `z.record(keySchema, EmbeddedResourceModel)`, with optional/nullable/default wrappers as needed. An embedded item can itself declare those fields. Embedding through ordinary wrapper objects, nested arrays, unions or lazy schemas rejects at definition time. Ordinary attributes containing objects, arrays or dictionaries gain no resource routes.
+Declare children before registration. Registering the root or one of its children discovers the complete declared tree and the referenced independent labels collection. Notes remain in each project's JSON document, so `/notes` is absent and no notes table is used.
+
+The child's collection name must name a direct field on the parent model, and its model must be the same item schema. Use a direct Resource field, `z.array(ResourceModel)` or `z.record(keySchema, ResourceModel)`, with optional/nullable/default wrappers as needed. A child can declare its own children the same way. Embedding Resource schemas through ordinary wrapper objects, nested arrays, unions or lazy schemas rejects. Ordinary nested Zod objects are document data without managed resource metadata. A nested Resource field receives no generated routes until a corresponding parent-declared Collection exists.
+
+```mermaid
+flowchart LR
+  accTitle: Contained storage and independent references
+  accDescr: Notes are stored inside a project document. Labels have independent storage and are connected through association records.
+  projects[Projects table] --> document[Project document]
+  document --> notes[Contained notes]
+  document --- links[Association records]
+  links --- labels[Labels table]
+```
+
+The SQLite backend stores the complete document in its JSON `data` column; child fields do not become separate SQL columns. Child filters operate within the addressed parent. Global child search and secondary-index declarations are not provided. See [storage and query costs](backends.md#contained-storage-and-query-costs).
 
 The following requests continue the definition above. Close the app and its borrowed backend when finished. For a complete executable version, run `bun run examples/06-embedded-resources.ts` from the repository root.
 
@@ -53,7 +72,7 @@ POST and PATCH accept a JSON attribute object, with a JSON content type. Success
 
 Single responses use `JsonApiResponse`: flat attributes in `data` and a self link. Ordinary and array lists use array data. Dictionary lists use dictionary data, retaining their keys. A dictionary value still has its own UUID; that UUID does not replace its key in the path. Encode keys in URLs. Keys must be nonempty, satisfy the model's key schema and differ from `.`, `..` and the reserved `__proto__` key.
 
-Every ancestor must exist. An embedded item under another owner, or an independent resource without the association named by a navigation path, returns 404. Defining a custom controller does not require writing the HTTP handlers again; the generated handler dispatches to that controller.
+Every ancestor must exist. A contained item under another owner, or an independent resource without the association named by a navigation path, returns 404. Each contained route dispatches to that child's selected controller with the child Collection. The containing root and traversal remain internal; custom controllers use the [public resource scope](collections.md#resource-scope) before delegating to BaseController.
 
 | Status | Cause |
 | --- | --- |
@@ -110,7 +129,7 @@ await app.associations.link(
 const associations = await app.associations.list({ collection: 'labels', id: labelId })
 ```
 
-Both endpoints must exist and use a declared association between registered collections. Linking the same pair is idempotent. An HTTP endpoint for linking existing resources is deferred.
+Both endpoints must exist and use a declared association between registered independently stored collections. A contained collection cannot declare or receive associations. Linking the same pair is idempotent. An HTTP endpoint for linking existing resources is deferred.
 
 **Any association blocks deletion of either endpoint.** Resource DELETE returns 409 with the blocking associations, even when invoked through a nested association path. Remove each link, then delete the resource through its canonical route:
 
@@ -125,10 +144,10 @@ Embedded ownership is separate: embedded values do not block deletion of their o
 
 ## Public fields and lifecycle
 
-Default projection strips unknown fields and password fields at Resource and EmbeddedResource levels. Explicit output validators define other public-field policies. Hidden embedded fields receive no exposing generated routes. Projection failures abort writes instead of returning raw data. See [public output](collections.md#public-output).
+Default projection strips unknown fields and password fields at every Resource level. The containing root's output validator defines the public fields for its whole document, including child endpoints. Child output is derived from that containing definition; a separate `outputValidator` on a parent-declared Collection rejects. Hidden fields receive no exposing generated routes. Projection failures abort writes instead of returning raw data. See [public output](collections.md#public-output).
 
 Output transformations must retain resource identity and the correspondence between a dictionary key and its embedded item. Remapping a key to another item's UUID is an output error, including when its declared schema still accepts the result; it cannot commit a write or return the wrong item.
 
 Closing Hedra invalidates saved controllers and association handles. An owned backend closes with the app; a borrowed backend remains the creator's responsibility. Association operations use the [generic transaction interface](backends.md#transactions-across-records).
 
-This increment supplies no cookies, middleware, authentication or tenant selection. Use the existing Hono interface for other application routes. See the [resource lifetime decision](adr/0010-resources-and-embedded-resources.md) for the storage distinction.
+This interface supplies no cookies, middleware, authentication or tenant selection. Use the existing Hono interface for other application routes. See the [parent-collection decision](adr/0029-parent-declared-contained-collections.md) for storage and lifetime rules.
