@@ -108,3 +108,23 @@ examples from the feature root and checks documentation links/meaning. Independe
 reviewer reviews the fixed complete range against this plan after checks pass. Send confirmed
 findings to the same coder; rerun affected checks and re-review. User approval is required before
 merging into main. Show the user source-code-only diffs from the implementation worktree.
+
+## Verification before independent review
+
+- Main baseline: f1d05cb; implementation commit: 9fd7bbd.
+- Integrated bun run check passed: 243 tests, 0 failures, 99.76% line coverage and 99.30% function
+  coverage; typecheck and Biome passed. Sandbox local-server/subprocess tests required the approved
+  unsandboxed run after EPERM failures.
+- Red/green evidence covers removed navigation/unlink endpoints, ordinary nested Resource data,
+  formerly rejected schema wrappers, safe JSON keys and nested readonly/transform privacy. Tests
+  also cover default/catch sanitization, cross-field rollback, ordinary duplicate nested IDs,
+  programmatic deletion blockers and the narrower scope/list forms. Supported root validation,
+  lifecycle and concurrent association checks remain.
+- Lead reran examples 05-resource-controller.ts, 06-nested-data.ts and 07-resource-scope.ts from the
+  implementation root after the final privacy change; all pass.
+- Checked all 54 local links/Markdown heading anchors in affected reference and ADR pages. Updated
+  the documented transform limitation: use explicit output validators for transforms requiring
+  private input or a different public shape.
+- Existing data and main remain unchanged. No automatic migration, push or deployment occurred.
+
+Lead and independent final acceptance are pending.
