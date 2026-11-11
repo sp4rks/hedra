@@ -1,8 +1,8 @@
 import type { Backend, BackendTransaction, DatabaseRecord } from '#datastores/backend.ts'
-import type { Association, ResourceReference } from '#models/association.ts'
 import type { Collection } from '#models/collection.ts'
+import type { Association, ResourceReference } from '#models/resource.ts'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
-import { Association as AssociationSchema, ResourceReference as ReferenceSchema } from '#models/association.ts'
+import { Association as AssociationSchema, ResourceReference as ReferenceSchema } from '#models/resource.ts'
 
 export const associationTable = 'hedra_associations'
 

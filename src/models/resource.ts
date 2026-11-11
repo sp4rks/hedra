@@ -4,9 +4,27 @@ import { ConfigurationError } from '#errors'
 
 export const ResourceId = z.uuid()
 export const ResourceTimestamp = z.iso.datetime()
+
+/** Base schema for independently stored resources with server-owned identity and timestamps. */
 export const Resource = z.object({ id: ResourceId, createdAt: ResourceTimestamp, updatedAt: ResourceTimestamp })
 
 export type Resource = z.infer<typeof Resource>
+
+/** Addresses a resource by collection and UUID without containing its data or guaranteeing it exists. */
+export const ResourceReference = z.strictObject({
+  collection: z.string().regex(/^[a-z][a-z0-9_-]*$/),
+  id: ResourceId,
+})
+
+export type ResourceReference = z.infer<typeof ResourceReference>
+
+/**
+ * An explicit link between independent resources, with its own ID and resource addresses as endpoints.
+ * Links are stored separately and block deletion of either endpoint until removed.
+ */
+export const Association = z.object({ id: ResourceId, source: ResourceReference, target: ResourceReference })
+
+export type Association = z.infer<typeof Association>
 
 /** Ensures a stored resource model requires a UUID identifier. */
 export function assertResourceModel(model: z.ZodObject): void {

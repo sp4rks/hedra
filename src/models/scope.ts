@@ -2,8 +2,7 @@ import type { Context } from 'hono'
 import { z } from 'zod'
 
 import { parseInput } from '#errors'
-import { ResourceReference } from '#models/association.ts'
-import { ResourceId } from '#models/resource.ts'
+import { ResourceId, ResourceReference } from '#models/resource.ts'
 
 export const ResourceScope = z.strictObject({
   collection: ResourceReference.shape.collection,
