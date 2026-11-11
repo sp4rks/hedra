@@ -9,12 +9,10 @@ export const Tenant = Resource.extend({
 
 export type Tenant = z.infer<typeof Tenant>
 
-type TenantWrite<T> = T & { [K in Exclude<keyof Tenant, keyof T>]?: never }
-
 export const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
 
-export type TenantInput = TenantWrite<z.infer<typeof TenantInput>>
+export type TenantInput = z.infer<typeof TenantInput>
 
 export const TenantChanges = TenantInput.omit({ tenantDomain: true }).partial()
 
-export type TenantChanges = TenantWrite<z.infer<typeof TenantChanges>>
+export type TenantChanges = z.infer<typeof TenantChanges>

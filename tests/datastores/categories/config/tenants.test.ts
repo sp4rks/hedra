@@ -88,7 +88,7 @@ test('tenant reads return parsed values while retaining filters, ordering and ab
   }
 })
 
-test('tenant operation types reject managed fields and domain changes in pretyped values', async () => {
+test('tenant operations accept structural inputs and reject forbidden fields at runtime', async () => {
   const backend = new SqliteBackend(':memory:')
   const store = new ConfigStore({ backend })
   const catalogue: ConfigDatastore = store
@@ -99,19 +99,15 @@ test('tenant operation types reject managed fields and domain changes in pretype
     const withMetadata = { ...input, id: crypto.randomUUID() }
     const domainChange = { name: 'Changed', tenantDomain: input.tenantDomain }
 
-    // @ts-expect-error The store creates metadata itself, including for pretyped values.
     await expect(store.tenants.create(withMetadata)).rejects.toMatchObject({ status: 422 })
-    // @ts-expect-error The catalogue creates metadata itself too.
     await expect(catalogue.tenants.create(withMetadata)).rejects.toMatchObject({ status: 422 })
-    // @ts-expect-error Store replacements cannot include managed metadata.
     await expect(store.tenants.replace(tenant.id, withMetadata)).rejects.toMatchObject({ status: 422 })
-    // @ts-expect-error The injected catalogue contract also excludes metadata.
     await expect(catalogue.tenants.replace(tenant.id, withMetadata)).rejects.toMatchObject({ status: 422 })
-    // @ts-expect-error Domain updates are forbidden even when the name is valid.
     await expect(store.tenants.update(tenant.id, domainChange)).rejects.toMatchObject({ status: 422 })
-    // @ts-expect-error The structural catalogue interface excludes domain updates too.
     await expect(catalogue.tenants.update(tenant.id, domainChange)).rejects.toMatchObject({ status: 422 })
+    // @ts-expect-error Object literals cannot include managed metadata, even with an undefined value.
     await expect(store.tenants.create({ ...input, id: undefined })).rejects.toMatchObject({ status: 422 })
+    // @ts-expect-error Object literals cannot include a domain change, even with an undefined value.
     await expect(store.tenants.update(tenant.id, { name: 'Changed', tenantDomain: undefined })).rejects.toMatchObject({
       status: 422,
     })
