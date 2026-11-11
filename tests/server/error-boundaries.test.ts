@@ -9,7 +9,7 @@ import {
   Collection,
   Config,
   ConfigStore,
-  getEmbeddedScope,
+  getResourceScope,
   Hedra,
   Logger,
   Resource,
@@ -254,7 +254,7 @@ test('direct controller and scope input failures throw Hedra errors', async () =
       HedraError,
     )
     context.set('hedraResourceScope' as never, { rootId: 'invalid' } as never)
-    expect(() => getEmbeddedScope(context)).toThrow(HedraError)
+    expect(() => getResourceScope(context)).toThrow(HedraError)
   } finally {
     backend.close()
   }

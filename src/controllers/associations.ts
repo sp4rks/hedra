@@ -1,11 +1,8 @@
-import type { Context } from 'hono'
-
 import type { Backend, BackendTransaction, DatabaseRecord } from '#datastores/backend.ts'
 import type { Association, ResourceReference } from '#models/association.ts'
 import type { Collection } from '#models/collection.ts'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { Association as AssociationSchema, ResourceReference as ReferenceSchema } from '#models/association.ts'
-import { getAssociationScope } from '#models/scope.ts'
 
 export const associationTable = 'hedra_associations'
 
@@ -39,28 +36,6 @@ function matching(
 /** Ensures a resource exists within the current transaction. */
 export function assertResource(transaction: BackendTransaction, reference: ResourceReference): void {
   if (!transaction.select(reference.collection, { id: reference.id }).length) throw new RecordNotFoundError()
-}
-
-/** Verifies every ancestor and navigation link before a scoped operation. */
-export function assertAssociationScope(
-  transaction: BackendTransaction,
-  ancestors: ResourceReference[],
-  target?: ResourceReference,
-): void {
-  for (let index = 0; index < ancestors.length; index++) {
-    const current = ancestors[index]
-    const previous = ancestors[index - 1]
-
-    if (!current) continue
-    assertResource(transaction, current)
-    if (previous && !matching(transaction, previous, current).length) throw new RecordNotFoundError()
-  }
-  if (target) {
-    assertResource(transaction, target)
-    const previous = ancestors.at(-1)
-
-    if (previous && !matching(transaction, previous, target).length) throw new RecordNotFoundError()
-  }
 }
 
 /** Adds a link between existing resources, preserving uniqueness. */
@@ -166,16 +141,5 @@ export class AssociationOperations {
     const [from, to] = this.references(source, target)
 
     return await this.backend().transaction((transaction) => removeAssociation(transaction, from, to))
-  }
-
-  /** Removes a link after checking every generated-route ancestor. */
-  async unlinkFrom(context: Context, source: ResourceReference, target: ResourceReference): Promise<void> {
-    const [from, to] = this.references(source, target)
-    const ancestors = getAssociationScope(context) ?? []
-
-    await this.backend().transaction((transaction) => {
-      assertAssociationScope(transaction, ancestors, from)
-      if (!removeAssociation(transaction, from, to)) throw new RecordNotFoundError()
-    })
   }
 }

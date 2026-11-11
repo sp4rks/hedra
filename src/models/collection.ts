@@ -4,15 +4,13 @@ import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import { BaseController } from '#controllers/controller.ts'
 import { ConfigurationError } from '#errors'
-import { embeddedFields, publicItem, publicModel } from '#models/embedded.ts'
-import { assertResourceModel } from '#models/resource.ts'
+import { assertResourceModel, publicModel } from '#models/resource.ts'
 
 type ControllerConstructor<C extends ControllerInterface> = new (backend: Backend) => C
 type Options<C extends ControllerInterface> = {
   controller?: ControllerConstructor<C>
   outputValidator?: z.ZodObject
   associations?: Collection[]
-  parent?: Collection
 }
 
 export class Collection<S extends z.ZodObject = z.ZodObject, C extends ControllerInterface = ControllerInterface> {
@@ -21,9 +19,7 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
   readonly endpoint: string
   readonly outputValidator: z.ZodObject
   readonly associations: readonly Collection[]
-  readonly parent?: Collection
   readonly #controllerConstructor: ControllerConstructor<C>
-  readonly #children: Collection[] = []
   #controller?: C
 
   /** Defines a named resource collection and selects its controller and public output. */
@@ -36,7 +32,7 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
   ) {
     const parsedName = z
       .string()
-      .regex(options?.parent ? /^[A-Za-z][A-Za-z0-9_-]*$/ : /^[a-z][a-z0-9_-]*$/)
+      .regex(/^[a-z][a-z0-9_-]*$/)
       .safeParse(name)
 
     if (!parsedName.success) throw new ConfigurationError('configuration error', parsedName.error.issues)
@@ -48,44 +44,16 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
         controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
         outputValidator: z.instanceof(z.ZodObject).optional(),
         associations: z.array(z.instanceof(Collection)).optional(),
-        parent: z.instanceof(Collection).optional(),
       })
       .safeParse(options === undefined ? {} : options)
 
     if (!parsedOptions.success) throw new ConfigurationError('configuration error', parsedOptions.error.issues)
     const parsed = parsedOptions.data
 
-    const parent = parsed.parent
-    const field = parent && embeddedFields(parent.model).find((item) => item.name === this.name)
-
-    if (parent?.isAttached) throw new ConfigurationError('Parent collection is already attached')
-    if (parent && (!field || field.model !== model)) throw new ConfigurationError('Parent field must match child model')
-    if (parent && parsed.outputValidator) throw new ConfigurationError('Parent controls contained output')
-    if (parent && parsed.associations?.length)
-      throw new ConfigurationError('Contained collections cannot have associations')
-    if (parsed.associations?.some((item) => item.parent))
-      throw new ConfigurationError('Contained collections cannot have associations')
-    if (parent?.children.some((item) => item.name === name)) throw new ConfigurationError('Duplicate child collection')
-    this.parent = parent
-    /** Counts the collection's containing ancestors for generated route parameters. */
-    const depth = (item: Collection): number => (item.parent ? depth(item.parent) + 1 : 0)
-    const parentField = parent?.parent && embeddedFields(parent.parent.model).find((item) => item.name === parent.name)
-
-    this.endpoint = parent
-      ? `${parent.endpoint}${!parent.parent || parentField?.kind !== 'single' ? `/:r${depth(parent)}` : ''}/${name}`
-      : `/${name}`
-    this.outputValidator =
-      (parent && field ? publicItem(field, parent.outputValidator) : undefined) ??
-      parsed.outputValidator ??
-      publicModel(model)
+    this.endpoint = `/${this.name}`
+    this.outputValidator = parsed.outputValidator ?? publicModel(model)
     this.associations = Object.freeze(parsed.associations ?? [])
     this.#controllerConstructor = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
-    if (parent) parent.#children.push(this)
-  }
-
-  /** Returns collections declared inside this collection. @internal */
-  get children(): readonly Collection[] {
-    return [...this.#children]
   }
 
   /**

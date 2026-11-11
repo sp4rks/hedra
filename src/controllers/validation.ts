@@ -2,10 +2,17 @@ import type { z } from 'zod'
 
 import type { DatabaseRecord } from '#datastores/backend.ts'
 import { InputValidationError } from '#errors'
-import { embeddedFields } from '#models/embedded.ts'
 
 type ObjectValue = Record<string, unknown>
 const metadata = ['id', 'createdAt', 'updatedAt'] as const
+
+/** Rejects keys that Zod would otherwise silently discard while parsing JSON. */
+export function assertSafeKeys(value: unknown): void {
+  if (value === null || typeof value !== 'object') return
+  if (Object.hasOwn(value, '__proto__')) throw new InputValidationError('Unsafe JSON key')
+
+  for (const item of Object.values(value)) assertSafeKeys(item)
+}
 
 /** Identifies a JSON object without changing its literal keys. */
 function isObject(value: unknown): value is ObjectValue {
@@ -18,18 +25,6 @@ function declared(model: z.ZodObject, record: ObjectValue): ObjectValue {
     ([key]) => !metadata.includes(key as (typeof metadata)[number]) || Object.hasOwn(model.shape, key),
   )
   const result = Object.fromEntries(entries)
-
-  for (const field of embeddedFields(model)) {
-    const value = result[field.name]
-
-    if (field.kind === 'array' && Array.isArray(value)) {
-      result[field.name] = value.map((item) => (isObject(item) ? declared(field.model, item) : item))
-    } else if (field.kind === 'dictionary' && isObject(value)) {
-      result[field.name] = Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [key, isObject(item) ? declared(field.model, item) : item]),
-      )
-    } else if (field.kind === 'single' && isObject(value)) result[field.name] = declared(field.model, value)
-  }
 
   return result
 }
@@ -46,55 +41,12 @@ function restore(model: z.ZodObject, original: ObjectValue, validated: ObjectVal
       Object.defineProperty(result, key, { value: original[key], enumerable: true, writable: true, configurable: true })
   }
 
-  for (const field of embeddedFields(model)) {
-    const before = original[field.name]
-    const after = validated[field.name]
-
-    if (after === undefined || after === null) {
-      if (before !== undefined && before !== null) throw new InputValidationError('model changed embedded identity')
-      continue
-    }
-    if (field.kind === 'array' && Array.isArray(after)) {
-      if (before === undefined && after.length === 0) continue
-      if (!Array.isArray(before) || before.length !== after.length)
-        throw new InputValidationError('model changed embedded identity')
-      const byId = new Map(before.filter(isObject).map((item) => [item.id, item]))
-      const seen = new Set<unknown>()
-
-      result[field.name] = after.map((item) => {
-        if (!isObject(item) || seen.has(item.id)) throw new InputValidationError('model changed embedded identity')
-        const previous = byId.get(item.id)
-
-        if (!previous) throw new InputValidationError('model changed embedded identity')
-        seen.add(item.id)
-
-        return restore(field.model, previous, item)
-      })
-    } else if (field.kind === 'dictionary' && isObject(after)) {
-      if (before === undefined && Object.keys(after).length === 0) continue
-      if (!isObject(before) || Object.keys(before).length !== Object.keys(after).length)
-        throw new InputValidationError('model changed embedded identity')
-      result[field.name] = Object.fromEntries(
-        Object.entries(after).map(([key, item]) => {
-          const previous = Object.hasOwn(before, key) ? before[key] : undefined
-
-          if (!isObject(previous) || !isObject(item) || previous.id !== item.id)
-            throw new InputValidationError('model changed embedded identity')
-
-          return [key, restore(field.model, previous, item)]
-        }),
-      )
-    } else if (field.kind === 'single' && isObject(after)) {
-      if (!isObject(before) || before.id !== after.id) throw new InputValidationError('model changed embedded identity')
-      result[field.name] = restore(field.model, before, after)
-    } else throw new InputValidationError('model changed embedded identity')
-  }
-
   return result
 }
 
 /** Validates a complete mutation candidate without allowing model code to replace managed metadata. */
 export function validateCandidate(model: z.ZodObject, candidate: DatabaseRecord): DatabaseRecord {
+  assertSafeKeys(candidate)
   const input = declared(model, structuredClone(candidate))
   const parsed = model.safeParse(input)
 

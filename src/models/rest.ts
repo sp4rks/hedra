@@ -17,7 +17,7 @@ export const JsonApiResponse = z.object({ data: ResourceInput, links: ResponseLi
 export type JsonApiResponse = z.infer<typeof JsonApiResponse>
 
 export const JsonApiListResponse = z.object({
-  data: z.union([z.array(ResourceInput), z.record(z.string(), ResourceInput)]),
+  data: z.array(ResourceInput),
   links: ResponseLinks,
 })
 

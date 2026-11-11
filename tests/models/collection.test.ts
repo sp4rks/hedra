@@ -43,18 +43,6 @@ test('Collection binds metadata, a public validator and rejects invalid definiti
   ).toBeInstanceOf(Collection)
 })
 
-test('collections reject embedded resource definitions in unsupported wrapper shapes', () => {
-  const Note = Resource.extend({ text: z.string(), password: z.string() })
-  const models = [
-    Resource.extend({ profile: z.object({ note: Note }) }),
-    Resource.extend({ notes: z.array(z.array(Note)) }),
-    Resource.extend({ note: z.union([Note, z.string()]) }),
-    Resource.extend({ note: z.lazy(() => Note) }),
-  ]
-
-  for (const model of models) expect(() => new Collection('cars', model)).toThrow('Unsupported embedded')
-})
-
 test('registration constructs the default independent controller', async () => {
   const app = new Hedra({ config: new Config(quiet) })
   const cars = new Collection('cars', Car)
