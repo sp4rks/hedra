@@ -1,6 +1,6 @@
 # Keep collection registration state on the collection
 
-Status: implemented. Merge to `main` requires user approval.
+Status: implemented, verified and independently reviewed. Merge to `main` requires user approval.
 
 ## Accepted scope and design
 
@@ -51,3 +51,4 @@ Merge docs into the feature branch, run checks and examples, review the fixed co
 - `bun run check` passed for implementation and again after documentation integration at `3936684`: TypeScript, Biome, 264 tests with 1,262 assertions, and the coverage gate. Collection has 100% line and function coverage. The ignored worktree uses a symlink to the root's existing dependencies; no dependencies or tooling changed.
 - The lead ran `examples/05-resource-controller.ts`, `examples/06-embedded-resources.ts` and `examples/07-resource-scope.ts` independently from the integrated worktree root. All passed, including their assertions and cleanup. The lifecycle reference matches the implementation; all 21 local links and anchors resolve.
 - The lead reviewed the implementation and integrated documentation against this plan. Construct-before-bind registration, tenant configuration storage, custom-controller inference and validation are preserved. `git diff --check` passes and the feature worktree has no tracked changes before this verification record.
+- Independent read-only review of `002da53..e22d13e` found no actionable issues. The reviewer independently passed TypeScript, Biome, `git diff --check` and 18 focused tests with 135 assertions, relying on the recorded full-suite and example runs. Verdict: ship, subject to the required user approval before merging into `main`.
