@@ -301,6 +301,122 @@ test('ambiguous unions fail closed without hiding ordinary dictionary keys', asy
   }
 })
 
+test('dynamic fields inside objects, arrays and tuples cannot bypass default output privacy', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const config = new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' })
+  const Note = Resource.extend({ text: z.string(), password: z.string() }).loose()
+  const note = {
+    id: crypto.randomUUID(),
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    text: 'visible',
+    password: 'private',
+    secret: 'unknown',
+  }
+  const record = z.record(z.string(), z.string())
+  const cases = [
+    { schema: z.union([z.array(record), z.array(Note)]), value: [note] },
+    { schema: z.union([z.object({ note: record }), z.object({ note: Note })]), value: { note } },
+    { schema: z.union([z.tuple([record]), z.tuple([Note])]), value: [note] },
+    { schema: z.union([z.tuple([z.string()]).rest(record), z.tuple([z.string()]).rest(Note)]), value: ['a', note] },
+    {
+      schema: z.intersection(z.object({ notes: z.array(record) }), z.object({ notes: z.array(Note) })),
+      value: { notes: [note] },
+    },
+    { schema: z.intersection(z.tuple([record]), z.tuple([Note])), value: [note] },
+  ]
+
+  try {
+    for (const { schema, value } of cases) {
+      const app = new Hedra({ config, backend })
+
+      try {
+        app.register(new Collection('projects', Resource.extend({ value: schema })))
+        const response = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ value }) })
+
+        expect(response.status).toBe(500)
+        expect(await response.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
+        expect(await backend.select('projects')).toEqual([])
+      } finally {
+        app.close()
+      }
+    }
+  } finally {
+    backend.close()
+  }
+})
+
+test('shared schemas remain usable in multiple public union fields', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
+  const Note = Resource.extend({ text: z.string(), password: z.string() }).loose()
+  const choice = z.union([z.object({ first: Note, second: Note }), z.object({ text: z.string() })])
+  const note = {
+    id: crypto.randomUUID(),
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    text: 'visible',
+    password: 'private',
+    secret: 'unknown',
+  }
+
+  try {
+    app.register(new Collection('projects', Resource.extend({ value: choice })))
+    const response = await app.request('/projects', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ value: { first: note, second: note } }),
+    })
+    const data = (
+      (await response.json()) as {
+        data: { value: { first: Record<string, unknown>; second: Record<string, unknown> } }
+      }
+    ).data
+
+    expect(response.status).toBe(201)
+    expect(data.value.first.password).toBeUndefined()
+    expect(data.value.first.secret).toBeUndefined()
+    expect(data.value.second.password).toBeUndefined()
+    expect(data.value.second.secret).toBeUndefined()
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
+test('recursive object schemas fail closed without overflowing', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
+  const Tree: z.ZodObject = z.object({
+    name: z.string(),
+    get children() {
+      return z.array(Tree)
+    },
+  })
+
+  try {
+    app.register(new Collection('projects', Resource.extend({ tree: z.union([Tree, z.string()]) })))
+    const leaf = await app.request('/projects', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ tree: { name: 'leaf', children: [] } }),
+    })
+    const child = await app.request('/projects', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ tree: { name: 'root', children: [{ name: 'child', children: [] }] } }),
+    })
+
+    expect(leaf.status).toBe(201)
+    expect(child.status).toBe(500)
+    expect(await child.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
+    expect(await backend.select('projects')).toHaveLength(1)
+  } finally {
+    app.close()
+    backend.close()
+  }
+})
+
 test('dictionary keys are data while unsafe prototype keys cannot be silently lost', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
