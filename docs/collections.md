@@ -115,7 +115,7 @@ bun run examples/07-resource-scope.ts
 bun run examples/08-public-output.ts
 ```
 
-Each example uses in-memory SQLite, makes requests without a listener and closes its resources. The nested-data example replaces parent attributes and exercises programmatic association deletion guards. The scope example shows a custom controller and its additional typed method. The public-output example selects nested public fields and checks that secrets remain stored while create, read, list and update responses omit them.
+Each example uses in-memory SQLite, makes requests without a listener and closes its resources. The nested-data example replaces parent attributes and links and unlinks independent resources. The scope example shows a custom controller and its additional typed method. The public-output example selects nested public fields for create, read, list and update responses, then reads the complete stored model.
 
 ## Updating existing callers
 

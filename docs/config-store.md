@@ -42,7 +42,7 @@ Use the exported `TenantInput` schema for creation and replacement, and `TenantC
 
 Omit all three managed metadata fields from mutation payloads. Programmatic operations reject supplied managed fields, including keys whose value is `undefined`. Create and replacement require the name and domain; update changes the name and rejects any domain field. Replacement must retain the existing domain. The default store validates and normalises tenant writes itself; calling the pure schemas first is optional.
 
-The [standalone example](../examples/04-config-store.ts) uses both mutation schemas, checks normalised reads and a name update, and checks that a domain update fails schema validation. Run it without starting an HTTP server:
+The [standalone example](../examples/04-config-store.ts) uses both mutation schemas to create a normalised tenant, retrieve and filter the catalogue, and update the tenant's name. Run it without starting an HTTP server:
 
 ```sh
 bun run examples/04-config-store.ts

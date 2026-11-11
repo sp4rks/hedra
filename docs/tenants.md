@@ -25,7 +25,7 @@ From the repository root with Bun and the project's dependencies installed:
 bun run examples/07-tenants.ts
 ```
 
-The example creates an in-memory Hedra app, creates `acme.hedra.local`, retrieves and filters the catalogue, changes its name, checks an invalid domain change and deletes it. It uses `app.request`, opens no listener and leaves no database file.
+The example creates an in-memory Hedra app, creates `acme.hedra.local`, retrieves and filters the catalogue, changes its name and deletes it. It uses `app.request`, opens no listener and leaves no database file.
 
 For an app running locally on port 3000 with the default deployment settings:
 
