@@ -86,6 +86,8 @@ That request replaces the complete notes array and retains title, namedNotes and
 
 Only the addressed resource gets server-managed identity and audit timestamps. Nested IDs/timestamps are ordinary model data, with no generated values, reconciliation or automatic refresh. A nested model may generate its own defaults if the application wants them.
 
+Dictionary keys follow their model's rules rather than URL-selector rules. The `__proto__` key rejects at the JSON boundary because schema parsing can otherwise discard it silently.
+
 The controller validates the complete resulting resource inside its write transaction, including rules spanning stored and changed fields. Validation, projection or storage failure leaves the previous document unchanged. See [atomic validation](adr/0012-atomic-candidate-validation.md).
 
 ## Associations and deletion
