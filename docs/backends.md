@@ -35,11 +35,11 @@ await backend.transaction((transaction) => {
 
 This is a generic storage example: backend IDs may be arbitrary strings and table names need not describe registered resources. Resource controllers continue to generate UUIDs and audit timestamps. A custom Backend must implement the transaction capability as well as the four ordinary asynchronous operations.
 
-SQLite uses an immediate transaction to protect its reference checks and writes against competing connections. Controllers use it to create associated resources and links together, and to check associations before deleting either endpoint. Embedded edits use an atomic modification of their containing document. See the [transaction decision](adr/0011-backend-owned-multi-record-transactions.md).
+SQLite uses an immediate transaction to protect reference checks and writes against competing connections. Programmatic linking checks both endpoints before saving the link; resource deletion checks associations before removing either endpoint. Nested values change through an atomic update of their containing resource. See the [transaction decision](adr/0011-backend-owned-multi-record-transactions.md).
 
 ## SQLite storage
 
-`new SqliteBackend(path)` opens one Bun SQLite database. Each requested table is created lazily with generic `id` and JSON `data` columns; resource attributes do not become individual SQL columns. A root collection named `cars` uses a literal `cars` table. Parent-declared collections use fields inside their containing root record's JSON and have no separate table. Links between independent resources use the reserved internal `hedra_associations` table.
+`new SqliteBackend(path)` opens one Bun SQLite database. Each requested table is created lazily with generic `id` and JSON `data` columns; resource attributes do not become individual SQL columns. A collection named `cars` uses a literal `cars` table. Nested objects, arrays and dictionaries remain attributes inside each resource's JSON. Links between independent resources use the reserved internal `hedra_associations` table.
 
 A file path is relative to the working directory unless absolute. Missing parent directories are created. Use `:memory:` for an isolated database that disappears on close. Separately constructed in-memory backends do not share records; separately constructed file-backed instances open their own connections to the supplied file.
 
@@ -47,13 +47,13 @@ File-backed data survives closing and reopening the backend. For a container, su
 
 The backend receives its path explicitly. `Hedra` uses the resolved `HEDRA_SQLITE_PATH` setting when creating its application backend, while `ConfigStore` uses it when creating configuration storage; see [server configuration](configuration.md). Legacy table layouts are not migrated or imported.
 
-## Contained storage and query costs
+## Nested data and query costs
 
-A child declaration combines a collection model and `parent`; the parent's Zod model still describes the complete stored JSON, including that child's container. Generated child CRUD updates the root document atomically and validates the complete candidate. Child metadata survives parent replacement according to the [container rules](web-layer.md#replacing-embedded-values).
+The collection model describes the complete stored document, including nested values. Root PATCH replaces supplied top-level attributes and validates the complete resulting document. Nested values receive no generated routes or managed metadata. See [replacement rules](web-layer.md#replacing-nested-values).
 
-Child filters operate within a known parent. The backend has scalar JSON filters and primary-key storage, with no secondary-index declaration or cross-parent child-search interface. A child's UUID does not provide a standalone storage lookup: use its complete containing path. Searching all children would need traversal across root documents or a supporting search index.
+The backend has top-level scalar JSON filters and primary-key storage, with no nested query or secondary-index declaration interface. A UUID stored inside nested data does not provide a standalone resource lookup. Searching nested values across resources would need document traversal or a supporting search index.
 
-Keep contained collections bounded. Large containers increase document reads and writes, and concurrent edits to children contend on the containing record. A collection without `parent` has independent storage when its items need their own lifetime or query scope. See the [containment decision](adr/0029-parent-declared-contained-collections.md).
+Keep nested containers bounded. Large attributes increase document reads and writes, and concurrent updates contend on the same resource. Register a separate Collection when items need their own storage, identity, lifetime or CRUD interface. See [ADR 0030](adr/0030-root-crud-and-ordinary-nested-data.md).
 
 ## Connection ownership
 

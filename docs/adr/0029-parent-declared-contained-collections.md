@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0030
 ---
 
 # Parent declarations select contained collection storage
@@ -28,3 +28,7 @@ Data-only selectors, complete-document validation, generic transactions and conn
 remain. Existing contained JSON can be retained when fields and item schemas are unchanged; callers
 must replace EmbeddedResource with Resource and explicitly declare addressable children. There is
 no automatic migration of separately stored resources or association links into parent documents.
+
+[ADR 0030](0030-root-crud-and-ordinary-nested-data.md) removes parent-declared collections and all
+generated nested routes. Nested values become ordinary model data changed through root CRUD;
+programmatic independent references and deletion protection remain.

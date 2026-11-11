@@ -34,3 +34,6 @@ inside mutation transactions so failures roll back the entire write. See the
 [ADR 0029](0029-parent-declared-contained-collections.md) replaces marker-based resource kinds with
 one Resource schema and explicit parent-declared collections. Container interpretation stays in
 the embedded model module; schema nesting alone no longer creates routes.
+
+[ADR 0030](0030-root-crud-and-ordinary-nested-data.md) removes the embedded model module together
+with generated nested CRUD and managed-child schema interpretation.
