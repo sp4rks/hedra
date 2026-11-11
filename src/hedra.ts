@@ -18,15 +18,7 @@ import { Association, ResourceReference } from '#models/association.ts'
 import { Collection } from '#models/collection.ts'
 import { Resource } from '#models/resource.ts'
 import { ErrorResponse, JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
-import {
-  AssociationScope,
-  EmbeddedScope,
-  EmbeddedStep,
-  getAssociationScope,
-  getEmbeddedScope,
-  getResourceScope,
-  ResourceScope,
-} from '#models/scope.ts'
+import { getResourceScope, ResourceScope } from '#models/scope.ts'
 import { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
 import { Logger } from '#server/logger.ts'
 import { Hedra } from '#server/server.ts'
@@ -45,7 +37,6 @@ export type {
 }
 export {
   Association,
-  AssociationScope,
   BaseController,
   Collection,
   Config,
@@ -53,11 +44,7 @@ export {
   DatabaseFilter,
   DatabaseRecord,
   DatabaseScalar,
-  EmbeddedScope,
-  EmbeddedStep,
   ErrorResponse,
-  getAssociationScope,
-  getEmbeddedScope,
   getResourceScope,
   Hedra,
   JsonApiListResponse,

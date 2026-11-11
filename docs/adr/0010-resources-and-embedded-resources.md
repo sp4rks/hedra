@@ -9,3 +9,6 @@ Hedra distinguishes independently stored `Resource` values from `EmbeddedResourc
 [ADR 0029](0029-parent-declared-contained-collections.md) replaces the separate schema marker and
 inferred routes with one Resource model and explicit parent-declared collections. The independent
 reference and contained-lifetime distinction remains.
+
+[ADR 0030](0030-root-crud-and-ordinary-nested-data.md) subsequently removes contained-resource
+CRUD and special nested identity handling. Nested values are ordinary attributes of their owner.

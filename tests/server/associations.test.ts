@@ -25,106 +25,28 @@ test('associated resources can be shared and block deletion until unlinked', asy
     app.register(projects)
     const first = await create('/projects', { title: 'First' })
     const second = await create('/projects', { title: 'Second' })
-    const label = await create(`/projects/${first}/labels`, { name: 'Urgent' })
+    const label = await create('/labels', { name: 'Urgent' })
+
+    const link = await app.associations.link({ collection: 'projects', id: first }, { collection: 'labels', id: label })
+
+    expect(
+      await app.associations.link({ collection: 'projects', id: first }, { collection: 'labels', id: label }),
+    ).toEqual(link)
 
     await app.associations.link({ collection: 'projects', id: second }, { collection: 'labels', id: label })
-    expect((await app.request(`/projects/${first}/labels/${label}`)).status).toBe(200)
-    expect((await app.request(`/projects/${second}/labels/${label}`)).status).toBe(200)
     const blocked = await app.request(`/labels/${label}`, { method: 'DELETE' })
 
     expect(blocked.status).toBe(409)
+    expect((await app.request(`/projects/${first}`, { method: 'DELETE' })).status).toBe(409)
     expect(
       ((await blocked.json()) as { errors: Array<{ detail: { associations: unknown[] } }> }).errors[0]?.detail
         .associations,
     ).toHaveLength(2)
-    expect((await app.request(`/projects/${first}/associations/labels/${label}`, { method: 'DELETE' })).status).toBe(
-      204,
-    )
+    await app.associations.unlink({ collection: 'projects', id: first }, { collection: 'labels', id: label })
     expect((await app.request(`/labels/${label}`, { method: 'DELETE' })).status).toBe(409)
     await app.associations.unlink({ collection: 'projects', id: second }, { collection: 'labels', id: label })
     expect((await app.request(`/labels/${label}`, { method: 'DELETE' })).status).toBe(204)
     expect((await app.request(`/projects/${first}`)).status).toBe(200)
-  } finally {
-    app.close()
-    backend.close()
-  }
-})
-
-test('embedded resources under associated resources require every link in their ancestry', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = Resource.extend({ text: z.string() })
-  const labels = new Collection('labels', Resource.extend({ name: z.string(), notes: z.array(Note).default([]) }))
-
-  new Collection('notes', Note, { parent: labels })
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
-  const create = async (path: string, body: object) => {
-    const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify(body) })
-
-    expect(response.status).toBe(201)
-
-    return ((await response.json()) as { data: { id: string } }).data.id
-  }
-
-  try {
-    app.register(projects)
-    const first = await create('/projects', { title: 'First' })
-    const second = await create('/projects', { title: 'Second' })
-    const label = await create(`/projects/${first}/labels`, { name: 'Urgent' })
-    const note = await create(`/projects/${first}/labels/${label}/notes`, { text: 'hello' })
-
-    expect((await app.request(`/projects/${first}/labels/${label}/notes/${note}`)).status).toBe(200)
-    expect((await app.request(`/projects/${second}/labels/${label}/notes/${note}`)).status).toBe(404)
-    expect(
-      (
-        await app.request(`/projects/${second}/labels/${label}/notes`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ text: 'bad' }),
-        })
-      ).status,
-    ).toBe(404)
-    const direct = await app.request(`/labels/${label}/notes`)
-
-    expect(((await direct.json()) as { data: unknown[] }).data).toHaveLength(1)
-  } finally {
-    app.close()
-    backend.close()
-  }
-})
-
-test('nested associated creation leaves neither resource nor link when output validation fails', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ config: new Config(quiet), backend })
-  const Label = Resource.extend({ name: z.string() })
-  const labels = new Collection('labels', Label, { outputValidator: Label.refine((value) => value.name !== 'bad') })
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
-
-  try {
-    app.register(projects)
-    const created = await app.request('/projects', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ title: 'First' }),
-    })
-    const id = ((await created.json()) as { data: { id: string } }).data.id
-    const failed = await app.request(`/projects/${id}/labels`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ name: 'bad' }),
-    })
-
-    expect(failed.status).toBe(500)
-    expect(((await (await app.request('/labels')).json()) as { data: unknown[] }).data).toEqual([])
-    expect(await app.associations.list({ collection: 'projects', id })).toEqual([])
-    const missing = await app.request(`/projects/${crypto.randomUUID()}/labels`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ name: 'good' }),
-    })
-
-    expect(missing.status).toBe(404)
-    expect(((await (await app.request('/labels')).json()) as { data: unknown[] }).data).toEqual([])
   } finally {
     app.close()
     backend.close()

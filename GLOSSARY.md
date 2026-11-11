@@ -8,17 +8,14 @@ Hedra lets consuming applications define their data and expose it through collec
 The definition of the shape and validity of a resource type.
 
 **Collection**:
-A named set of one resource type, associating its model, storage placement, endpoint and controller.
+A named set of one independently stored resource type, associating its model, storage name, endpoint and controller.
 
 **Resource**:
-An identifiable item governed by a model, such as one car or tenant. A resource can be independently stored or contained within another resource.
+An independently stored, identifiable item governed by a model, such as one car or tenant. Its attributes can contain ordinary nested data.
 _Avoid_: Record when referring to the application-facing item.
 
-**Contained resource**:
-A resource stored inside its parent and sharing that parent's lifetime. It can contain further resources.
-
 **Parent**:
-The resource that contains another resource. A contained resource is addressed through its parent.
+The resource whose data contains a nested value. Nested values are read and changed through that resource.
 
 **Association**:
 A link between independently stored resources that retain their own lifetimes.

@@ -167,13 +167,16 @@ test('configuration and application data use their own supplied datastores', asy
 
     expect(project.status).toBe(201)
     const projectId = ((await project.json()) as { data: { id: string } }).data.id
-    const label = await app.request(`/projects/${projectId}/labels`, {
+    const label = await app.request('/labels', {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: 'Urgent' }),
     })
 
     expect(label.status).toBe(201)
+    const labelId = ((await label.json()) as { data: { id: string } }).data.id
+
+    await app.associations.link({ collection: 'projects', id: projectId }, { collection: 'labels', id: labelId })
     expect(await app.associations.list({ collection: 'projects', id: projectId })).toHaveLength(1)
     expect(await configDatastore.tenants.get(tenant.id)).toEqual(tenant)
     expect(await otherConfigDatastore.tenants.list()).toEqual([])

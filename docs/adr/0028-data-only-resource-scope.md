@@ -13,3 +13,6 @@ Schema interpretation remains in the embedded model module as decided in [ADR 00
 [ADR 0029](0029-parent-declared-contained-collections.md) revises contained dispatch:
 ResourceScope.collection names the parent-declared child collection whose controller receives the
 request. The embedded target retains the containing root UUID and complete field path.
+
+[ADR 0030](0030-root-crud-and-ordinary-nested-data.md) removes embedded targets and association
+ancestry. ResourceScope retains only the addressed collection and collection/resource target.

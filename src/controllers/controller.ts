@@ -4,20 +4,13 @@ import { z } from 'zod'
 import type { Backend, DatabaseRecord } from '#datastores/backend.ts'
 import type { Collection } from '#models/collection.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
-import {
-  addAssociation,
-  assertAssociationScope,
-  assertUnassociated,
-  associationTable,
-} from '#controllers/associations.ts'
-import { embeddedId, embeddedList, embeddedMutate, prepareEmbedded } from '#controllers/embedded.ts'
+import { assertResource, assertUnassociated } from '#controllers/associations.ts'
 import { jsonString, project } from '#controllers/projection.ts'
-import { validateCandidate } from '#controllers/validation.ts'
+import { assertSafeKeys, validateCandidate } from '#controllers/validation.ts'
 import { DatabaseFilter as FilterSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
 import { HedraError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { ResourceId, ResourceTimestamp } from '#models/resource.ts'
 import { ResourceInput as InputSchema, QueryParams as QuerySchema } from '#models/rest.ts'
-import { getAssociationScope, getContainingCollection } from '#models/scope.ts'
 
 export interface ControllerInterface {
   create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse>
@@ -41,6 +34,8 @@ function attributes(input: ResourceInput): ResourceInput {
   delete value.createdAt
   delete value.updatedAt
   const stored: unknown = JSON.parse(jsonString(value))
+
+  assertSafeKeys(stored)
   const validated = parseInput(InputSchema, stored)
 
   return { ...validated, ...(stored as ResourceInput) }
@@ -65,38 +60,17 @@ export class BaseController implements ControllerInterface {
 
   /** Creates a resource with server-owned identity and timestamps. */
   async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
-    const contained = getContainingCollection(context, collection)
-
-    if (contained)
-      return (await embeddedMutate(
-        this.backend,
-        contained.root,
-        context,
-        contained.scope,
-        'create',
-        attributes(input),
-      )) as JsonApiResponse
     const id = crypto.randomUUID()
     const timestamp = new Date().toISOString()
-    const fields = prepareEmbedded(collection.model, attributes(input), undefined, timestamp)
+    const fields = attributes(input)
     const record: DatabaseRecord = { ...fields, id, createdAt: timestamp, updatedAt: timestamp }
-    const ancestors = getAssociationScope(context)
     let data: ResourceInput | undefined
 
     await this.backend.transaction((transaction) => {
-      if (ancestors) {
-        assertAssociationScope(transaction, ancestors)
-      }
       const validated = validateCandidate(collection.model, record)
 
       data = project(collection, validated)
       transaction.insert(collection.name, validated)
-      if (ancestors) {
-        const source = ancestors.at(-1)
-
-        if (!source) throw new HedraError('Missing association source')
-        addAssociation(transaction, source, { collection: collection.name, id })
-      }
     })
     if (!data) throw new HedraError('Backend did not apply the resource create')
 
@@ -105,18 +79,8 @@ export class BaseController implements ControllerInterface {
 
   /** Returns one resource. */
   async id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse> {
-    const contained = getContainingCollection(context, collection)
-
-    if (contained) return await embeddedId(this.backend, contained.root, context, contained.scope)
     const key = parseInput(ResourceId, id)
-    const ancestors = getAssociationScope(context)
-    const rows = ancestors
-      ? await this.backend.transaction((transaction) => {
-          assertAssociationScope(transaction, ancestors, { collection: collection.name, id: key })
-
-          return transaction.select(collection.name, { id: key })
-        })
-      : await this.backend.select(collection.name, { id: key })
+    const rows = await this.backend.select(collection.name, { id: key })
     const record = rows[0]
 
     if (!record) throw new RecordNotFoundError()
@@ -127,12 +91,11 @@ export class BaseController implements ControllerInterface {
 
   /** Returns matching resources. */
   async list(
-    context: Context,
+    _context: Context,
     collection: Collection,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
-    const contained = getContainingCollection(context, collection)
     const options = queryParams === undefined ? {} : queryParams
 
     parseInput(QuerySchema, options)
@@ -150,49 +113,13 @@ export class BaseController implements ControllerInterface {
 
     if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
 
-    if (contained)
-      return await embeddedList(
-        this.backend,
-        contained.root,
-        context,
-        contained.scope,
-        url.data,
-        Object.fromEntries(entries),
-      )
-    const ancestors = getAssociationScope(context)
-    const records = ancestors
-      ? await this.backend.transaction((transaction) => {
-          assertAssociationScope(transaction, ancestors)
-          const source = ancestors.at(-1)
-
-          if (!source) throw new HedraError('Missing association source')
-          const links = transaction.select(associationTable, {
-            sourceCollection: source.collection,
-            sourceId: source.id,
-            targetCollection: collection.name,
-          })
-          const ids = new Set(links.map((link) => link.targetId))
-
-          return transaction.select(collection.name, Object.fromEntries(entries)).filter((record) => ids.has(record.id))
-        })
-      : await this.backend.select(collection.name, Object.fromEntries(entries))
+    const records = await this.backend.select(collection.name, Object.fromEntries(entries))
 
     return { data: records.map((record) => project(collection, record)), links: { self: url.data } }
   }
 
   /** Updates one resource. */
   async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
-    const contained = getContainingCollection(context, collection)
-
-    if (contained)
-      return (await embeddedMutate(
-        this.backend,
-        contained.root,
-        context,
-        contained.scope,
-        'update',
-        attributes(input),
-      )) as JsonApiResponse
     const key = parseInput(ResourceId, id)
     const fields = attributes(input)
     let data: ResourceInput | undefined
@@ -204,10 +131,9 @@ export class BaseController implements ControllerInterface {
         throw new OutputValidationError('output validation error', parsedTimestamp.error.issues)
       const createdAt = parsedTimestamp.data
       const timestamp = new Date().toISOString()
-      const prepared = prepareEmbedded(collection.model, fields, current, timestamp)
       const updated = validateCandidate(collection.model, {
         ...current,
-        ...prepared,
+        ...fields,
         id: key,
         createdAt,
         updatedAt: timestamp,
@@ -217,14 +143,7 @@ export class BaseController implements ControllerInterface {
 
       return updated
     }
-    const ancestors = getAssociationScope(context)
-    const result = ancestors
-      ? await this.backend.transaction((transaction) => {
-          assertAssociationScope(transaction, ancestors, { collection: collection.name, id: key })
-
-          return transaction.update(collection.name, key, modify)
-        })
-      : await this.backend.update(collection.name, key, modify)
+    const result = await this.backend.update(collection.name, key, modify)
 
     if (!result) throw new RecordNotFoundError()
     if (!data) throw new HedraError('Backend did not apply the resource update')
@@ -233,19 +152,11 @@ export class BaseController implements ControllerInterface {
   }
 
   /** Deletes one resource. */
-  async delete(context: Context, collection: Collection, id: string): Promise<void> {
-    const contained = getContainingCollection(context, collection)
-
-    if (contained) {
-      await embeddedMutate(this.backend, contained.root, context, contained.scope, 'delete')
-
-      return
-    }
+  async delete(_context: Context, collection: Collection, id: string): Promise<void> {
     const key = parseInput(ResourceId, id)
-    const ancestors = getAssociationScope(context)
 
     await this.backend.transaction((transaction) => {
-      assertAssociationScope(transaction, ancestors ?? [], { collection: collection.name, id: key })
+      assertResource(transaction, { collection: collection.name, id: key })
       assertUnassociated(transaction, { collection: collection.name, id: key })
       if (!transaction.delete(collection.name, key)) throw new RecordNotFoundError()
     })

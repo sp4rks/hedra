@@ -51,7 +51,7 @@ Remove the first numeric argument: `new ConnectionError(500, 'Hedra is closed')`
 
 These errors carry status information; routes still choose how to turn errors into HTTP responses. See [REST controllers](collections.md#rest-operations) and [configuration failures](configuration.md).
 
-Generated resource routes use `ConflictError` for occupied embedded targets and association-blocked deletion, and `UnsupportedMediaTypeError` for a non-JSON request body. Their [public error envelope](web-layer.md#requests-and-responses) preserves client-error statuses while hiding internal failure details.
+Generated resource routes use `ConflictError` for association-blocked deletion and `UnsupportedMediaTypeError` for a non-JSON request body. Their [public error envelope](web-layer.md#requests-and-responses) preserves client-error statuses while hiding internal failure details.
 
 ## Validation and unexpected failures
 
