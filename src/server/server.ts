@@ -11,7 +11,7 @@ import { TenantController } from '#controllers/tenant-controller.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore, tenantTable } from '#datastores/categories/config/config.ts'
 import { ConfigurationError, ConnectionError } from '#errors'
-import { bindCollection, Collection, createCollectionController, isAttached } from '#models/collection.ts'
+import { Collection } from '#models/collection.ts'
 import { embeddedFields } from '#models/embedded.ts'
 import { Tenant } from '#models/tenant.ts'
 import { checkRoutes, registerAssociationRoutes, registerRoutes } from '#routes/resources.ts'
@@ -55,7 +55,7 @@ export class Hedra extends Hono {
     const tenants = new Collection('tenants', Tenant)
     const tenantController = new TenantController(this.config, () => this.configDatastore)
 
-    bindCollection(tenants, tenantController)
+    tenants.bindController(tenantController)
     registerRoutes(this, tenants, (context) => tenantController.assertHost(context))
 
     this.associations = new AssociationOperations(
@@ -149,7 +149,7 @@ export class Hedra extends Hono {
       if (known) return
       if (candidate.name === tenantTable || candidate.name === associationTable || candidate.name === 'tenants')
         throw new ConfigurationError('Collection name is reserved')
-      if (isAttached(candidate)) throw new ConfigurationError('Collection is already attached to an app')
+      if (candidate.isAttached) throw new ConfigurationError('Collection is already attached to an app')
 
       checkRoutes(candidate.model, candidate.outputValidator)
 
@@ -189,10 +189,10 @@ export class Hedra extends Hono {
 
     try {
       const backend = this.guard(this.backend as Backend)
-      const controllers = pending.map((item) => [item, createCollectionController(item, backend)] as const)
+      const controllers = pending.map((item) => [item, item.createController(backend)] as const)
 
       for (const [item, controller] of controllers) {
-        bindCollection(item, controller)
+        item.bindController(controller)
         this.collections.set(item.name, item)
       }
 

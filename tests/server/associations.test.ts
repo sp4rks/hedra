@@ -141,8 +141,11 @@ test('failed graph registration leaves every collection reusable', async () => {
       if (fails) throw new Error('cannot construct')
     }
   }
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }), { controller: SometimesFails })
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
+  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
+  const projects = new Collection('projects', Resource.extend({ title: z.string() }), {
+    controller: SometimesFails,
+    associations: [labels],
+  })
 
   try {
     expect(() => first.register(projects)).toThrow('cannot construct')
