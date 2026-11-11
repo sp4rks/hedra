@@ -11,12 +11,14 @@ The definition of the shape and validity of a resource type.
 A named set of one resource type, associating its model, storage name, endpoint and controller.
 
 **Resource**:
-An independently stored, identifiable item governed by a model, such as one car or tenant. A resource has its own lifetime and can be associated with other resources.
+An identifiable item governed by a model, such as one car or tenant. A resource can be independently stored or contained within another resource.
 _Avoid_: Record when referring to the application-facing item.
 
-**EmbeddedResource**:
-An identifiable item contained within another resource and sharing its lifetime. Embedded resources can themselves contain embedded resources.
-_Avoid_: ChildResource, SecondaryResource
+**Contained resource**:
+A resource stored inside its parent and sharing that parent's lifetime. It can contain further resources.
+
+**Parent**:
+The resource that contains another resource. A contained resource is addressed through its parent.
 
 **Association**:
 A link between independently stored resources that retain their own lifetimes.
