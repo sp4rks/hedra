@@ -3,16 +3,7 @@ import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import type { Backend, ControllerInterface } from '#hedra.ts'
-import {
-  BaseController,
-  Collection,
-  Config,
-  EmbeddedResource,
-  Hedra,
-  JsonApiListResponse,
-  JsonApiResponse,
-  Resource,
-} from '#hedra.ts'
+import { BaseController, Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource } from '#hedra.ts'
 
 const Car = Resource.extend({ make: z.string() })
 const quiet = {
@@ -53,7 +44,7 @@ test('Collection binds metadata, a public validator and rejects invalid definiti
 })
 
 test('collections reject embedded resource definitions in unsupported wrapper shapes', () => {
-  const Note = EmbeddedResource.extend({ text: z.string(), password: z.string() })
+  const Note = Resource.extend({ text: z.string(), password: z.string() })
   const models = [
     Resource.extend({ profile: z.object({ note: Note }) }),
     Resource.extend({ notes: z.array(z.array(Note)) }),

@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import type { Backend } from '#hedra.ts'
 import { ConnectionError } from '#errors'
-import { BaseController, Collection, Config, EmbeddedResource, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { BaseController, Collection, Config, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 const headers = { 'content-type': 'application/json' }
@@ -53,8 +53,10 @@ test('associated resources can be shared and block deletion until unlinked', asy
 test('embedded resources under associated resources require every link in their ancestry', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
   const labels = new Collection('labels', Resource.extend({ name: z.string(), notes: z.array(Note).default([]) }))
+
+  new Collection('notes', Note, { parent: labels })
   const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
   const create = async (path: string, body: object) => {
     const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify(body) })

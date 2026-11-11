@@ -146,6 +146,7 @@ export function checkRoutes(model: z.ZodObject, output: z.ZodObject, ancestors =
 function scope(
   context: Context,
   collection: Collection,
+  target: Collection,
   steps: RouteStep[],
   dictionarySelector?: string,
   rootParameter = 'r0',
@@ -160,7 +161,7 @@ function scope(
     return { field, ...(selector === undefined ? {} : { selector }) }
   })
 
-  setEmbeddedTraversal(context, { rootId, steps: values })
+  setEmbeddedTraversal(context, { rootId, steps: values }, collection, target)
   if (associations.length) associationScope(context, associations)
   const publicSteps = values.map(({ field, selector }) =>
     field.kind === 'array'
@@ -171,7 +172,7 @@ function scope(
   )
 
   setResourceScope(context, {
-    collection: collection.name,
+    collection: target.name,
     target: { kind: 'embedded', rootId, steps: publicSteps },
     associations: getAssociationScope(context) ?? [],
   })
@@ -198,11 +199,13 @@ function registerEmbedded(
   parents: RouteStep[],
   rootParameter = 'r0',
   associations: AssociationStep[] = [],
+  owner: Collection = collection,
 ): void {
   for (const field of embeddedFields(model)) {
+    const child = owner.children.find((item) => item.name === field.name)
     const visible = publicItem(field, output)
 
-    if (!visible) continue
+    if (!visible || !child) continue
     const targetPath = `${path}/${field.name}`
     const parentSteps = [...parents, { field }]
     const parameter = `r${parents.length + 1}`
@@ -213,15 +216,10 @@ function registerEmbedded(
       app.get(
         targetPath,
         handler(async (context) => {
-          scope(context, collection, parentSteps, undefined, rootParameter, associations)
+          scope(context, collection, child, parentSteps, undefined, rootParameter, associations)
 
           return context.json(
-            await collection.controller.list(
-              context,
-              collection,
-              context.req.url,
-              query(context, field.model, visible),
-            ),
+            await child.controller.list(context, child, context.req.url, query(context, field.model, visible)),
           )
         }),
       )
@@ -237,9 +235,9 @@ function registerEmbedded(
             throw new InputValidationError()
           key = dictionaryKey(field, params.get('key'))
         } else if ([...params.keys()].length) throw new InputValidationError()
-        scope(context, collection, parentSteps, key, rootParameter, associations)
+        scope(context, collection, child, parentSteps, key, rootParameter, associations)
         const value = await body(context, field.model, false)
-        const response = await collection.controller.create(context, collection, value as never)
+        const response = await child.controller.create(context, child, value as never)
 
         context.header('Location', response.links.self)
 
@@ -249,12 +247,12 @@ function registerEmbedded(
     app.get(
       itemPath,
       handler(async (context) => {
-        scope(context, collection, itemSteps, undefined, rootParameter, associations)
+        scope(context, collection, child, itemSteps, undefined, rootParameter, associations)
 
         return context.json(
-          await collection.controller.id(
+          await child.controller.id(
             context,
-            collection,
+            child,
             field.kind === 'single' ? field.name : (context.req.param(parameter) ?? ''),
           ),
         )
@@ -263,13 +261,13 @@ function registerEmbedded(
     app.patch(
       itemPath,
       handler(async (context) => {
-        scope(context, collection, itemSteps, undefined, rootParameter, associations)
+        scope(context, collection, child, itemSteps, undefined, rootParameter, associations)
         const value = await body(context, field.model, true)
 
         return context.json(
-          await collection.controller.update(
+          await child.controller.update(
             context,
-            collection,
+            child,
             value as never,
             field.kind === 'single' ? field.name : (context.req.param(parameter) ?? ''),
           ),
@@ -279,17 +277,17 @@ function registerEmbedded(
     app.delete(
       itemPath,
       handler(async (context) => {
-        scope(context, collection, itemSteps, undefined, rootParameter, associations)
-        await collection.controller.delete(
+        scope(context, collection, child, itemSteps, undefined, rootParameter, associations)
+        await child.controller.delete(
           context,
-          collection,
+          child,
           field.kind === 'single' ? field.name : (context.req.param(parameter) ?? ''),
         )
 
         return context.body(null, 204)
       }),
     )
-    registerEmbedded(app, collection, itemPath, field.model, visible, itemSteps, rootParameter, associations)
+    registerEmbedded(app, collection, itemPath, field.model, visible, itemSteps, rootParameter, associations, child)
   }
 }
 

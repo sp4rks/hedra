@@ -7,7 +7,6 @@ import {
   BaseController,
   Collection,
   Config,
-  EmbeddedResource,
   getAssociationScope,
   getEmbeddedScope,
   getResourceScope,
@@ -72,10 +71,10 @@ async function fixture(mutate?: (context: Context) => void) {
       return super.delete(context, collection, id)
     }
   }
-  const Task = EmbeddedResource.extend({ text: z.string() })
-  const Note = EmbeddedResource.extend({ text: z.string(), tasks: z.array(Task).default([]) })
-  const Details = EmbeddedResource.extend({ named: z.record(z.string(), Note).default({}) })
-  const Group = EmbeddedResource.extend({ name: z.string(), details: Details.optional() })
+  const Task = Resource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string(), tasks: z.array(Task).default([]) })
+  const Details = Resource.extend({ named: z.record(z.string(), Note).default({}) })
+  const Group = Resource.extend({ name: z.string(), details: Details.optional() })
   const Tag = Resource.extend({
     name: z.string(),
     notes: z.array(Note).default([]),
@@ -84,6 +83,16 @@ async function fixture(mutate?: (context: Context) => void) {
     groups: z.array(Group).default([]),
   })
   const tags = new Collection('tags', Tag, { controller: ScopedController })
+  const notes = new Collection('notes', Note, { parent: tags, controller: ScopedController })
+  const named = new Collection('named', Note, { parent: tags, controller: ScopedController })
+  const summary = new Collection('summary', Note, { parent: tags, controller: ScopedController })
+  const groups = new Collection('groups', Group, { parent: tags, controller: ScopedController })
+  const details = new Collection('details', Details, { parent: groups, controller: ScopedController })
+  const namedDetails = new Collection('named', Note, { parent: details, controller: ScopedController })
+
+  for (const parent of [notes, named, summary, namedDetails]) {
+    new Collection('tasks', Task, { parent, controller: ScopedController })
+  }
   const labels = new Collection('labels', Resource.extend({ name: z.string() }), { associations: [tags] })
   const projects = new Collection('projects', Resource.extend({ name: z.string() }), { associations: [labels] })
   /** Creates a resource through its generated route and returns its ID. */
@@ -133,12 +142,12 @@ test('dictionary requests expose validated keys rather than resource UUIDs', asy
     expect((await app.request(`${path}/release%20plan`, { method: 'DELETE' })).status).toBe(204)
     expect(seen.map((item) => item.resource)).toEqual([
       {
-        collection: 'tags',
+        collection: 'named',
         target: { kind: 'embedded' as const, rootId: tag, steps: [{ field: 'named', kind: 'dictionary' as const }] },
         associations: [],
       },
       ...Array.from({ length: 4 }, () => ({
-        collection: 'tags',
+        collection: 'named',
         target: {
           kind: 'embedded' as const,
           rootId: tag,
@@ -172,7 +181,7 @@ test('singleton requests identify their field without an id or key', async () =>
     expect((await app.request(path, { method: 'DELETE' })).status).toBe(204)
     const single = { field: 'summary', kind: 'single' as const }
     const expected = {
-      collection: 'tags',
+      collection: 'summary',
       target: { kind: 'embedded' as const, rootId: tag, steps: [single] },
       associations: [],
     }
@@ -182,7 +191,7 @@ test('singleton requests identify their field without an id or key', async () =>
       expected,
       expected,
       {
-        collection: 'tags',
+        collection: 'tasks',
         target: { kind: 'embedded' as const, rootId: tag, steps: [single, { field: 'tasks', kind: 'array' as const }] },
         associations: [],
       },
@@ -218,7 +227,7 @@ test('association and embedded traversal compose in one data-only scope', async 
       { collection: 'projects', id: project },
       { collection: 'labels', id: label },
     ]
-    const expected = { collection: 'tags', target: { kind: 'embedded' as const, rootId: tag, steps }, associations }
+    const expected = { collection: 'tasks', target: { kind: 'embedded' as const, rootId: tag, steps }, associations }
 
     expect(seen).toEqual([{ resource: expected, embedded: { rootId: tag, steps }, associations }])
     expect(structuredClone(seen[0]?.resource)).toEqual(expected)
@@ -255,7 +264,7 @@ test('public accessors return only documented detached data', async () => {
       { collection: 'projects', id: project },
       { collection: 'labels', id: label },
     ]
-    const expected = { collection: 'tags', target: { kind: 'embedded' as const, rootId: tag, steps }, associations }
+    const expected = { collection: 'notes', target: { kind: 'embedded' as const, rootId: tag, steps }, associations }
 
     expect(seen).toEqual([{ resource: expected, embedded: { rootId: tag, steps }, associations }])
     const other = await create('/projects', { name: 'Other' })

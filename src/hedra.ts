@@ -16,7 +16,7 @@ import { ConfigStore } from '#datastores/categories/config/config.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
 import { Association, ResourceReference } from '#models/association.ts'
 import { Collection } from '#models/collection.ts'
-import { EmbeddedResource, Resource } from '#models/resource.ts'
+import { Resource } from '#models/resource.ts'
 import { ErrorResponse, JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import {
   AssociationScope,
@@ -53,7 +53,6 @@ export {
   DatabaseFilter,
   DatabaseRecord,
   DatabaseScalar,
-  EmbeddedResource,
   EmbeddedScope,
   EmbeddedStep,
   ErrorResponse,

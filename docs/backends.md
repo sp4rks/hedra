@@ -39,13 +39,21 @@ SQLite uses an immediate transaction to protect its reference checks and writes 
 
 ## SQLite storage
 
-`new SqliteBackend(path)` opens one Bun SQLite database. Each requested table is created lazily with generic `id` and JSON `data` columns; resource attributes do not become individual SQL columns. A collection named `cars` uses a literal `cars` table. Embedded values remain inside that record's JSON. Links between independent resources use the reserved internal `hedra_associations` table.
+`new SqliteBackend(path)` opens one Bun SQLite database. Each requested table is created lazily with generic `id` and JSON `data` columns; resource attributes do not become individual SQL columns. A root collection named `cars` uses a literal `cars` table. Parent-declared collections use fields inside their containing root record's JSON and have no separate table. Links between independent resources use the reserved internal `hedra_associations` table.
 
 A file path is relative to the working directory unless absolute. Missing parent directories are created. Use `:memory:` for an isolated database that disappears on close. Separately constructed in-memory backends do not share records; separately constructed file-backed instances open their own connections to the supplied file.
 
 File-backed data survives closing and reopening the backend. For a container, supply a path such as `/data/hedra.sqlite` and mount a persistent volume at `/data`. Persist the containing directory so SQLite's accompanying files stay with the database.
 
 The backend receives its path explicitly. `Hedra` uses the resolved `HEDRA_SQLITE_PATH` setting when creating its application backend, while `ConfigStore` uses it when creating configuration storage; see [server configuration](configuration.md). Legacy table layouts are not migrated or imported.
+
+## Contained storage and query costs
+
+A child declaration combines a collection model and `parent`; the parent's Zod model still describes the complete stored JSON, including that child's container. Generated child CRUD updates the root document atomically and validates the complete candidate. Child metadata survives parent replacement according to the [container rules](web-layer.md#replacing-embedded-values).
+
+Child filters operate within a known parent. The backend has scalar JSON filters and primary-key storage, with no secondary-index declaration or cross-parent child-search interface. A child's UUID does not provide a standalone storage lookup: use its complete containing path. Searching all children would need traversal across root documents or a supporting search index.
+
+Keep contained collections bounded. Large containers increase document reads and writes, and concurrent edits to children contend on the containing record. A collection without `parent` has independent storage when its items need their own lifetime or query scope. See the [containment decision](adr/0029-parent-declared-contained-collections.md).
 
 ## Connection ownership
 

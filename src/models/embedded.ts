@@ -67,9 +67,7 @@ export function embeddedFields(model: z.ZodObject): EmbeddedField[] {
     }
     const resource = resourceKind(item)
 
-    if (resource === 'resource')
-      throw new ConfigurationError('Independent resources cannot be embedded as owned values')
-    if (resource !== 'embedded') {
+    if (!resource) {
       if (containsResource(schema)) throw new ConfigurationError(`Unsupported embedded resource placement: ${name}`)
 
       return []

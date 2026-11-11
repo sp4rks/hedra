@@ -7,7 +7,6 @@ import {
   BaseController,
   Collection,
   Config,
-  EmbeddedResource,
   getAssociationScope,
   getEmbeddedScope,
   getResourceScope,
@@ -123,11 +122,13 @@ test('embedded array requests distinguish containers from UUID selectors', async
       return super.delete(context, collection, id)
     }
   }
-  const Note = EmbeddedResource.extend({ text: z.string() })
+  const Note = Resource.extend({ text: z.string() })
 
-  app.register(
-    new Collection('cars', Resource.extend({ notes: z.array(Note).default([]) }), { controller: ScopedController }),
-  )
+  const cars = new Collection('cars', Resource.extend({ notes: z.array(Note).default([]) }))
+
+  new Collection('notes', Note, { parent: cars, controller: ScopedController })
+
+  app.register(cars)
   try {
     const rootResponse = await app.request('/cars', { method: 'POST', headers, body: '{}' })
     const rootId = ((await rootResponse.json()) as { data: { id: string } }).data.id
@@ -150,7 +151,7 @@ test('embedded array requests distinguish containers from UUID selectors', async
 
     expect(seen).toEqual(
       [collectionStep, collectionStep, itemStep, itemStep, itemStep].map((step) => ({
-        scope: { collection: 'cars', target: { kind: 'embedded' as const, rootId, steps: [step] }, associations: [] },
+        scope: { collection: 'notes', target: { kind: 'embedded' as const, rootId, steps: [step] }, associations: [] },
         embedded: { rootId, steps: [step] },
       })),
     )

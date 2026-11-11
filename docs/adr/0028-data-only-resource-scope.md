@@ -9,3 +9,7 @@ Custom controllers need to distinguish a resource UUID, an embedded array UUID, 
 This complements [ADR 0009](0009-rest-controller-interface.md): the five nongeneric REST operations and their per-call Context/Collection arguments remain unchanged, including extra-method typing for custom controllers. It preserves [ADR 0010](0010-resources-and-embedded-resources.md)'s lifetimes and [ADR 0011](0011-backend-owned-multi-record-transactions.md)/[ADR 0012](0012-atomic-candidate-validation.md)'s atomic checks and validation. Public embedded-step consumers must migrate from schema objects and a shared selector string to field names and explicit array IDs or dictionary keys; controller calls and stored data need no migration.
 
 Schema interpretation remains in the embedded model module as decided in [ADR 0027](0027-embedded-schema-interpretation.md). This revises that decision's unchanged-public-exports clause for scope metadata: `EmbeddedField` becomes internal and public embedded steps contain only addressing data.
+
+[ADR 0029](0029-parent-declared-contained-collections.md) revises contained dispatch:
+ResourceScope.collection names the parent-declared child collection whose controller receives the
+request. The embedded target retains the containing root UUID and complete field path.

@@ -4,7 +4,6 @@ import { z } from 'zod'
 import {
   Association,
   Collection,
-  EmbeddedResource,
   ErrorResponse,
   Hedra,
   JsonApiListResponse,
@@ -13,7 +12,7 @@ import {
   SqliteBackend,
 } from '#hedra.ts'
 
-const NoteModel = EmbeddedResource.extend({ text: z.string().trim().min(1) })
+const NoteModel = Resource.extend({ text: z.string().trim().min(1) })
 const LabelModel = Resource.extend({ name: z.string().min(1) })
 const ProjectModel = Resource.extend({
   title: z.string().min(1),
@@ -23,10 +22,16 @@ const ProjectModel = Resource.extend({
 })
 const labels = new Collection('labels', LabelModel)
 const projects = new Collection('projects', ProjectModel, { associations: [labels] })
+
+// Child declarations name existing parent fields and add their nested CRUD endpoints.
+new Collection('notes', NoteModel, { parent: projects })
+new Collection('namedNotes', NoteModel, { parent: projects })
+new Collection('summary', NoteModel, { parent: projects })
+
 const backend = new SqliteBackend(':memory:')
 const app = new Hedra({ backend })
 
-// Referenced collections are registered too; embedded values remain inside their project's document.
+// Registration discovers children and references; only roots receive independent storage.
 app.register(projects)
 
 try {
@@ -48,6 +53,19 @@ try {
   assert.equal(note.text, 'First draft')
   assert.equal((await app.request(`/projects/${project.id}/notes/${note.id}`)).status, 200)
   assert.equal((await app.request('/notes')).status, 404)
+
+  // A child PATCH modifies the containing document; its identity stays the same.
+  const changedNote = await app.request(`/projects/${project.id}/notes/${note.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ text: 'Reviewed draft' }),
+  })
+  const refreshed = await app.request(`/projects/${project.id}`)
+  const storedProject = ProjectModel.parse(JsonApiResponse.parse(await refreshed.json()).data)
+
+  assert.equal(changedNote.status, 200)
+  assert.equal(storedProject.notes[0]?.id, note.id)
+  assert.equal(storedProject.notes[0]?.text, 'Reviewed draft')
 
   // Dictionary paths select the key; their values still have generated UUIDs.
   const createdNote = await app.request(`/projects/${project.id}/namedNotes?key=planning`, {
