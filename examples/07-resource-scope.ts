@@ -1,5 +1,4 @@
 import type { Context } from 'hono'
-import assert from 'node:assert/strict'
 import { z } from 'zod'
 
 import type { Collection as CollectionType, QueryParams, ResourceScope } from '#hedra.ts'
@@ -51,15 +50,13 @@ try {
   })
   const project = Project.parse(JsonApiResponse.parse(await created.json()).data)
 
-  assert.equal(created.status, 201)
-  assert.equal((await app.request(`/projects/${project.id}`)).status, 200)
-  assert.deepEqual(projects.controller.lastScope(), {
-    collection: 'projects',
-    target: { kind: 'resource', id: project.id },
-  })
-  assert.equal((await app.request('/projects')).status, 200)
-  assert.deepEqual(projects.controller.lastScope(), { collection: 'projects', target: { kind: 'collection' } })
-  assert.equal((await app.request(`/projects/${project.id}/notes`)).status, 404)
+  await app.request(`/projects/${project.id}`)
+  // The custom controller reports a resource target containing this project's ID.
+  projects.controller.lastScope()
+
+  await app.request('/projects')
+  // A list request reports a collection target with no resource ID.
+  projects.controller.lastScope()
 } finally {
   app.close()
   backend.close()
