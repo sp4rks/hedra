@@ -1,6 +1,6 @@
 # Keep collection registration state on the collection
 
-Status: design and test boundaries accepted by the lead; implementation pending.
+Status: implemented. Merge to `main` requires user approval.
 
 ## Accepted scope and design
 
@@ -43,3 +43,11 @@ The lead owns this plan, test design, documentation and acceptance. The configur
 In parallel, the lead updates the lifecycle reference in `docs/collections.md` on `feature/collection-lifecycle-docs` in its own worktree, touching only `docs/` and `examples/`. Document framework ownership of the internal lifecycle members without promoting manual registration. Check links and run the documented independent examples from their stated repository-root starting point after integration.
 
 Merge docs into the feature branch, run checks and examples, review the fixed commit range against this plan, then obtain independent read-only review from the configured reviewer. Send confirmed findings to the same coder and rerun affected checks before acceptance. Leave `main` unchanged until the user approves merging the completed change.
+
+## Verification results
+
+- The coder ran the focused baseline and strengthened graph regression before production edits: 33 tests and 199 assertions passed. This refactor preserves behaviour, so no new failing behaviour was introduced.
+- Implementation commit `df91d72` removes both WeakMaps and all four lifecycle functions, stores typed state in JavaScript private fields, and updates Hedra's application and tenant binding. The existing custom-controller type guards remain unchanged.
+- `bun run check` passed for implementation and again after documentation integration at `3936684`: TypeScript, Biome, 264 tests with 1,262 assertions, and the coverage gate. Collection has 100% line and function coverage. The ignored worktree uses a symlink to the root's existing dependencies; no dependencies or tooling changed.
+- The lead ran `examples/05-resource-controller.ts`, `examples/06-embedded-resources.ts` and `examples/07-resource-scope.ts` independently from the integrated worktree root. All passed, including their assertions and cleanup. The lifecycle reference matches the implementation; all 21 local links and anchors resolve.
+- The lead reviewed the implementation and integrated documentation against this plan. Construct-before-bind registration, tenant configuration storage, custom-controller inference and validation are preserved. `git diff --check` passes and the feature worktree has no tracked changes before this verification record.
