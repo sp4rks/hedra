@@ -38,7 +38,7 @@ try {
 | `name` | `string` | Required, trimmed and nonempty. |
 | `tenantDomain` | DNS domain string | Required, trimmed, lowercased, unique and immutable. |
 
-Use the exported `TenantInput` schema for creation and replacement, and `TenantChanges` for name-only updates. Both also export their TypeScript types. The schemas derive from `Tenant`, normalise names/domains and reject unknown fields. Mutation types exclude managed metadata; `TenantChanges` additionally excludes the domain, including when passing a pretyped object with a name and forbidden fields.
+Use the exported `TenantInput` schema for creation and replacement, and `TenantChanges` for name-only updates. Both also export TypeScript types inferred directly from their schemas. The schemas derive from `Tenant`, normalise names/domains and reject unknown fields. TypeScript may accept an existing variable containing extra fields; the controller and default store enforce the mutation schemas at runtime.
 
 Omit all three managed metadata fields from mutation payloads. Programmatic operations reject supplied managed fields, including keys whose value is `undefined`. Create and replacement require the name and domain; update changes the name and rejects any domain field. Replacement must retain the existing domain. The default store validates and normalises tenant writes itself; calling the pure schemas first is optional.
 
