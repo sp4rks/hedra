@@ -20,6 +20,8 @@ Programmatic associations remain explicit references between independent resourc
 checks and deletion guards retain generic backend transactions; unlinking is programmatic and
 preserves both endpoints. Root managed metadata, complete-candidate validation and public-output
 confidentiality remain enforced. Privacy helpers do not confer a resource lifecycle on nested data.
+Default output fails closed for ambiguous dynamic schema compositions; consuming applications
+provide an explicit public output schema when static public-field derivation is insufficient.
 
 This supersedes [ADR 0029](0029-parent-declared-contained-collections.md)'s contained declarations
 and nested CRUD, and the nested route/scope portions of [ADR 0010](0010-resources-and-embedded-resources.md),

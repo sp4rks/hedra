@@ -74,7 +74,7 @@ const accounts = new Collection('accounts', Account, {
 })
 ```
 
-An explicit output schema defines its own public fields, including nested fields. Default output omits object-level refinements and derives public fields before applying nested transforms. A transform that requires hidden input or changes the public shape can therefore fail output validation; supply an explicit output validator for that case. An exposed root ID must remain equal to the stored ID. Nested values have no separate identity contract.
+An explicit output schema defines its own public fields, including nested fields. Default output omits object-level refinements and derives schemas that expose declared public fields. Ambiguous combinations of dynamic dictionaries and structured objects fail output validation; supply an explicit output validator for them. Transforms that require hidden input or change the public shape may also need an explicit output validator. An exposed root ID must remain equal to the stored ID. Nested values have no separate identity contract.
 
 ## Resource scope
 
