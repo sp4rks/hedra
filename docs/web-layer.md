@@ -1,19 +1,21 @@
 # Generated resource HTTP routes
 
-Register a Collection to expose its resource operations. Web handlers validate requests and shape HTTP responses; controllers manage resources, embedded values, associations and output. The runtime remains one Bun process with Hono, Zod and the configured backend.
+Register a Collection to expose CRUD for independently stored resources. Nested objects, arrays and dictionaries remain attributes of their containing resource. Hedra generates no nested CRUD or association-navigation routes. The runtime remains one Bun process with Hono, Zod and the configured backend.
 
 The [Tenant API](tenants.md) is built in and uses the configuration catalogue without application collection registration.
 
-## Define root and contained collections
-
-Use `Resource` for every identifiable item. A Collection without `parent` has its own storage and root routes. A Collection with `parent` stores its items inside the parent document and has nested routes. Both have server-managed UUIDs and ISO creation/update timestamps. The parent's model explicitly describes a single contained value, array or dictionary.
+## Define a resource with nested data
 
 ```ts
 import { z } from 'zod'
 
 import { Collection, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 
-const Note = Resource.extend({ text: z.string().trim().min(1) })
+const Note = Resource.extend({ text: z.string().trim().min(1) }).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+})
 const Label = Resource.extend({ name: z.string().min(1) })
 const Project = Resource.extend({
   title: z.string().min(1),
@@ -23,131 +25,96 @@ const Project = Resource.extend({
 })
 const labels = new Collection('labels', Label)
 const projects = new Collection('projects', Project, { associations: [labels] })
-
-new Collection('notes', Note, { parent: projects })
-new Collection('namedNotes', Note, { parent: projects })
-new Collection('summary', Note, { parent: projects })
-
 const backend = new SqliteBackend(':memory:')
 const app = new Hedra({ backend })
 
 app.register(projects)
 ```
 
-Declare children before registration. Registering the root or one of its children discovers the complete declared tree and the referenced independent labels collection. Notes remain in each project's JSON document, so `/notes` is absent and no notes table is used.
+Registration also exposes labels through its independent root routes. Notes stay inside each project's JSON document. The Note model omits metadata because these values need only text; nested Resource models that retain required metadata must receive it from input or schema defaults. Nested schemas follow ordinary Zod semantics, without a second resource type or child collection declaration.
 
-The child's collection name must name a direct field on the parent model, and its model must be the same item schema. Use a direct Resource field, `z.array(ResourceModel)` or `z.record(keySchema, ResourceModel)`, with optional/nullable/default wrappers as needed. A child can declare its own children the same way. Embedding Resource schemas through ordinary wrapper objects, nested arrays, unions or lazy schemas rejects. Ordinary nested Zod objects are document data without managed resource metadata. A nested Resource field receives no generated routes until a corresponding parent-declared Collection exists.
-
-```mermaid
-flowchart LR
-  accTitle: Contained storage and independent references
-  accDescr: Notes are stored inside a project document. Labels have independent storage and are connected through association records.
-  projects[Projects table] --> document[Project document]
-  document --> notes[Contained notes]
-  document --- links[Association records]
-  links --- labels[Labels table]
-```
-
-The SQLite backend stores the complete document in its JSON `data` column; child fields do not become separate SQL columns. Child filters operate within the addressed parent. Global child search and secondary-index declarations are not provided. See [storage and query costs](backends.md#contained-storage-and-query-costs).
-
-The following requests continue the definition above. Close the app and its borrowed backend when finished. For a complete executable version, run `bun run examples/06-embedded-resources.ts` from the repository root.
+Close the app and borrowed backend when finished. For an executable version, run `bun run examples/06-nested-data.ts` from the repository root.
 
 ## Requests and responses
 
-| Path | Methods | Response |
+| Path | Methods | Behaviour |
 | --- | --- | --- |
-| `/projects` | GET, POST | List/create independent resources. |
-| `/projects/:projectId` | GET, PATCH, DELETE | Read/update/delete one independent resource. |
-| `/projects/:projectId/notes` | GET, POST | List/create embedded array items. |
-| `/projects/:projectId/notes/:noteId` | GET, PATCH, DELETE | Address an array item by its UUID. |
-| `/projects/:projectId/namedNotes` | GET, POST | List/create dictionary entries. POST requires `?key=brief`. |
-| `/projects/:projectId/namedNotes/:key` | GET, PATCH, DELETE | Address a dictionary entry by its key. |
-| `/projects/:projectId/summary` | GET, POST, PATCH, DELETE | Address the single embedded value. POST requires it to be absent. |
-| `/projects/:projectId/labels` | GET, POST | List associated labels, or create and associate a new label. |
-| `/projects/:projectId/labels/:labelId` | GET, PATCH, DELETE | Address a label through its association. |
-| `/projects/:projectId/associations/labels/:labelId` | DELETE | Remove the association without deleting either endpoint. |
-| `/labels`, `/labels/:labelId` | Ordinary CRUD methods | Canonical access to independent labels. |
+| `/projects` | GET, POST | List/create projects. |
+| `/projects/:projectId` | GET, PATCH, DELETE | Read/update/delete a project, including its nested data. |
+| `/labels` | GET, POST | List/create independently stored labels. |
+| `/labels/:labelId` | GET, PATCH, DELETE | Read/update/delete a label. |
 
-POST and PATCH accept a JSON attribute object, with a JSON content type. Successful POST returns 201 and a Location header. GET/PATCH return 200. Successful DELETE returns 204 with no body.
+POST and PATCH accept a JSON attribute object with a JSON content type. POST returns 201 and a Location header; GET/PATCH return 200. DELETE returns 204 with no body. JsonApiResponse contains flat attributes in `data` and a self link. JsonApiListResponse contains an array in `data`, even when individual attributes contain dictionaries.
 
-Single responses use `JsonApiResponse`: flat attributes in `data` and a self link. Ordinary and array lists use array data. Dictionary lists use dictionary data, retaining their keys. A dictionary value still has its own UUID; that UUID does not replace its key in the path. Encode keys in URLs. Keys must be nonempty, satisfy the model's key schema and differ from `.`, `..` and the reserved `__proto__` key.
-
-Every ancestor must exist. A contained item under another owner, or an independent resource without the association named by a navigation path, returns 404. Each contained route dispatches to that child's selected controller with the child Collection. The containing root and traversal remain internal; custom controllers use the [public resource scope](collections.md#resource-scope) before delegating to BaseController.
+Paths below an item, including `/projects/:id/notes`, `/projects/:id/labels` and nested association unlink paths, return 404 for every method unless the consuming application explicitly adds a custom route.
 
 | Status | Cause |
 | --- | --- |
 | 400 | Malformed JSON. |
-| 404 | Missing resource, ancestor, embedded item or association. |
-| 409 | An occupied dictionary/single-value create target, or associations blocking Resource deletion. |
+| 404 | Missing resource or route. |
+| 409 | Associations block deletion. |
 | 415 | Unsupported request content type. |
-| 422 | Invalid attributes, item identifiers, dictionary keys, query options or resulting required/container constraints. |
-| 500 | An internal or output-validation failure. |
+| 422 | Invalid attributes, resource UUID, query options or complete candidate. |
+| 500 | Internal or output-validation failure. |
 
-Generated-route errors follow the exported `ErrorResponse` schema: an `errors` envelope with status, title and optional detail. Deletion conflicts report blocking association references rather than private resource attributes. Internal failures never return unfiltered resource data.
+Generated errors follow ErrorResponse: an `errors` envelope containing status, title and optional detail. Deletion conflicts report blocking association references, without private resource attributes. Internal failures return a generic 500 envelope.
 
 ## Filters
 
-Pass one JSON `filter` query parameter. `URLSearchParams` encodes it safely:
+Pass one JSON `filter` query parameter:
 
 ```ts
 const query = new URLSearchParams({ filter: JSON.stringify({ title: 'Launch' }) })
 const response = await app.request(`/projects?${query}`)
 ```
 
-Filters use equality on declared public scalar fields, and all criteria must match. JSON keeps strings, numbers, booleans and null distinct. Duplicate filter parameters, undeclared/private fields, nested filter values and unsupported query options reject. Absent filter fields do not acquire defaults. Pagination, sorting and comparison operators are not provided.
+Filters use equality on declared public top-level scalar fields. All criteria must match. Strings, numbers, booleans and null remain distinct. Duplicate parameters, private/undeclared fields, nested filter values and unsupported options reject. Omitted fields do not acquire defaults. Pagination, sorting and comparison operators are not provided.
 
-## Replacing embedded values
+## Replacing nested values
 
-Creating a parent can supply embedded values without metadata; the controller generates metadata throughout the new document. Supplied managed metadata does not override server values.
+PATCH preserves omitted top-level attributes and replaces supplied attributes as a whole:
 
-PATCH preserves omitted parent attributes. Supplying an embedded container replaces that container. Use a nested item PATCH to change one item's supplied attributes while retaining its other attributes.
+```ts
+await app.request(`/projects/${projectId}`, {
+  method: 'PATCH',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ notes: [{ text: 'Reviewed draft' }] }),
+})
+```
 
-An absent or null array/dictionary lists as empty. A nested POST initializes that container before inserting the new item; the resulting document must still pass its model. Single-value POST likewise requires an absent or null value.
+That request replaces the complete notes array and retains title, namedNotes and summary. An object or dictionary is replaced in the same way; omitted keys inside the supplied replacement do not preserve their previous values. Use an empty array/object or an allowed null value to clear a container. Requiredness and minimum-size constraints still apply.
 
-| Container | Replacement identity |
-| --- | --- |
-| Array | Supply an existing item's ID to retain its identity/creation timestamp. An ID-less item is new. Omitted items are removed; `[]` removes every item. |
-| Dictionary | An existing ID or an unchanged key retains identity. An existing ID can retain identity when its key changes. Omitted keys are removed; `{}` clears the dictionary. |
-| Single value | Replacing an existing value retains its identity. An absent value receives a new identity when created. |
+Only the addressed resource gets server-managed identity and audit timestamps. Nested IDs/timestamps are ordinary model data, with no generated values, reconciliation or automatic refresh. A nested model may generate its own defaults if the application wants them.
 
-Replacement entries provide their complete ordinary attributes; omitted optional attributes are removed. IDs from outside that containing container, duplicate IDs and mismatched single-value IDs reject the entire update. Supplied timestamps cannot change managed timestamps. Replacement rules apply recursively.
-
-An embedded mutation updates the affected item and its containing resource ancestors. Unaffected siblings retain their timestamps. The controller validates the complete containing resource inside the transaction, including cross-field rules, requiredness and container constraints. Deleting a required single value or the final item from a nonempty array fails without changing storage. A failed validation, projection or storage operation leaves the entire parent unchanged. See the [atomic validation decision](adr/0012-atomic-candidate-validation.md).
+The controller validates the complete resulting resource inside its write transaction, including rules spanning stored and changed fields. Validation, projection or storage failure leaves the previous document unchanged. See [atomic validation](adr/0012-atomic-candidate-validation.md).
 
 ## Associations and deletion
 
-An association connects independent Resources, each retaining its storage and lifetime. A nested path provides navigation. It does not create ownership or a private copy of the associated resource. The same resource can be associated with several parents.
-
-POST to `/projects/:projectId/labels` creates a label and its association in one transaction. With the IDs of existing resources, link them through the programmatic interface:
+Associations connect independently stored resources and retain their separate lifetimes. Create each endpoint through its canonical root route, then link it programmatically:
 
 ```ts
-await app.associations.link(
-  { collection: 'projects', id: projectId },
-  { collection: 'labels', id: labelId },
-)
+const source = { collection: 'projects', id: projectId }
+const target = { collection: 'labels', id: labelId }
 
-const associations = await app.associations.list({ collection: 'labels', id: labelId })
+await app.associations.link(source, target)
+const links = await app.associations.list(source)
 ```
 
-Both endpoints must exist and use a declared association between registered independently stored collections. A contained collection cannot declare or receive associations. Linking the same pair is idempotent. An HTTP endpoint for linking existing resources is deferred.
+Both endpoints must exist and use a declared association between registered collections. Linking the same pair is idempotent. Associations create no nested routes. The API does not infer references from arbitrary UUID-valued attributes.
 
-**Any association blocks deletion of either endpoint.** Resource DELETE returns 409 with the blocking associations, even when invoked through a nested association path. Remove each link, then delete the resource through its canonical route:
+**Any association blocks deletion of either endpoint.** DELETE returns 409 with the blocking associations until all links are removed:
 
 ```ts
-await app.request(`/projects/${projectId}/associations/labels/${labelId}`, { method: 'DELETE' })
+await app.associations.unlink(source, target)
 await app.request(`/labels/${labelId}`, { method: 'DELETE' })
 ```
 
-The programmatic equivalent is `app.associations.unlink(source, target)`. Unlinking retains both Resources and unrelated associations. After unlinking, the old navigation path returns 404, while canonical resource access remains available. If other links remain, deletion continues to return 409.
+Unlinking preserves both resources and unrelated links. There are no generated HTTP link/unlink endpoints. Nested document attributes disappear with their containing resource; independently stored resources are never cascade-deleted.
 
-Embedded ownership is separate: embedded values do not block deletion of their owner and disappear with it. Independent associated Resources are never deleted as a cascade. Cardinality and exclusivity policies remain deferred.
+## Output and lifecycle
 
-## Public fields and lifecycle
+Public output preserves password filtering, explicit output schemas and failure rollback. Nested values have no special identity restrictions; an exposed root ID must still identify the addressed resource. See [public output](collections.md#public-output).
 
-Default projection strips unknown fields and password fields at every Resource level. The containing root's output validator defines the public fields for its whole document, including child endpoints. Child output is derived from that containing definition; a separate `outputValidator` on a parent-declared Collection rejects. Hidden fields receive no exposing generated routes. Projection failures abort writes instead of returning raw data. See [public output](collections.md#public-output).
+Custom controllers use [ResourceScope](collections.md#resource-scope) to inspect the addressed collection or UUID. Closing Hedra invalidates its controllers and association handles; borrowed dependencies remain the creator's responsibility. See [storage transactions](backends.md#transactions-across-records).
 
-Output transformations must retain resource identity and the correspondence between a dictionary key and its embedded item. Remapping a key to another item's UUID is an output error, including when its declared schema still accepts the result; it cannot commit a write or return the wrong item.
-
-Closing Hedra invalidates saved controllers and association handles. An owned backend closes with the app; a borrowed backend remains the creator's responsibility. Association operations use the [generic transaction interface](backends.md#transactions-across-records).
-
-This interface supplies no cookies, middleware, authentication or tenant selection. Use the existing Hono interface for other application routes. See the [parent-collection decision](adr/0029-parent-declared-contained-collections.md) for storage and lifetime rules.
+This interface adds no authentication, middleware or tenant selection. Consuming applications can register ordinary Hono routes for additional behaviour. See [ADR 0030](adr/0030-root-crud-and-ordinary-nested-data.md).
