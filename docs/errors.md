@@ -29,20 +29,14 @@ The title is also the standard `Error.message`. The instance's `name` is its cla
 The repository's `#errors` alias resolves to `src/server/errors.ts`. With Bun and dependencies installed, this example runs from the repository root:
 
 ```ts
-import assert from 'node:assert/strict'
-
 import { ConnectionError, InputValidationError } from '#errors'
 
+// The connection error has status 500 and uses its title as its message.
 const closed = new ConnectionError('Hedra is closed')
+// The input error has status 422 and keeps application-specific detail.
 const invalid = new InputValidationError('Invalid car', { field: 'year' })
+// Omitting the title keeps 'input validation error' while supplying detail.
 const defaultTitle = new InputValidationError(undefined, 'A year is required')
-
-assert.equal(closed.status, 500)
-assert.equal(closed.message, 'Hedra is closed')
-assert.equal(invalid.status, 422)
-assert.deepEqual(invalid.detail, { field: 'year' })
-assert.equal(defaultTitle.title, 'input validation error')
-assert.equal(defaultTitle.detail, 'A year is required')
 ```
 
 ## Updating callers
@@ -60,8 +54,6 @@ Use `safeParse` at a validation boundary, then raise the appropriate error expli
 For example, run this from the repository root with Bun and dependencies installed:
 
 ```ts
-import assert from 'node:assert/strict'
-
 import { InputValidationError } from '#errors'
 import { Tenant } from '#hedra.ts'
 
@@ -76,37 +68,28 @@ function validateTenant(input: unknown) {
   return result.data
 }
 
-assert.deepEqual(validateTenant({ name: ' Acme ', tenantDomain: ' ACME.HEDRA.LOCAL ' }), {
-  name: 'Acme',
-  tenantDomain: 'acme.hedra.local',
-})
-assert.throws(() => validateTenant({ name: '', tenantDomain: 'acme.hedra.local' }), InputValidationError)
+// Returns { name: 'Acme', tenantDomain: 'acme.hedra.local' }.
+const tenant = validateTenant({ name: ' Acme ', tenantDomain: ' ACME.HEDRA.LOCAL ' })
 ```
+
+An empty name or invalid domain raises `InputValidationError` with the validation issues as detail.
 
 Do not add a `try/catch` merely to turn every thrown value into a Hedra error. Unexpected failures retain their original identity, type, stack and any native cause. An existing Hedra error also passes through unchanged. A thrown exception inside a custom refinement or transform is unexpected; `safeParse` does not turn that exception into a validation result. Direct programmatic callers handle the errors relevant to their operation and cannot assume every failure is a `HedraError`.
 
 Native JSON serialisation failures also propagate: programmatic values containing cycles or `BigInt` can throw a native `TypeError` before schema validation. They are still rejected before persistence; there is no additional cycle-aware validator.
 
-Keep catches that perform useful recovery, translate malformed JSON into an expected request error, or form a safe HTTP response. Keep transaction rollback, session invalidation and connection cleanup even when removing normalising catches. For example, a callback failure propagates unchanged and rolls back its writes:
+Keep catches that perform useful recovery, translate malformed JSON into an expected request error, or form a safe HTTP response. Keep transaction rollback, session invalidation and connection cleanup even when removing normalising catches. Group related writes in a transaction so a callback failure rolls them back and propagates unchanged:
 
 ```ts
-import assert from 'node:assert/strict'
-
 import { SqliteBackend } from '#hedra.ts'
 
 const backend = new SqliteBackend(':memory:')
-const failure = new Error('The callback failed')
 
 try {
-  await backend.insert('widgets', { id: 'existing' })
-  await assert.rejects(
-    backend.transaction((transaction) => {
-      transaction.insert('widgets', { id: 'temporary' })
-      throw failure
-    }),
-    (error) => error === failure,
-  )
-  assert.deepEqual(await backend.select('widgets'), [{ id: 'existing' }])
+  await backend.transaction((transaction) => {
+    transaction.insert('widgets', { id: 'first' })
+    transaction.insert('widgets', { id: 'second' })
+  })
 } finally {
   backend.close()
 }

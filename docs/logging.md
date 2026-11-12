@@ -39,26 +39,19 @@ Hedra's default logger has its `instanceId` bound during construction. Pass `app
 
 The [controller example](../examples/03-controller.ts) accepts `Config` and `LoggerInterface` in its constructor. It uses `this.config` and `this.log` without depending on Hedra, an HTTP context or process-global services.
 
-From the repository root, exercise that example without opening a network listener:
+From the repository root, start the example:
 
 ```sh
-HEDRA_SERVER_ENV=test HEDRA_SERVER_SILENT_STARTUP=true HEDRA_SERVER_LOG_LEVEL=silent bun run - <<'TS'
-import assert from 'node:assert/strict'
-
-import app from './examples/03-controller.ts'
-
-try {
-  const response = await app.request('/')
-
-  assert.equal(response.status, 200)
-  assert.deepEqual(await response.json(), { environment: 'test' })
-} finally {
-  app.close()
-}
-TS
+HEDRA_SERVER_ENV=dev HEDRA_SERVER_LOG_LEVEL=info bun run examples/03-controller.ts
 ```
 
-The command exits with status `0` and no output. Assertion failures or configuration errors exit with an error.
+With the default listen settings, request the controller's route from another terminal:
+
+```sh
+curl http://127.0.0.1:3000/
+```
+
+The response is `{"environment":"dev"}`. The server logs `Read application environment` with its instance ID. Stop it with `Ctrl+C` when finished.
 
 Pass additional context as the second argument to a logging call. `Logger` validates and copies initial field records during construction; per-call fields are also validated and override matching initial fields. Avoid overriding `instanceId` when retaining app identity.
 
