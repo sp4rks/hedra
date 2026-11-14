@@ -3,6 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { z } from 'zod'
 
 import type { Collection } from '#models/collection.ts'
+import type { ResourceInput } from '#models/rest.ts'
 import { assertSafeKeys, jsonString } from '#controllers/validation.ts'
 import { DatabaseScalar } from '#datastores/backend.ts'
 import {
@@ -14,9 +15,8 @@ import {
   UnsupportedMediaTypeError,
 } from '#errors'
 import { ResourceId } from '#models/resource.ts'
-import { ErrorResponse, JsonApiListResponse, JsonApiResponse } from '#models/rest.ts'
+import { ErrorResponse, JsonApiListResponse, JsonApiResponse, ResourceInput as ResourceSchema } from '#models/rest.ts'
 import { setResourceScope } from '#models/scope.ts'
-import { project } from '#routes/projection.ts'
 
 export type RouteValidators = {
   create?: z.ZodObject
@@ -42,7 +42,7 @@ export function assertRouteValidators(validators: RouteValidators): void {
   if (!parsed.success) throw new ConfigurationError('configuration error', parsed.error.issues)
 }
 
-/** Validates a controller envelope and projects each resource before transport. */
+/** Validates a controller envelope and its web output before transport. */
 function response(
   output: z.ZodObject,
   value: unknown,
@@ -54,9 +54,25 @@ function response(
 
     if (!parsed.success) throw new OutputValidationError()
     const envelope = parsed.data
-    const data = Array.isArray(envelope.data)
-      ? envelope.data.map((item) => project(output, item))
-      : project(output, envelope.data)
+
+    /** Applies the output schema while preserving JSON integrity and resource identity. */
+    function validateOutput(record: ResourceInput): ResourceInput {
+      const id = record.id
+      const result = output.safeParse(record)
+
+      if (!result.success) throw new OutputValidationError('output validation error', result.error.issues)
+      const jsonOutput: unknown = JSON.parse(jsonString(result.data, OutputValidationError))
+      const resource = ResourceSchema.safeParse(jsonOutput)
+
+      if (!resource.success) throw new OutputValidationError('output validation error', resource.error.issues)
+      if (Object.hasOwn(resource.data, 'id') && resource.data.id !== id)
+        throw new OutputValidationError('Output changed resource identity')
+
+      // Preserve literal JSON property names that the resource parser may omit.
+      return { ...resource.data, ...(jsonOutput as ResourceInput) }
+    }
+
+    const data = Array.isArray(envelope.data) ? envelope.data.map(validateOutput) : validateOutput(envelope.data)
 
     if (options.id !== undefined && !Array.isArray(envelope.data) && envelope.data.id !== options.id)
       throw new OutputValidationError()
@@ -204,11 +220,11 @@ export function registerRoutes(
       setResourceScope(context, { collection: collection.name, target: { kind: 'collection' } })
       const value = await body(context, createInput, false)
       const result = await collection.controller.create(context, collection, value as never)
-      const projected = response(output, result, { writeSucceeded: true })
+      const validated = response(output, result, { writeSucceeded: true })
 
-      context.header('Location', projected.links.self)
+      context.header('Location', validated.links.self)
 
-      return context.json(projected, 201)
+      return context.json(validated, 201)
     }),
   )
   app.get(

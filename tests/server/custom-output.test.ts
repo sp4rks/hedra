@@ -15,10 +15,11 @@ const resource = {
   password: 'private',
   token: 'secret',
   extra: 'unknown',
+  profile: { displayName: 'Alice', secret: 'private' },
 }
 const links = { self: `http://localhost/accounts/${id}` }
 
-test('generated routes apply web output schemas to every custom controller result', async () => {
+test('generated routes preserve web schema output and isolate custom controller resources', async () => {
   class CustomController implements ControllerInterface {
     /** Returns the complete created resource. */
     async create() {
@@ -44,7 +45,19 @@ test('generated routes apply web output schemas to every custom controller resul
   const accounts = new Collection('accounts', Account, { controller: CustomController })
 
   try {
-    app.register(accounts, { output: Account.pick({ id: true, name: true }) })
+    app.register(accounts, {
+      output: Account.pick({ id: true, name: true })
+        .extend({
+          profile: z.unknown().transform((value) => {
+            const profile = value as { displayName: string; secret?: string }
+
+            delete profile.secret
+
+            return profile
+          }),
+        })
+        .overwrite((value) => ({ ...value, label: 'Public account' })),
+    })
 
     for (const [path, init] of [
       [
@@ -61,13 +74,21 @@ test('generated routes apply web output schemas to every custom controller resul
       const response = await app.request(path, init)
 
       expect(response.status).toBe(init?.method === 'POST' ? 201 : 200)
-      expect(JsonApiResponse.parse(await response.json()).data).toEqual({ id, name: 'Alice' })
+      expect(JsonApiResponse.parse(await response.json()).data).toEqual({
+        id,
+        name: 'Alice',
+        profile: { displayName: 'Alice' },
+        label: 'Public account',
+      })
     }
     const listed = await app.request('/accounts')
 
     expect(listed.status).toBe(200)
-    expect(JsonApiListResponse.parse(await listed.json()).data).toEqual([{ id, name: 'Alice' }])
+    expect(JsonApiListResponse.parse(await listed.json()).data).toEqual([
+      { id, name: 'Alice', profile: { displayName: 'Alice' }, label: 'Public account' },
+    ])
     expect(resource.password).toBe('private')
+    expect(resource.profile).toEqual({ displayName: 'Alice', secret: 'private' })
   } finally {
     app.close()
   }

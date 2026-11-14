@@ -240,7 +240,7 @@ test('candidate validation rejects transformations that alter managed timestamps
   }
 })
 
-test('output validation cannot change a resource identity', async () => {
+test('output validation cannot change identity on any resource response', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
   const Car = Resource.extend({ name: z.string() })
@@ -255,7 +255,29 @@ test('output validation cannot change a resource identity', async () => {
     })
 
     expect(created.status).toBe(500)
-    expect(await backend.select('cars')).toHaveLength(1)
+    const stored = await backend.select('cars')
+    const id = z.uuid().parse(stored[0]?.id)
+
+    expect(stored).toHaveLength(1)
+
+    for (const [path, init] of [
+      ['/cars', undefined],
+      [`/cars/${id}`, undefined],
+      [`/cars/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{}' }],
+    ] as const) {
+      const response = await app.request(path, init)
+
+      expect(response.status).toBe(500)
+      expect(await response.json()).toEqual({
+        errors: [
+          {
+            status: 500,
+            title: 'internal server error',
+            ...(init ? { detail: 'Transaction succeeded, but response validation failed.' } : {}),
+          },
+        ],
+      })
+    }
   } finally {
     app.close()
     backend.close()

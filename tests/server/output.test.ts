@@ -5,7 +5,7 @@ import { Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resour
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
-test('all resource responses project public output without changing stored data', async () => {
+test('default and ordinary web output schemas strip private fields without changing stored data', async () => {
   const backend = new SqliteBackend(':memory:')
   const Account = Resource.extend({ username: z.string(), password: z.string(), token: z.string() })
     .loose()
@@ -16,8 +16,8 @@ test('all resource responses project public output without changing stored data'
   const app = new Hedra({ config: new Config(quiet), backend })
 
   app.register(accounts)
-  app.register(restricted, { output: z.looseObject({ id: z.uuid(), username: z.string() }) })
-  app.register(explicit, { output: z.looseObject({ id: z.uuid(), password: z.string() }) })
+  app.register(restricted, { output: z.object({ id: z.uuid(), username: z.string() }) })
+  app.register(explicit, { output: z.object({ id: z.uuid(), password: z.string() }) })
 
   try {
     const input = { username: 'alice', password: 'secret', token: 'token', extra: 'private' }
@@ -86,7 +86,7 @@ test('all resource responses project public output without changing stored data'
   }
 })
 
-test('web projects update output once after its atomic mutation', async () => {
+test('web validates update output once after its atomic mutation', async () => {
   const backend = new SqliteBackend(':memory:')
   const Model = Resource.extend({ name: z.string() })
   let validations = 0
