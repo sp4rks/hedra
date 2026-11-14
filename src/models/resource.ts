@@ -11,7 +11,7 @@ export const Resource = z.object({
   id: ResourceId,
   createdAt: ResourceTimestamp,
   updatedAt: ResourceTimestamp,
-  environmentDomain: Domain.meta({ constraints: { indexed: true } }),
+  environmentDomain: Domain.meta({ indexed: true }),
 })
 
 export type Resource = z.infer<typeof Resource>

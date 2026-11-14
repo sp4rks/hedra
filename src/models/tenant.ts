@@ -6,7 +6,7 @@ import { Resource } from '#models/resource.ts'
 export const Tenant = Resource.pick({ id: true, createdAt: true, updatedAt: true })
   .extend({
     name: z.string().trim().min(1),
-    tenantDomain: Domain.meta({ constraints: { unique: true } }),
+    tenantDomain: Domain.meta({ unique: true }),
   })
   .strict()
 

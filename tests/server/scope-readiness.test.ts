@@ -3,7 +3,7 @@ import { Context } from 'hono'
 import { z } from 'zod'
 
 import type { Backend } from '#hedra.ts'
-import { ConnectionError, OutputValidationError, PreconditionFailedError } from '#errors'
+import { ConfigurationError, ConnectionError, OutputValidationError, PreconditionFailedError } from '#errors'
 import {
   BaseController,
   Collection,
@@ -259,7 +259,10 @@ test('earlier controllers wait for a later addressed collection and its unique i
   })
   const app = new Hedra({ config: new Config(quiet), backend: injected })
   const earlier = new Collection('earlier', Resource)
-  const later = new Collection('later', Resource.extend({ name: z.string().meta({ constraints: { unique: true } }) }))
+  const later = new Collection(
+    'later',
+    Resource.extend({ name: z.string().meta({ unique: true, indexed: false, description: 'A unique display name' }) }),
+  )
   const context = await scopedContext('http://localhost/later')
   let writes: Promise<PromiseSettledResult<unknown>[]> | undefined
 
@@ -284,5 +287,39 @@ test('earlier controllers wait for a later addressed collection and its unique i
     await writes
     app.close()
     backend.close()
+  }
+})
+
+test.each(['indexed', 'unique'])('registration rejects a malformed %s metadata flag', (flag) => {
+  const app = new Hedra({ config: new Config(quiet) })
+  const widgets = new Collection('widgets', Resource.extend({ name: z.string().meta({ [flag]: 'true' }) }))
+
+  try {
+    expect(() => app.register(widgets)).toThrow(ConfigurationError)
+    expect(() => widgets.controller).toThrow('registered')
+  } finally {
+    app.close()
+  }
+})
+
+test('registration accepts unrelated field metadata and false index flags without enforcing uniqueness', async () => {
+  const app = new Hedra({ config: new Config(quiet) })
+  const widgets = new Collection(
+    'widgets',
+    Resource.extend({
+      name: z
+        .string()
+        .meta({ unique: false, indexed: false, description: 'A reusable display name', examples: ['Same'] }),
+    }),
+  )
+  const context = await scopedContext('http://localhost/widgets')
+
+  try {
+    app.register(widgets)
+    await widgets.controller.create(context, widgets, { name: 'Same' })
+    await widgets.controller.create(context, widgets, { name: 'Same' })
+    expect((await widgets.controller.list(context, widgets, context.req.url)).data).toHaveLength(2)
+  } finally {
+    app.close()
   }
 })

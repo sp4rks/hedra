@@ -7,8 +7,8 @@ import { Tenant } from '#models/tenant.ts'
 export const Environment = Resource.pick({ id: true, createdAt: true, updatedAt: true })
   .extend({
     name: Tenant.shape.name,
-    tenantDomain: Domain.meta({ constraints: { indexed: true } }),
-    environmentDomain: Domain.meta({ constraints: { unique: true } }),
+    tenantDomain: Domain.meta({ indexed: true }),
+    environmentDomain: Domain.meta({ unique: true }),
   })
   .strict()
 
