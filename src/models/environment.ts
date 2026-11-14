@@ -13,11 +13,3 @@ export const Environment = Resource.pick({ id: true, createdAt: true, updatedAt:
   .strict()
 
 export type Environment = z.infer<typeof Environment>
-
-export const EnvironmentInput = Environment.pick({ name: true, environmentDomain: true })
-
-export type EnvironmentInput = z.infer<typeof EnvironmentInput>
-
-export const EnvironmentChanges = Environment.pick({ name: true }).partial()
-
-export type EnvironmentChanges = z.infer<typeof EnvironmentChanges>

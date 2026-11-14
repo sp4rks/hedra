@@ -11,11 +11,3 @@ export const Tenant = Resource.pick({ id: true, createdAt: true, updatedAt: true
   .strict()
 
 export type Tenant = z.infer<typeof Tenant>
-
-export const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
-
-export type TenantInput = z.infer<typeof TenantInput>
-
-export const TenantChanges = Tenant.pick({ name: true }).partial()
-
-export type TenantChanges = z.infer<typeof TenantChanges>

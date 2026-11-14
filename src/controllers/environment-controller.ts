@@ -4,16 +4,12 @@ import { z } from 'zod'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
 import type { Collection } from '#models/collection.ts'
-import type { EnvironmentInput } from '#models/environment.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { resourceLink } from '#controllers/controller.ts'
+import { EnvironmentCreate, EnvironmentUpdate } from '#datastores/categories/config/environments.ts'
 import { InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { isDirectDomain } from '#models/domain.ts'
-import {
-  EnvironmentChanges as ChangesSchema,
-  Environment,
-  EnvironmentInput as InputSchema,
-} from '#models/environment.ts'
+import { Environment } from '#models/environment.ts'
 import { requireTenantScope } from '#models/request-scope.ts'
 import { ResourceId } from '#models/resource.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
@@ -56,11 +52,11 @@ export class EnvironmentController implements ControllerInterface {
   /** Creates an environment beneath the request tenant. */
   async create(context: Context, _collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
     const tenant = requireTenantScope(context)
-    const fields = parseInput(InputSchema, this.attributes(input))
+    const fields = parseInput(EnvironmentCreate, this.attributes(input))
 
     if (!isDirectDomain(fields.environmentDomain, tenant.tenantDomain))
       throw new InputValidationError('Environment domain must be a direct subdomain of its tenant')
-    const value = await this.datastore().environments.create(tenant.tenantDomain, fields as EnvironmentInput)
+    const value = await this.datastore().environments.create(tenant.tenantDomain, fields as EnvironmentCreate)
     const data = this.output(context, value)
 
     if (data.environmentDomain !== parseInput(Environment.shape.environmentDomain, fields.environmentDomain))
@@ -105,7 +101,7 @@ export class EnvironmentController implements ControllerInterface {
     const value = await this.datastore().environments.update(
       tenant.tenantDomain,
       key,
-      parseInput(ChangesSchema, this.attributes(input)),
+      parseInput(EnvironmentUpdate, this.attributes(input)),
     )
 
     if (value === null) throw new RecordNotFoundError()

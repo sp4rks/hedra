@@ -1,6 +1,7 @@
 import type { Backend } from '#datastores/backend.ts'
+import type { EnvironmentCreate, EnvironmentUpdate } from '#datastores/categories/config/environments.ts'
 import type { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
-import type { Environment, EnvironmentChanges, EnvironmentInput } from '#models/environment.ts'
+import type { Environment } from '#models/environment.ts'
 import type { Tenant } from '#models/tenant.ts'
 import { Config } from '#config'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
@@ -26,11 +27,11 @@ export interface TenantOperationsInterface {
 
 /** Describes tenant-scoped environment catalogue operations. */
 export interface EnvironmentOperationsInterface {
-  create(tenantDomain: string, input: EnvironmentInput): Promise<Environment>
+  create(tenantDomain: string, input: EnvironmentCreate): Promise<Environment>
   get(tenantDomain: string, id: string): Promise<Environment | null>
   list(tenantDomain: string, filter?: Partial<Environment>): Promise<Environment[]>
-  update(tenantDomain: string, id: string, changes: EnvironmentChanges): Promise<Environment | null>
-  replace(tenantDomain: string, id: string, input: EnvironmentInput): Promise<Environment | null>
+  update(tenantDomain: string, id: string, changes: EnvironmentUpdate): Promise<Environment | null>
+  replace(tenantDomain: string, id: string, input: EnvironmentCreate): Promise<Environment | null>
   delete(tenantDomain: string, id: string): Promise<boolean>
 }
 

@@ -1,6 +1,7 @@
+import type { z } from 'zod'
+
 import type { Backend, BackendTransaction } from '#datastores/backend.ts'
 import type { EnvironmentOperationsInterface } from '#datastores/categories/config/config.ts'
-import type { EnvironmentChanges, EnvironmentInput } from '#models/environment.ts'
 import { catalogueRecord } from '#datastores/categories/config/records.ts'
 import {
   InputValidationError,
@@ -10,13 +11,17 @@ import {
   UniqueViolationError,
 } from '#errors'
 import { Domain, isDirectDomain } from '#models/domain.ts'
-import {
-  EnvironmentChanges as ChangesSchema,
-  Environment,
-  EnvironmentInput as InputSchema,
-} from '#models/environment.ts'
+import { Environment } from '#models/environment.ts'
 import { ResourceId } from '#models/resource.ts'
 import { Tenant } from '#models/tenant.ts'
+
+export const EnvironmentCreate = Environment.pick({ name: true, environmentDomain: true })
+
+export type EnvironmentCreate = z.infer<typeof EnvironmentCreate>
+
+export const EnvironmentUpdate = Environment.pick({ name: true }).partial()
+
+export type EnvironmentUpdate = z.infer<typeof EnvironmentUpdate>
 
 export class EnvironmentOperations implements EnvironmentOperationsInterface {
   /** Shares catalogue storage, preparation and tenant ownership checks. */
@@ -53,10 +58,10 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
   }
 
   /** Creates an environment beneath its active tenant and reserves a unique domain. */
-  async create(tenantDomain: string, input: EnvironmentInput): Promise<Environment> {
+  async create(tenantDomain: string, input: EnvironmentCreate): Promise<Environment> {
     await this.ready
     const owner = parseInput(Domain, tenantDomain)
-    const fields = parseInput(InputSchema, input)
+    const fields = parseInput(EnvironmentCreate, input)
 
     if (!isDirectDomain(fields.environmentDomain, owner))
       throw new InputValidationError('Environment domain must be a direct subdomain of its tenant')
@@ -164,15 +169,15 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
   }
 
   /** Changes only the environment name. */
-  async update(tenantDomain: string, id: string, changes: EnvironmentChanges): Promise<Environment | null> {
-    const fields = parseInput(ChangesSchema, changes)
+  async update(tenantDomain: string, id: string, changes: EnvironmentUpdate): Promise<Environment | null> {
+    const fields = parseInput(EnvironmentUpdate, changes)
 
     return this.change(tenantDomain, id, (current) => ({ ...current, ...fields, updatedAt: new Date().toISOString() }))
   }
 
   /** Replaces attributes while retaining the immutable environment domain. */
-  async replace(tenantDomain: string, id: string, input: EnvironmentInput): Promise<Environment | null> {
-    const fields = parseInput(InputSchema, input)
+  async replace(tenantDomain: string, id: string, input: EnvironmentCreate): Promise<Environment | null> {
+    const fields = parseInput(EnvironmentCreate, input)
 
     return this.change(tenantDomain, id, (current) => ({ ...current, ...fields, updatedAt: new Date().toISOString() }))
   }

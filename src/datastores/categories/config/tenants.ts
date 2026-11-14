@@ -1,15 +1,21 @@
+import type { z } from 'zod'
+
 import type { Backend } from '#datastores/backend.ts'
 import type { TenantOperationsInterface } from '#datastores/categories/config/config.ts'
-import type { TenantChanges, TenantInput } from '#models/tenant.ts'
 import { catalogueRecord } from '#datastores/categories/config/records.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, UniqueViolationError } from '#errors'
 import { Environment } from '#models/environment.ts'
 import { ResourceId } from '#models/resource.ts'
-import { TenantChanges as ChangesSchema, TenantInput as InputSchema, Tenant } from '#models/tenant.ts'
+import { Tenant } from '#models/tenant.ts'
 
-export type TenantCreate = TenantInput
-export type TenantUpdate = TenantChanges
+export const TenantCreate = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
+
+export type TenantCreate = z.infer<typeof TenantCreate>
+
+export const TenantUpdate = Tenant.pick({ name: true }).partial()
+
+export type TenantUpdate = z.infer<typeof TenantUpdate>
 
 export class TenantOperations extends ResourceOperations<Tenant> implements TenantOperationsInterface {
   /** Shares catalogue readiness and the table needed for atomic child checks. */
@@ -46,9 +52,9 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
   }
 
   /** Creates a tenant while preserving every historical domain reservation. */
-  override async create(input: TenantInput): Promise<Tenant> {
+  override async create(input: TenantCreate): Promise<Tenant> {
     await this.ready
-    const fields = parseInput(InputSchema, input)
+    const fields = parseInput(TenantCreate, input)
     const timestamp = new Date().toISOString()
     const tenant = parseInput(Tenant, {
       ...fields,
@@ -92,15 +98,15 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
   }
 
   /** Changes the tenant name while retaining its domain and metadata. */
-  override async update(id: string, changes: TenantChanges): Promise<Tenant | null> {
-    const fields = parseInput(ChangesSchema, changes)
+  override async update(id: string, changes: TenantUpdate): Promise<Tenant | null> {
+    const fields = parseInput(TenantUpdate, changes)
 
     return this.change(id, (current) => ({ ...current, ...fields, updatedAt: new Date().toISOString() }))
   }
 
   /** Replaces public attributes without changing ownership or identity. */
-  override async replace(id: string, input: TenantInput): Promise<Tenant | null> {
-    const fields = parseInput(InputSchema, input)
+  override async replace(id: string, input: TenantCreate): Promise<Tenant | null> {
+    const fields = parseInput(TenantCreate, input)
 
     return this.change(id, (current) => {
       if (fields.tenantDomain !== current.tenantDomain) throw new InputValidationError('Tenant domain cannot change')

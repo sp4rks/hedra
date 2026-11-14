@@ -7,6 +7,7 @@ import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
 import type { Collection } from '#models/collection.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { resourceLink } from '#controllers/controller.ts'
+import { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
 import {
   InputValidationError,
   OutputValidationError,
@@ -17,7 +18,7 @@ import {
 import { requestHostname } from '#middleware/request-scope.ts'
 import { ResourceId } from '#models/resource.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
-import { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
+import { Tenant } from '#models/tenant.ts'
 
 export class TenantController implements ControllerInterface {
   /** Uses app configuration and obtains its configuration datastore on demand. */
@@ -77,7 +78,7 @@ export class TenantController implements ControllerInterface {
     ) {
       throw new InputValidationError('Tenant domain must be a direct subdomain of the deployment domain')
     }
-    const tenant = this.tenantOutput(await this.datastore().tenants.create(parseInput(TenantInput, fields)))
+    const tenant = this.tenantOutput(await this.datastore().tenants.create(parseInput(TenantCreate, fields)))
 
     if (tenant.tenantDomain !== tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
 
@@ -132,7 +133,7 @@ export class TenantController implements ControllerInterface {
     const fields = this.attributes(input)
 
     if (Object.hasOwn(fields, 'tenantDomain')) throw new InputValidationError('Tenant domain cannot change')
-    const value = await this.datastore().tenants.update(key, parseInput(TenantChanges, fields))
+    const value = await this.datastore().tenants.update(key, parseInput(TenantUpdate, fields))
 
     if (value === null) throw new RecordNotFoundError()
     const tenant = this.tenantOutput(value, key)

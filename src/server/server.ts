@@ -18,9 +18,10 @@ import { modelIndexes } from '#datastores/indexes.ts'
 import { ConfigurationError, ConnectionError } from '#errors'
 import { environmentMiddleware, tenantMiddleware } from '#middleware/request-scope.ts'
 import { Collection } from '#models/collection.ts'
-import { Environment, EnvironmentChanges, EnvironmentInput } from '#models/environment.ts'
+import { Environment } from '#models/environment.ts'
 import { requireRequestScope } from '#models/request-scope.ts'
 import { Tenant } from '#models/tenant.ts'
+import { EnvironmentChanges, EnvironmentInput, TenantChanges, TenantInput } from '#routes/catalogue-inputs.ts'
 import { assertRouteValidators, guardedMiddleware, registerRoutes, routeHandler } from '#routes/resources.ts'
 import { Logger } from '#server/logger.ts'
 
@@ -90,8 +91,8 @@ export class Hedra extends Hono {
       this,
       tenants,
       {
-        create: Tenant.pick({ name: true, tenantDomain: true }),
-        update: Tenant.pick({ name: true }).partial(),
+        create: TenantInput,
+        update: TenantChanges,
         output: Tenant,
       },
       async (context, next) => {
