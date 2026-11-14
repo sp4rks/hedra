@@ -5,8 +5,7 @@ import type { Backend, DatabaseRecord } from '#datastores/backend.ts'
 import type { Collection } from '#models/collection.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { assertResource, assertUnassociated } from '#controllers/associations.ts'
-import { jsonString, project } from '#controllers/projection.ts'
-import { assertSafeKeys, validateCandidate } from '#controllers/validation.ts'
+import { assertSafeKeys, jsonString, validateCandidate } from '#controllers/validation.ts'
 import { DatabaseFilter as FilterSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
 import { HedraError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { ResourceId, ResourceTimestamp } from '#models/resource.ts'
@@ -69,8 +68,8 @@ export class BaseController implements ControllerInterface {
     await this.backend.transaction((transaction) => {
       const validated = validateCandidate(collection.model, record)
 
-      data = project(collection, validated)
       transaction.insert(collection.name, validated)
+      data = validated
     })
     if (!data) throw new HedraError('Backend did not apply the resource create')
 
@@ -86,7 +85,7 @@ export class BaseController implements ControllerInterface {
     if (!record) throw new RecordNotFoundError()
     if (record.id !== key) throw new HedraError('Resource ID cannot change')
 
-    return { data: project(collection, record), links: { self: resourceLink(context, key) } }
+    return { data: record, links: { self: resourceLink(context, key) } }
   }
 
   /** Returns matching resources. */
@@ -115,7 +114,7 @@ export class BaseController implements ControllerInterface {
 
     const records = await this.backend.select(collection.name, Object.fromEntries(entries))
 
-    return { data: records.map((record) => project(collection, record)), links: { self: url.data } }
+    return { data: records, links: { self: url.data } }
   }
 
   /** Updates one resource. */
@@ -139,7 +138,7 @@ export class BaseController implements ControllerInterface {
         updatedAt: timestamp,
       })
 
-      data = project(collection, updated)
+      data = updated
 
       return updated
     }

@@ -12,13 +12,12 @@ const quiet = {
   HEDRA_SQLITE_PATH: ':memory:',
 }
 
-test('Collection binds metadata, a public validator and rejects invalid definitions', () => {
+test('Collection binds resource metadata and rejects invalid definitions', () => {
   const cars = new Collection('cars', Car)
 
   expect(cars.name).toBe('cars')
   expect(cars.endpoint).toBe('/cars')
   expect(cars.model).toBe(Car)
-  expect(cars.outputValidator).toBeInstanceOf(z.ZodObject)
   expect(() => cars.controller).toThrow('registered')
 
   for (const name of ['', 'Cars', '../cars', 'cars/other', '1cars']) {

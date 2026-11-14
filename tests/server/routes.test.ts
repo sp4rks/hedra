@@ -49,7 +49,7 @@ test('generated routes distinguish client errors from failed output validation',
   const output = z.object({ id: z.uuid(), make: z.string(), year: z.number() }).refine(() => false)
 
   try {
-    app.register(new Collection('cars', Car, { outputValidator: output }))
+    app.register(new Collection('cars', Car), { output })
     const missingType = await app.request('/cars', { method: 'POST', body: '{}' })
     const malformed = await app.request('/cars', {
       method: 'POST',
@@ -71,8 +71,16 @@ test('generated routes distinguish client errors from failed output validation',
     expect(malformed.status).toBe(400)
     expect(invalid.status).toBe(422)
     expect(outputFailure.status).toBe(500)
-    expect(await outputFailure.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
-    expect(((await (await app.request('/cars')).json()) as { data: unknown[] }).data).toEqual([])
+    expect(await outputFailure.json()).toEqual({
+      errors: [
+        {
+          status: 500,
+          title: 'internal server error',
+          detail: 'Transaction succeeded, but response validation failed.',
+        },
+      ],
+    })
+    expect(await backend.select('cars')).toHaveLength(1)
     expect((await app.request('/cars/not-a-uuid')).status).toBe(422)
     expect((await app.request('/cars?sort=make')).status).toBe(422)
   } finally {
@@ -239,7 +247,7 @@ test('output validation cannot change a resource identity', async () => {
   const output = Car.overwrite((value) => ({ ...value, id: '00000000-0000-4000-8000-000000000000' }))
 
   try {
-    app.register(new Collection('cars', Car, { outputValidator: output }))
+    app.register(new Collection('cars', Car), { output })
     const created = await app.request('/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -247,7 +255,7 @@ test('output validation cannot change a resource identity', async () => {
     })
 
     expect(created.status).toBe(500)
-    expect(await backend.select('cars')).toEqual([])
+    expect(await backend.select('cars')).toHaveLength(1)
   } finally {
     app.close()
     backend.close()

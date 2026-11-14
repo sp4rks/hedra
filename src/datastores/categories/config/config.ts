@@ -1,5 +1,6 @@
 import type { Backend } from '#datastores/backend.ts'
-import type { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
+import type { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
+import type { Tenant } from '#models/tenant.ts'
 import { Config } from '#config'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { TenantOperations } from '#datastores/categories/config/tenants.ts'
@@ -9,11 +10,11 @@ export const tenantTable = 'hedra_config_tenants'
 
 /** Describes the configuration catalogue's tenant operations. */
 export interface TenantOperationsInterface {
-  create(input: TenantInput): Promise<Tenant>
+  create(input: TenantCreate): Promise<Tenant>
   get(id: string): Promise<Tenant | null>
   list(filter?: Partial<Tenant>): Promise<Tenant[]>
-  update(id: string, changes: TenantChanges): Promise<Tenant | null>
-  replace(id: string, input: TenantInput): Promise<Tenant | null>
+  update(id: string, changes: TenantUpdate): Promise<Tenant | null>
+  replace(id: string, input: TenantCreate): Promise<Tenant | null>
   delete(id: string): Promise<boolean>
 }
 

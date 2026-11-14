@@ -4,10 +4,10 @@ import { z } from 'zod'
 import type { Config } from '#config'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
+import type { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
 import type { Collection } from '#models/collection.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { resourceLink } from '#controllers/controller.ts'
-import { project } from '#controllers/projection.ts'
 import {
   InputValidationError,
   OutputValidationError,
@@ -17,7 +17,7 @@ import {
 } from '#errors'
 import { ResourceId } from '#models/resource.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
-import { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
+import { Tenant } from '#models/tenant.ts'
 
 export class TenantController implements ControllerInterface {
   /** Uses app configuration and obtains its configuration datastore on demand. */
@@ -65,30 +65,34 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Creates a tenant in the configuration catalogue. */
-  async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
+  async create(context: Context, _collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
     this.assertHost(context)
-    const fields = parseInput(TenantInput, this.attributes(input))
+    const fields = this.attributes(input)
+    const tenantDomain = parseInput(Tenant.shape.tenantDomain, fields.tenantDomain)
+
     const suffix = `.${this.config.deploymentDomain.toLowerCase()}`
-    const label = fields.tenantDomain.endsWith(suffix) ? fields.tenantDomain.slice(0, -suffix.length) : ''
+    const label = tenantDomain.endsWith(suffix) ? tenantDomain.slice(0, -suffix.length) : ''
+
+    fields.tenantDomain = tenantDomain
 
     if (
       !label ||
       label.includes('.') ||
       [this.config.deploymentApiDomain.toLowerCase(), this.config.deploymentDocsDomain.toLowerCase()].includes(
-        fields.tenantDomain,
+        tenantDomain,
       )
     ) {
       throw new InputValidationError('Tenant domain must be a direct subdomain of the deployment domain')
     }
-    const tenant = this.tenantOutput(await this.datastore().tenants.create(fields))
+    const tenant = this.tenantOutput(await this.datastore().tenants.create(fields as TenantCreate))
 
-    if (tenant.tenantDomain !== fields.tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
+    if (tenant.tenantDomain !== tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
 
-    return { data: project(collection, tenant), links: { self: resourceLink(context, tenant.id) } }
+    return { data: tenant, links: { self: resourceLink(context, tenant.id) } }
   }
 
   /** Returns one tenant. */
-  async id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse> {
+  async id(context: Context, _collection: Collection, id: string): Promise<JsonApiResponse> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
     const value = await this.datastore().tenants.get(key)
@@ -96,13 +100,13 @@ export class TenantController implements ControllerInterface {
     if (value === null) throw new RecordNotFoundError()
     const tenant = this.tenantOutput(value, key)
 
-    return { data: project(collection, tenant), links: { self: resourceLink(context, key) } }
+    return { data: tenant, links: { self: resourceLink(context, key) } }
   }
 
-  /** Returns tenants matching public scalar fields. */
+  /** Returns tenants matching domain scalar fields. */
   async list(
     context: Context,
-    collection: Collection,
+    _collection: Collection,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
@@ -113,7 +117,7 @@ export class TenantController implements ControllerInterface {
     for (const [key, value] of Object.entries(options.filter ?? {})) {
       const schema = Tenant.shape[key as keyof typeof Tenant.shape]
 
-      if (!schema || !Object.hasOwn(collection.outputValidator.shape, key)) throw new InputValidationError()
+      if (!schema) throw new InputValidationError()
       filter[key] = parseInput(schema, value)
     }
     const values = await this.datastore().tenants.list(filter)
@@ -123,22 +127,24 @@ export class TenantController implements ControllerInterface {
     if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
 
     return {
-      data: values.map((value) => project(collection, this.tenantOutput(value))),
+      data: values.map((value) => this.tenantOutput(value)),
       links: { self: url.data },
     }
   }
 
   /** Changes a tenant name without allowing its domain to change. */
-  async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+  async update(context: Context, _collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
-    const fields = parseInput(TenantChanges, this.attributes(input))
-    const value = await this.datastore().tenants.update(key, fields)
+    const fields = this.attributes(input)
+
+    if (Object.hasOwn(fields, 'tenantDomain')) throw new InputValidationError('Tenant domain cannot change')
+    const value = await this.datastore().tenants.update(key, fields as TenantUpdate)
 
     if (value === null) throw new RecordNotFoundError()
     const tenant = this.tenantOutput(value, key)
 
-    return { data: project(collection, tenant), links: { self: resourceLink(context, key) } }
+    return { data: tenant, links: { self: resourceLink(context, key) } }
   }
 
   /** Deletes one tenant. */

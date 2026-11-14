@@ -8,11 +8,3 @@ export const Tenant = Resource.extend({
 }).strict()
 
 export type Tenant = z.infer<typeof Tenant>
-
-export const TenantInput = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
-
-export type TenantInput = z.infer<typeof TenantInput>
-
-export const TenantChanges = TenantInput.omit({ tenantDomain: true }).partial()
-
-export type TenantChanges = z.infer<typeof TenantChanges>

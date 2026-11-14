@@ -5,6 +5,7 @@ import type {
   ConfigStoreOptions,
   TenantOperationsInterface,
 } from '#datastores/categories/config/config.ts'
+import type { RouteValidators } from '#routes/resources.ts'
 import type { LogFields, LoggerInterface } from '#server/logger.ts'
 import type { HedraOptions } from '#server/server.ts'
 import { Config } from '#config'
@@ -18,7 +19,7 @@ import { Collection } from '#models/collection.ts'
 import { Association, Resource, ResourceReference } from '#models/resource.ts'
 import { ErrorResponse, JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { getResourceScope, ResourceScope } from '#models/scope.ts'
-import { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
+import { Tenant } from '#models/tenant.ts'
 import { Logger } from '#server/logger.ts'
 import { Hedra } from '#server/server.ts'
 
@@ -32,6 +33,7 @@ export type {
   LogFields,
   LoggerInterface,
   RecordModifier,
+  RouteValidators,
   TenantOperationsInterface,
 }
 export {
@@ -57,7 +59,5 @@ export {
   ResourceScope,
   SqliteBackend,
   Tenant,
-  TenantChanges,
   TenantController,
-  TenantInput,
 }

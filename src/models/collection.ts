@@ -3,14 +3,12 @@ import { z } from 'zod'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import { BaseController } from '#controllers/controller.ts'
-import { defaultOutputValidator } from '#controllers/projection.ts'
 import { ConfigurationError } from '#errors'
 import { assertResourceModel } from '#models/resource.ts'
 
 type ControllerConstructor<C extends ControllerInterface> = new (backend: Backend) => C
 type Options<C extends ControllerInterface> = {
   controller?: ControllerConstructor<C>
-  outputValidator?: z.ZodObject
   associations?: Collection[]
 }
 
@@ -18,12 +16,11 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
   readonly name: string
   readonly model: S
   readonly endpoint: string
-  readonly outputValidator: z.ZodObject
   readonly associations: readonly Collection[]
   readonly #controllerConstructor: ControllerConstructor<C>
   #controller?: C
 
-  /** Defines a named resource collection and selects its controller and public output. */
+  /** Defines a named resource collection and selects its controller. */
   constructor(
     name: string,
     model: S,
@@ -43,7 +40,6 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
     const parsedOptions = z
       .strictObject({
         controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
-        outputValidator: z.instanceof(z.ZodObject).optional(),
         associations: z.array(z.instanceof(Collection)).optional(),
       })
       .safeParse(options === undefined ? {} : options)
@@ -52,7 +48,6 @@ export class Collection<S extends z.ZodObject = z.ZodObject, C extends Controlle
     const parsed = parsedOptions.data
 
     this.endpoint = `/${this.name}`
-    this.outputValidator = parsed.outputValidator ?? defaultOutputValidator(model)
     this.associations = Object.freeze(parsed.associations ?? [])
     this.#controllerConstructor = parsed.controller ?? (BaseController as unknown as ControllerConstructor<C>)
   }

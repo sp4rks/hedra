@@ -197,30 +197,16 @@ test('invalid stored resources remain internal errors', async () => {
   }
 })
 
-test('output validation failure is internal and prevents resource creation', async () => {
-  const backend = new SqliteBackend(':memory:')
-  const model = Resource.extend({ name: z.string() })
-  const output = model.extend({ name: z.string().refine(() => false) })
-  const collection = new Collection('items', model, { outputValidator: output })
-  const controller = new BaseController(backend)
-  const context = new Context(new Request('http://localhost/items'))
-
-  try {
-    await expect(controller.create(context, collection, { name: 'item' })).rejects.toBeInstanceOf(OutputValidationError)
-    expect(await backend.select('items')).toEqual([])
-  } finally {
-    backend.close()
-  }
-})
-
-test('generated routes redact output validation failures and roll back writes', async () => {
+test('generated routes report committed writes when output validation fails', async () => {
   const backend = new SqliteBackend(':memory:')
   const model = Resource.extend({ name: z.string() })
   const output = model.extend({ name: z.string().refine(() => false, 'private detail') })
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
+  const collection = new Collection('items', model)
+  const context = new Context(new Request('http://localhost/items'))
 
   try {
-    app.register(new Collection('items', model, { outputValidator: output }))
+    app.register(collection, { output })
     const response = await app.request('/items', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -228,8 +214,16 @@ test('generated routes redact output validation failures and roll back writes', 
     })
 
     expect(response.status).toBe(500)
-    expect(await response.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
-    expect(await backend.select('items')).toEqual([])
+    expect(await response.json()).toEqual({
+      errors: [
+        {
+          status: 500,
+          title: 'internal server error',
+          detail: 'Transaction succeeded, but response validation failed.',
+        },
+      ],
+    })
+    expect((await collection.controller.list(context, collection, 'http://localhost/items')).data).toHaveLength(1)
   } finally {
     app.close()
     backend.close()

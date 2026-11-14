@@ -1,10 +1,24 @@
-import type { z } from 'zod'
+import { z } from 'zod'
 
 import type { DatabaseRecord } from '#datastores/backend.ts'
+import type { HedraError } from '#errors'
 import { InputValidationError } from '#errors'
 
 type ObjectValue = Record<string, unknown>
 const metadata = ['id', 'createdAt', 'updatedAt'] as const
+
+/** Serializes a value only when JSON preserves it without loss. */
+export function jsonString(value: unknown, ErrorClass: typeof HedraError = InputValidationError): string {
+  const data = JSON.stringify(value)
+
+  if (data === undefined) throw new ErrorClass('Resource values must be JSON compatible')
+  const json = z.json().safeParse(value)
+
+  if (!json.success) throw new ErrorClass('Resource values must be JSON compatible', json.error.issues)
+  if (!Bun.deepEquals(value, JSON.parse(data))) throw new ErrorClass('Resource values must be JSON compatible')
+
+  return data
+}
 
 /** Rejects keys that Zod would otherwise silently discard while parsing JSON. */
 export function assertSafeKeys(value: unknown): void {

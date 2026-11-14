@@ -196,7 +196,7 @@ test('explicit output schemas hide nested secrets on every resource response', a
   const note = { text: 'visible', password: 'private', secret: 'unknown' }
 
   try {
-    app.register(new Collection('projects', model, { outputValidator }))
+    app.register(new Collection('projects', model), { output: outputValidator })
     const created = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ notes: [note] }) })
     const data = ((await created.json()) as { data: { id: string; notes: unknown[] } }).data
 

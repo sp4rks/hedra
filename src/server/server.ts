@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
+import type { RouteValidators } from '#routes/resources.ts'
 import type { LoggerInterface } from '#server/logger.ts'
 import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
@@ -13,7 +14,7 @@ import { ConfigStore, tenantTable } from '#datastores/categories/config/config.t
 import { ConfigurationError, ConnectionError } from '#errors'
 import { Collection } from '#models/collection.ts'
 import { Tenant } from '#models/tenant.ts'
-import { registerRoutes } from '#routes/resources.ts'
+import { assertRouteValidators, registerRoutes } from '#routes/resources.ts'
 import { Logger } from '#server/logger.ts'
 
 export type HedraOptions = {
@@ -55,7 +56,16 @@ export class Hedra extends Hono {
     const tenantController = new TenantController(this.config, () => this.configDatastore)
 
     tenants.bindController(tenantController)
-    registerRoutes(this, tenants, (context) => tenantController.assertHost(context))
+    registerRoutes(
+      this,
+      tenants,
+      {
+        create: Tenant.pick({ name: true, tenantDomain: true }),
+        update: Tenant.pick({ name: true }).partial(),
+        output: Tenant,
+      },
+      (context) => tenantController.assertHost(context),
+    )
 
     this.associations = new AssociationOperations(
       () => {
@@ -122,12 +132,16 @@ export class Hedra extends Hono {
   }
 
   /** Constructs the selected controller using this app's backend. */
-  register<S extends z.ZodObject, C extends ControllerInterface>(collection: Collection<S, C>): void {
+  register<S extends z.ZodObject, C extends ControllerInterface>(
+    collection: Collection<S, C>,
+    validators: RouteValidators = {},
+  ): void {
     if (this.closed) throw new ConfigurationError('Hedra is closed')
     if (!(collection instanceof Collection)) throw new ConfigurationError('Expected a Collection')
     if (this.collections.has(collection.name))
       throw new ConfigurationError(`Collection already registered: ${collection.name}`)
 
+    assertRouteValidators(validators)
     const collectionsByName = new Map(this.collections)
     const pending: Collection[] = []
     const visiting = new Set<Collection>()
@@ -186,7 +200,7 @@ export class Hedra extends Hono {
         this.collections.set(item.name, item)
       }
 
-      for (const item of pending) registerRoutes(this, item)
+      for (const item of pending) registerRoutes(this, item, item === collection ? validators : undefined)
     } catch (error) {
       if (opened) {
         this.closeBackend?.()
