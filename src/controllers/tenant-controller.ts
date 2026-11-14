@@ -14,10 +14,10 @@ import {
   parseInput,
   RecordNotFoundError,
 } from '#errors'
+import { requestHostname } from '#middleware/request-scope.ts'
 import { ResourceId } from '#models/resource.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
 import { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
-import { requestHostname } from '#server/request-scope.ts'
 
 export class TenantController implements ControllerInterface {
   /** Uses app configuration and obtains its configuration datastore on demand. */

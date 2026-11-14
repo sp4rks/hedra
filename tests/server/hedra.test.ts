@@ -69,8 +69,9 @@ test.each([
   'collection registration logging with HEDRA_SERVER_PRINT_ROUTES=%s at %s level',
   (value, level, logsRegistration) => {
     const dir = mkdtempSync(join(tmpdir(), 'hedra-registration-'))
-    const example = join(import.meta.dir, '../../examples/02-models.ts')
-    const script = `import hedra from ${JSON.stringify(example)}; hedra.close()`
+    const entry = join(import.meta.dir, '../../src/hedra.ts')
+    const script = `import { Hedra, Collection, Resource } from ${JSON.stringify(entry)};
+      const app = new Hedra(); app.register(new Collection('cars', Resource)); app.close()`
 
     try {
       const proc = Bun.spawnSync([process.execPath, '--no-env-file', '-e', script], {

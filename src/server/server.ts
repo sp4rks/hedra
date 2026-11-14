@@ -16,13 +16,13 @@ import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore, environmentTable, tenantTable } from '#datastores/categories/config/config.ts'
 import { modelIndexes } from '#datastores/indexes.ts'
 import { ConfigurationError, ConnectionError } from '#errors'
+import { environmentMiddleware, tenantMiddleware } from '#middleware/request-scope.ts'
 import { Collection } from '#models/collection.ts'
 import { Environment, EnvironmentChanges, EnvironmentInput } from '#models/environment.ts'
 import { requireRequestScope } from '#models/request-scope.ts'
 import { Tenant } from '#models/tenant.ts'
 import { assertRouteValidators, guardedMiddleware, registerRoutes, routeHandler } from '#routes/resources.ts'
 import { Logger } from '#server/logger.ts'
-import { environmentMiddleware, tenantMiddleware } from '#server/request-scope.ts'
 
 export type HedraOptions = {
   config?: Config
