@@ -177,6 +177,7 @@ export function registerRoutes(
   const attributes = model.clone({ ...model.def, checks: [] } as never).omit(mask as never)
   const createInput = validators.create ?? attributes
   const updateInput = validators.update ?? attributes.partial()
+  const updateSubmittedOnly = validators.update === undefined
   const output =
     validators.output ?? z.object(Object.fromEntries(Object.entries(model.shape).filter(([key]) => key !== 'password')))
 
@@ -230,7 +231,7 @@ export function registerRoutes(
       const id = input(ResourceId, context.req.param('id'))
 
       setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
-      const value = await body(context, updateInput, validators.update === undefined)
+      const value = await body(context, updateInput, updateSubmittedOnly)
 
       const result = await collection.controller.update(context, collection, value as never, id)
 

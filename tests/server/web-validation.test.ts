@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { Context } from 'hono'
 import { z } from 'zod'
 
+import type { RouteValidators } from '#hedra.ts'
 import { InputValidationError } from '#errors'
 import { Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
 
@@ -217,40 +218,43 @@ test('associated collections retain their own registered web constraints', async
 test.each([
   ['explicit', 'from-web'],
   ['default', 'old'],
-] as const)('PATCH respects parsed explicit schemas and omitted default fields (%s)', async (mode, expectedAudit) => {
-  const backend = new SqliteBackend(':memory:')
-  const app = new Hedra({ config: new Config(quiet), backend })
-  const Account = Resource.extend({ name: z.string(), audit: z.string().default('model-default') })
-  const accounts = new Collection('accounts', Account)
+] as const)(
+  'PATCH retains registered schema semantics when validator options are reused (%s)',
+  async (mode, expectedAudit) => {
+    const backend = new SqliteBackend(':memory:')
+    const app = new Hedra({ config: new Config(quiet), backend })
+    const Account = Resource.extend({ name: z.string(), audit: z.string().default('model-default') })
+    const accounts = new Collection('accounts', Account)
 
-  try {
-    app.register(
-      accounts,
-      mode === 'explicit'
-        ? {
-            update: Account.pick({ name: true }).extend({ audit: z.string().default('from-web') }),
-          }
-        : {},
-    )
-    const created = await app.request('/accounts', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ name: 'Alice', audit: 'old' }),
-    })
-    const id = z.uuid().parse(JsonApiResponse.parse(await created.json()).data.id)
-    const updated = await app.request(`/accounts/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ name: 'Bob' }),
-    })
+    try {
+      const validators: RouteValidators =
+        mode === 'explicit'
+          ? { update: Account.pick({ name: true }).extend({ audit: z.string().default('from-web') }) }
+          : {}
 
-    expect(updated.status).toBe(200)
-    expect(JsonApiResponse.parse(await updated.json()).data).toMatchObject({ name: 'Bob', audit: expectedAudit })
-    const loaded = await app.request(`/accounts/${id}`)
+      app.register(accounts, validators)
+      delete validators.update
+      app.register(new Collection('other_accounts', Account), validators)
+      const created = await app.request('/accounts', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: 'Alice', audit: 'old' }),
+      })
+      const id = z.uuid().parse(JsonApiResponse.parse(await created.json()).data.id)
+      const updated = await app.request(`/accounts/${id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ name: 'Bob' }),
+      })
 
-    expect(JsonApiResponse.parse(await loaded.json()).data).toMatchObject({ name: 'Bob', audit: expectedAudit })
-  } finally {
-    app.close()
-    backend.close()
-  }
-})
+      expect(updated.status).toBe(200)
+      expect(JsonApiResponse.parse(await updated.json()).data).toMatchObject({ name: 'Bob', audit: expectedAudit })
+      const loaded = await app.request(`/accounts/${id}`)
+
+      expect(JsonApiResponse.parse(await loaded.json()).data).toMatchObject({ name: 'Bob', audit: expectedAudit })
+    } finally {
+      app.close()
+      backend.close()
+    }
+  },
+)
