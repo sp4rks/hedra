@@ -1,6 +1,6 @@
 # Collections and REST controllers
 
-A Collection names an independently stored resource type and selects its model, controller and public output. Register it with Hedra to construct its controller and expose root CRUD routes. Nested objects are ordinary attributes of that resource.
+A Collection names an independently stored resource type and selects its model and controller. Register it with Hedra to construct its controller, select web validators and expose root CRUD routes. Nested objects are ordinary attributes of that resource.
 
 ```ts
 import { z } from 'zod'
@@ -55,7 +55,7 @@ const projects = new Collection('projects', Project)
 
 There is no child Collection or `parent` option. Read nested data through GET `/projects/:id`; replace it through PATCH `/projects/:id`. Supplying `notes` replaces the whole array. No child IDs, timestamps, identity matching or partial child updates are performed by Hedra. If the nested schema declares required metadata, the caller or schema defaults must supply it. See [replacing nested values](web-layer.md#replacing-nested-values).
 
-Generated routes derive create/PATCH validators from the addressed model, omitting root managed fields. Create applies required fields, normalisation and defaults. PATCH validates supplied fields without filling omitted defaults. Controllers validate the complete proposed resource inside the write transaction, including rules spanning current and changed fields. Invalid candidates return 422; output failures return 500 and abort writes. See [atomic candidate validation](adr/0012-atomic-candidate-validation.md).
+Generated routes derive create/PATCH validators from the addressed model, omitting root managed fields. Create applies required fields, normalisation and defaults. PATCH validates supplied fields without filling omitted defaults. Controllers validate the complete proposed resource inside the write transaction, including rules spanning current and changed fields. Invalid candidates return 422 and roll back the write. Web output validation follows the completed controller operation; its failures return 500 while completed writes remain committed. See [atomic candidate validation](adr/0012-atomic-candidate-validation.md).
 
 Models describe the [stable stored representation](adr/0003-models-describe-stored-records.md). Their parsed values must remain valid under the same model. Root identity and audit fields cannot be changed by model transforms. Nested values use normal model validation, without special resource-placement or identity restrictions.
 
@@ -63,27 +63,31 @@ QueryParams accepts only `filter`, a dictionary of top-level scalar equality cri
 
 ## Public output
 
-BaseController projects every returned resource through the collection's output validator, including each list item. Its default includes the model's declared top-level fields except `password` and strips undeclared top-level fields. The default object does not carry the model's object-level refinements, which may depend on the omitted password.
+Generated web routes apply the registered output Zod object to each resource returned by create, item reads, lists and updates, including custom controller results. Controllers return complete resources; direct programmatic callers apply their own output policy.
 
-Nested fields keep their declared Zod schemas. Their passwords, dictionary entries, defaults, catch fallbacks and transformations follow those schemas; a loose nested object can expose undeclared fields. Hedra does not infer nested privacy or reject unions and intersections merely because their public shape is ambiguous. Fields such as `token` are public by default too.
+The default output object includes the model's declared top-level fields except `password` and strips undeclared top-level fields. It keeps each field schema unchanged and omits the model's object-level refinements, which may depend on the omitted password. Nested fields follow their supplied schemas, and fields such as `token` are public by default.
 
-Select an explicit output validator for resource-specific privacy. BaseController applies it to create, item reads, lists and updates:
+Select an explicit web output validator for resource-specific privacy:
 
 ```ts
 const Profile = z.object({ displayName: z.string(), password: z.string(), token: z.string() }).loose()
 const Account = Resource.extend({ email: z.email(), password: z.string(), token: z.string(), profile: Profile })
-const accounts = new Collection('accounts', Account, {
-  outputValidator: Account.omit({ password: true, token: true })
+const accounts = new Collection('accounts', Account)
+
+hedra.register(accounts, {
+  output: Account.omit({ password: true, token: true })
     .extend({ profile: Profile.pick({ displayName: true }).strip() })
     .strip(),
 })
 ```
 
-An explicit output validator defines its public fields, including nested fields, and can deliberately expose a top-level password. Custom controllers own their response policy; methods that delegate to BaseController use the selected collection validator. Protect every response path when implementing custom methods. Models describe stored data and do not confer secrecy on a field or resource type.
+The schema controls the complete output shape. Ordinary Zod objects strip extra fields, loose objects retain them, strict objects reject them, and catchalls validate them. Defaults, transformations and fields added by overwrites follow native Zod behaviour. Hedra applies no additional root-key allowlist and does not infer nested privacy. An explicit schema can expose a top-level password, including through a loose schema's extra fields.
 
-Projection uses a clone so output transforms cannot mutate storage. Invalid output raises an error without falling back to raw data; create and update validate output before their transactions commit. Private values remain stored. An exposed root ID must remain equal to the stored ID; nested values have no separate identity contract. Run `bun run examples/08-public-output.ts` from the repository root for a complete example.
+The web layer detaches controller data before validation so output transforms cannot mutate storage. It checks lossless JSON compatibility before and after parsing and requires each output resource to remain an object. An exposed root ID must remain equal to the controller resource's original ID; single-resource controller results must also identify the requested resource when the output omits its ID. Nested values have no separate identity contract.
 
-When updating an existing application, review nested response schemas before adopting this policy. Previous default output recursively hid nested passwords and undeclared object fields; those values can now appear if their declared schemas allow them. Select an explicit nested output schema or enforce the equivalent policy in the controller. See [controller-owned public output](adr/0031-controller-owned-public-output.md).
+Invalid output returns a redacted 500 without falling back to raw data. For create and update, output validation follows the completed transaction: the write remains committed and the error includes `Transaction succeeded, but response validation failed.` Private values remain stored.
+
+When updating an existing application, review explicit loose, strict and catchall output schemas. Extra root fields previously removed before validation now follow those schemas: loose objects can expose private fields, and strict or catchall objects can fail on stored fields. Use a stripping schema for a public subset. Nested secrets also require an explicit output policy. See [web-owned public output](adr/0031-controller-owned-public-output.md).
 
 ## Resource scope
 
@@ -98,7 +102,7 @@ GET list and POST use the collection target. GET item, PATCH and DELETE use the 
 
 ## Controller selection and lifecycle
 
-Collection options accept a `controller` class constructed with `(backend)`, an `outputValidator`, and declared `associations`. Extra controller methods retain their inferred types. Generated root handlers pass the selected Collection and dispatch through its controller. Custom application routes can call additional controller methods.
+Collection options accept a `controller` class constructed with `(backend)` and declared `associations`. Pass `create`, `update` and `output` Zod objects as the second argument to `Hedra.register` to configure web validation. Extra controller methods retain their inferred types. Generated root handlers pass the selected Collection and dispatch through its controller. Custom application routes can call additional controller methods.
 
 Register collections and custom routes before handling requests. Accessing `collection.controller` before registration throws. Registration includes referenced independent collections and validates the complete declaration graph before constructing controllers. It rejects duplicate names, reserved names, cycles and collection-instance reuse across apps. Referencing a collection already registered in the same app is allowed; explicitly registering it again rejects. Constructor failure leaves pending controllers and routes unattached and reusable. Lifecycle members marked `@internal` belong to the framework.
 

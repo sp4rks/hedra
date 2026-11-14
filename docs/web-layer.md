@@ -88,7 +88,7 @@ Only the addressed resource gets server-managed identity and audit timestamps. N
 
 Dictionary keys follow their model's rules rather than URL-selector rules. The `__proto__` key rejects at the JSON boundary because schema parsing can otherwise discard it silently.
 
-The controller validates the complete resulting resource inside its write transaction, including rules spanning stored and changed fields. Validation, projection or storage failure leaves the previous document unchanged. See [atomic validation](adr/0012-atomic-candidate-validation.md).
+The controller validates the complete resulting resource inside its write transaction, including rules spanning stored and changed fields. Candidate-validation or storage failure leaves the previous document unchanged. Web output validation runs after the controller completes; a response-validation failure leaves the completed write committed. See [atomic validation](adr/0012-atomic-candidate-validation.md).
 
 ## Associations and deletion
 
@@ -115,7 +115,7 @@ Unlinking preserves both resources and unrelated links. There are no generated H
 
 ## Output and lifecycle
 
-BaseController's default output omits a top-level password and undeclared top-level fields. Nested values follow their declared Zod schemas; consuming applications select an explicit output validator or use custom controller logic for nested secrets and other private fields. Output failures still roll back writes, and an exposed root ID must identify the addressed resource. See [public output](collections.md#public-output) for the policy and migration from recursive filtering.
+Generated routes validate every controller result with the registered output Zod object. The default strips a top-level `password` and undeclared top-level fields. Explicit schemas control root and nested fields through native Zod behaviour: ordinary objects strip extras, loose objects retain them, strict objects reject them, and catchalls validate them. JSON integrity and root identity checks still apply. Output failures return 500; completed create/update writes remain committed and the error includes `Transaction succeeded, but response validation failed.` See [public output](collections.md#public-output) for schema selection and migration.
 
 Custom controllers use [ResourceScope](collections.md#resource-scope) to inspect the addressed collection or UUID. Closing Hedra invalidates its controllers and association handles; borrowed dependencies remain the creator's responsibility. See [storage transactions](backends.md#transactions-across-records).
 

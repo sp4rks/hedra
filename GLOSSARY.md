@@ -21,7 +21,7 @@ The resource whose data contains a nested value. Nested values are read and chan
 A link between independently stored resources that retain their own lifetimes.
 
 **Controller**:
-A reusable handler for a collection's REST operations, including server-owned attributes and public output filtering.
+A reusable handler for a collection's REST operations, including server-owned attributes and complete-resource validation.
 
 **Consuming application**:
 An application built with Hedra that defines its own resource models and collections.
