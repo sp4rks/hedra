@@ -157,6 +157,8 @@ export class Hedra extends Hono {
       const pending = (async () => {
         guarded(() => undefined)
         await readiness
+        // Controllers accept a collection per call, including registrations newer than their own.
+        await this.preparation
 
         return guarded(operation)
       })()

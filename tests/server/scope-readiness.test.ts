@@ -245,3 +245,44 @@ test('abandoned graph controllers do not leave unhandled constructor-write rejec
     backend.close()
   }
 })
+
+test('earlier controllers wait for a later addressed collection and its unique indexes', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const release = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  const injected = indexedBackend(backend, async (table, indexes) => {
+    if (table === 'later') {
+      started.resolve()
+      await release.promise
+    }
+    await backend.ensureIndexes(table, indexes)
+  })
+  const app = new Hedra({ config: new Config(quiet), backend: injected })
+  const earlier = new Collection('earlier', Resource)
+  const later = new Collection('later', Resource.extend({ name: z.string().meta({ constraints: { unique: true } }) }))
+  const context = await scopedContext('http://localhost/later')
+  let writes: Promise<PromiseSettledResult<unknown>[]> | undefined
+
+  try {
+    app.register(earlier)
+    await earlier.controller.list(context, earlier, context.req.url)
+    app.register(later)
+    writes = Promise.allSettled([
+      earlier.controller.create(context, later, { name: 'Same name' }),
+      earlier.controller.create(context, later, { name: 'Same name' }),
+    ])
+    await started.promise
+    expect(await backend.select('later')).toEqual([])
+    release.resolve()
+    const outcomes = await writes
+
+    expect(outcomes.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(outcomes.find((result) => result.status === 'rejected')).toMatchObject({ reason: { status: 409 } })
+    expect(await backend.select('later')).toHaveLength(1)
+  } finally {
+    release.resolve()
+    await writes
+    app.close()
+    backend.close()
+  }
+})
