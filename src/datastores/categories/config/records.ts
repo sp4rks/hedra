@@ -1,7 +1,7 @@
 import type { z } from 'zod'
 
 import { OutputValidationError } from '#errors'
-import { ResourceTimestamp } from '#models/metadata.ts'
+import { ResourceTimestamp } from '#models/resource.ts'
 
 /** Validates internal deletion metadata and returns a public catalogue value. */
 export function catalogueRecord<S extends z.ZodObject>(

@@ -2,12 +2,15 @@ import { z } from 'zod'
 
 import { ConfigurationError } from '#errors'
 import { Domain } from '#models/domain.ts'
-import { ResourceId, ResourceMetadata, ResourceTimestamp } from '#models/metadata.ts'
 
-export { ResourceId, ResourceTimestamp }
+export const ResourceId = z.uuid()
+export const ResourceTimestamp = z.iso.datetime()
 
 /** Base schema for application resources with server-owned identity, timestamps and environment. */
-export const Resource = ResourceMetadata.extend({
+export const Resource = z.object({
+  id: ResourceId,
+  createdAt: ResourceTimestamp,
+  updatedAt: ResourceTimestamp,
   environmentDomain: Domain.meta({ constraints: { indexed: true } }),
 })
 

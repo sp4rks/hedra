@@ -14,8 +14,8 @@ import {
   Environment,
   EnvironmentInput as InputSchema,
 } from '#models/environment.ts'
-import { ResourceId } from '#models/metadata.ts'
 import { requireTenantScope } from '#models/request-scope.ts'
+import { ResourceId } from '#models/resource.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
 
 export class EnvironmentController implements ControllerInterface {

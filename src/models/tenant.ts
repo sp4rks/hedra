@@ -1,12 +1,14 @@
 import { z } from 'zod'
 
 import { Domain } from '#models/domain.ts'
-import { ResourceMetadata } from '#models/metadata.ts'
+import { Resource } from '#models/resource.ts'
 
-export const Tenant = ResourceMetadata.extend({
-  name: z.string().trim().min(1),
-  tenantDomain: Domain.meta({ constraints: { unique: true } }),
-}).strict()
+export const Tenant = Resource.pick({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    name: z.string().trim().min(1),
+    tenantDomain: Domain.meta({ constraints: { unique: true } }),
+  })
+  .strict()
 
 export type Tenant = z.infer<typeof Tenant>
 

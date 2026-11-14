@@ -5,7 +5,7 @@ import { catalogueRecord } from '#datastores/categories/config/records.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, UniqueViolationError } from '#errors'
 import { Environment } from '#models/environment.ts'
-import { ResourceId } from '#models/metadata.ts'
+import { ResourceId } from '#models/resource.ts'
 import { TenantChanges as ChangesSchema, TenantInput as InputSchema, Tenant } from '#models/tenant.ts'
 
 export type TenantCreate = TenantInput

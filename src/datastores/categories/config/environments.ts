@@ -15,7 +15,7 @@ import {
   Environment,
   EnvironmentInput as InputSchema,
 } from '#models/environment.ts'
-import { ResourceId } from '#models/metadata.ts'
+import { ResourceId } from '#models/resource.ts'
 import { Tenant } from '#models/tenant.ts'
 
 export class EnvironmentOperations implements EnvironmentOperationsInterface {

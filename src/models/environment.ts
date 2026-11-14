@@ -1,14 +1,16 @@
 import type { z } from 'zod'
 
 import { Domain } from '#models/domain.ts'
-import { ResourceMetadata } from '#models/metadata.ts'
+import { Resource } from '#models/resource.ts'
 import { Tenant } from '#models/tenant.ts'
 
-export const Environment = ResourceMetadata.extend({
-  name: Tenant.shape.name,
-  tenantDomain: Domain.meta({ constraints: { indexed: true } }),
-  environmentDomain: Domain.meta({ constraints: { unique: true } }),
-}).strict()
+export const Environment = Resource.pick({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    name: Tenant.shape.name,
+    tenantDomain: Domain.meta({ constraints: { indexed: true } }),
+    environmentDomain: Domain.meta({ constraints: { unique: true } }),
+  })
+  .strict()
 
 export type Environment = z.infer<typeof Environment>
 
