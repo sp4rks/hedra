@@ -117,7 +117,7 @@ export class TenantController implements ControllerInterface {
     for (const [key, value] of Object.entries(options.filter ?? {})) {
       const schema = Tenant.shape[key as keyof typeof Tenant.shape]
 
-      if (!schema) throw new InputValidationError()
+      if (!Object.hasOwn(Tenant.shape, key) || !schema) throw new InputValidationError()
       filter[key] = parseInput(schema, value)
     }
     const values = await this.datastore().tenants.list(filter)

@@ -80,7 +80,7 @@ function input<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 /** Reads JSON and applies the operation-specific model validator. */
-async function body(context: Context, schema: z.ZodObject, partial: boolean): Promise<Record<string, unknown>> {
+async function body(context: Context, schema: z.ZodObject, submittedOnly: boolean): Promise<Record<string, unknown>> {
   const contentType = context.req.header('content-type')?.split(';')[0]?.trim().toLowerCase()
 
   if (!contentType || !/^application\/(?:json|[\w.+-]+\+json)$/.test(contentType)) {
@@ -101,7 +101,9 @@ async function body(context: Context, schema: z.ZodObject, partial: boolean): Pr
 
   const parsed = input(schema, attributes)
 
-  return partial ? Object.fromEntries(Object.entries(parsed).filter(([key]) => Object.hasOwn(attributes, key))) : parsed
+  return submittedOnly
+    ? Object.fromEntries(Object.entries(parsed).filter(([key]) => Object.hasOwn(attributes, key)))
+    : parsed
 }
 
 /** Validates the optional typed scalar equality filter. */
@@ -228,7 +230,7 @@ export function registerRoutes(
       const id = input(ResourceId, context.req.param('id'))
 
       setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
-      const value = await body(context, updateInput, true)
+      const value = await body(context, updateInput, validators.update === undefined)
 
       const result = await collection.controller.update(context, collection, value as never, id)
 

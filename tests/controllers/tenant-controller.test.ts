@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
-import { Hono } from 'hono'
+import { Context, Hono } from 'hono'
 
 import type { ConfigDatastore } from '#hedra.ts'
+import { InputValidationError } from '#errors'
 import { Collection, Config, ConfigStore, SqliteBackend, Tenant, TenantController } from '#hedra.ts'
 
 test('all TenantController operations reject missing, malformed or different deployment hosts', async () => {
@@ -105,6 +106,32 @@ test('direct tenant controller calls validate domains and protect server-owned m
 
     expect(await changed.json()).toEqual({ status: 422 })
     expect(await store.tenants.get(tenant.id)).toEqual(tenant)
+  } finally {
+    store.close()
+    backend.close()
+  }
+})
+
+test('direct tenant list filters reject inherited keys and accept declared domain fields', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const store = new ConfigStore({ backend })
+  const controller = new TenantController(
+    new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }),
+    () => store,
+  )
+  const collection = new Collection('tenants', Tenant)
+  const url = 'http://deployment.hedra.local/tenants'
+  const context = new Context(new Request(url, { headers: { host: 'deployment.hedra.local' } }))
+
+  try {
+    const tenant = await store.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
+
+    for (const key of ['toString', 'constructor']) {
+      await expect(controller.list(context, collection, url, { filter: { [key]: 'x' } })).rejects.toBeInstanceOf(
+        InputValidationError,
+      )
+    }
+    expect((await controller.list(context, collection, url, { filter: { name: ' Acme ' } })).data).toEqual([tenant])
   } finally {
     store.close()
     backend.close()
