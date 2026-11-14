@@ -1,4 +1,4 @@
-import type { Context, Hono } from 'hono'
+import type { Context, Hono, MiddlewareHandler } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { z } from 'zod'
 
@@ -96,7 +96,12 @@ function input<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 /** Reads JSON and applies the operation-specific model validator. */
-async function body(context: Context, schema: z.ZodObject, submittedOnly: boolean): Promise<Record<string, unknown>> {
+async function body(
+  context: Context,
+  schema: z.ZodObject,
+  submittedOnly: boolean,
+  ownership: string | null,
+): Promise<Record<string, unknown>> {
   const contentType = context.req.header('content-type')?.split(';')[0]?.trim().toLowerCase()
 
   if (!contentType || !/^application\/(?:json|[\w.+-]+\+json)$/.test(contentType)) {
@@ -111,6 +116,9 @@ async function body(context: Context, schema: z.ZodObject, submittedOnly: boolea
   }
   assertSafeKeys(value)
   const object = input(z.record(z.string(), z.unknown()), value)
+
+  if (ownership !== null && Object.hasOwn(object, ownership))
+    throw new InputValidationError('Ownership is managed by the server')
   const attributes = Object.fromEntries(
     Object.entries(object).filter(([key]) => !['id', 'createdAt', 'updatedAt'].includes(key)),
   )
@@ -127,6 +135,7 @@ function query(
   context: Context,
   model: z.ZodObject,
   output: z.ZodObject,
+  ownership: string | null,
 ): { filter?: Record<string, z.infer<typeof DatabaseScalar>> } {
   const params = new URL(context.req.url).searchParams
 
@@ -145,6 +154,7 @@ function query(
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputValidationError()
   const entries = Object.entries(parsed).map(([key, value]) => {
+    if (key === ownership) throw new InputValidationError('Ownership filters are managed by the server')
     const field = model.shape[key]
 
     if (!Object.hasOwn(model.shape, key) || !field || !Object.hasOwn(output.shape, key))
@@ -157,7 +167,7 @@ function query(
 }
 
 /** Shapes errors raised by generated routes without affecting custom Hono routes. */
-function handler(action: (context: Context) => Promise<Response>): (context: Context) => Promise<Response> {
+export function routeHandler(action: (context: Context) => Promise<Response>): (context: Context) => Promise<Response> {
   return async (context) => {
     try {
       return await action(context)
@@ -178,17 +188,30 @@ function handler(action: (context: Context) => Promise<Response>): (context: Con
   }
 }
 
+/** Gives resolver failures the same error contract as generated route actions. */
+export function guardedMiddleware(middleware: MiddlewareHandler): MiddlewareHandler {
+  return (context, next) =>
+    routeHandler(async () => {
+      await middleware(context, next)
+
+      return context.res
+    })(context)
+}
+
 /** Registers generated REST routes for one collection. */
 export function registerRoutes(
   app: Hono,
   collection: Collection,
   validators: RouteValidators = {},
-  before?: (context: Context) => void,
+  before?: MiddlewareHandler,
+  ownership: 'environmentDomain' | 'tenantDomain' | null = 'environmentDomain',
 ): void {
   const path = collection.endpoint
   const model = collection.model
   const mask = Object.fromEntries(
-    ['id', 'createdAt', 'updatedAt'].filter((key) => Object.hasOwn(model.shape, key)).map((key) => [key, true]),
+    ['id', 'createdAt', 'updatedAt', ...(ownership === null ? [] : [ownership])]
+      .filter((key) => Object.hasOwn(model.shape, key))
+      .map((key) => [key, true]),
   )
   const attributes = model.clone({ ...model.def, checks: [] } as never).omit(mask as never)
   const createInput = validators.create ?? attributes
@@ -197,17 +220,24 @@ export function registerRoutes(
   const output =
     validators.output ?? z.object(Object.fromEntries(Object.entries(model.shape).filter(([key]) => key !== 'password')))
 
+  const middleware: MiddlewareHandler = guardedMiddleware(
+    before ??
+      (async (_context, next) => {
+        await next()
+      }),
+  )
+
   app.get(
     path,
-    handler(async (context) => {
-      before?.(context)
+    middleware,
+    routeHandler(async (context) => {
       setResourceScope(context, { collection: collection.name, target: { kind: 'collection' } })
 
       const result = await collection.controller.list(
         context,
         collection,
         context.req.url,
-        query(context, model, output),
+        query(context, model, output, ownership),
       )
 
       return context.json(response(output, result, { list: true }))
@@ -215,10 +245,10 @@ export function registerRoutes(
   )
   app.post(
     path,
-    handler(async (context) => {
-      before?.(context)
+    middleware,
+    routeHandler(async (context) => {
       setResourceScope(context, { collection: collection.name, target: { kind: 'collection' } })
-      const value = await body(context, createInput, false)
+      const value = await body(context, createInput, false, ownership)
       const result = await collection.controller.create(context, collection, value as never)
       const validated = response(output, result, { writeSucceeded: true })
 
@@ -229,8 +259,8 @@ export function registerRoutes(
   )
   app.get(
     `${path}/:id`,
-    handler(async (context) => {
-      before?.(context)
+    middleware,
+    routeHandler(async (context) => {
       const id = input(ResourceId, context.req.param('id'))
 
       setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
@@ -242,12 +272,12 @@ export function registerRoutes(
   )
   app.patch(
     `${path}/:id`,
-    handler(async (context) => {
-      before?.(context)
+    middleware,
+    routeHandler(async (context) => {
       const id = input(ResourceId, context.req.param('id'))
 
       setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
-      const value = await body(context, updateInput, updateSubmittedOnly)
+      const value = await body(context, updateInput, updateSubmittedOnly, ownership)
 
       const result = await collection.controller.update(context, collection, value as never, id)
 
@@ -256,8 +286,8 @@ export function registerRoutes(
   )
   app.delete(
     `${path}/:id`,
-    handler(async (context) => {
-      before?.(context)
+    middleware,
+    routeHandler(async (context) => {
       const id = input(ResourceId, context.req.param('id'))
 
       setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })

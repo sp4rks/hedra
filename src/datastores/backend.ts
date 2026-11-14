@@ -12,6 +12,13 @@ export const DatabaseFilter = z.record(z.string(), DatabaseScalar)
 
 export type DatabaseFilter = z.infer<typeof DatabaseFilter>
 
+export const DatabaseIndex = z.strictObject({
+  field: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),
+  unique: z.boolean(),
+})
+
+export type DatabaseIndex = z.infer<typeof DatabaseIndex>
+
 export type RecordModifier = (record: DatabaseRecord) => DatabaseRecord
 
 export interface BackendTransaction {
@@ -22,6 +29,8 @@ export interface BackendTransaction {
 }
 
 export interface Backend {
+  /** Prepares generic single-field indexes before collection operations. */
+  ensureIndexes(table: string, indexes: readonly DatabaseIndex[]): Promise<void>
   /** Inserts a record without replacing an existing ID. */
   insert(table: string, record: DatabaseRecord): Promise<void>
   /** Selects matching records in insertion order. */

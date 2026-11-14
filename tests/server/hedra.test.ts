@@ -18,6 +18,7 @@ import {
   Resource,
   SqliteBackend,
 } from '#hedra.ts'
+import { request, scopedContext } from '../fixtures/scope.ts'
 
 const quiet = {
   HEDRA_SERVER_SILENT_STARTUP: 'true',
@@ -31,7 +32,7 @@ test('new Hedra returns a Hono app', async () => {
   expect(app).toBeInstanceOf(Hono)
 
   app.get('/widgets', (context) => context.json({ name: 'widget' }))
-  const response = await app.request('/widgets')
+  const response = await request(app, '/widgets')
 
   expect(response.status).toBe(200)
   expect(await response.json()).toEqual({ name: 'widget' })
@@ -102,18 +103,20 @@ test.each([
 
 /** Adds explicit test routes using a collection's registered controller. */
 function mountCars(app: Hedra, cars: Collection, controller: ControllerInterface = cars.controller): void {
-  app.post('/test/cars', async (context) => context.json(await controller.create(context, cars, { make: 'Toyota' })))
-  app.get('/test/cars', async (context) =>
+  app.scoped.post('/test/cars', async (context) =>
+    context.json(await controller.create(context, cars, { make: 'Toyota' })),
+  )
+  app.scoped.get('/test/cars', async (context) =>
     context.json(await controller.list(context, cars, 'http://localhost/test/cars')),
   )
-  app.get('/test/cars/:id', async (context) =>
-    context.json(await controller.id(context, cars, context.req.param('id'))),
+  app.scoped.get('/test/cars/:id', async (context) =>
+    context.json(await controller.id(context, cars, z.string().parse(context.req.param('id')))),
   )
-  app.patch('/test/cars/:id', async (context) =>
-    context.json(await controller.update(context, cars, { make: 'Honda' }, context.req.param('id'))),
+  app.scoped.patch('/test/cars/:id', async (context) =>
+    context.json(await controller.update(context, cars, { make: 'Honda' }, z.string().parse(context.req.param('id')))),
   )
-  app.delete('/test/cars/:id', async (context) => {
-    await controller.delete(context, cars, context.req.param('id'))
+  app.scoped.delete('/test/cars/:id', async (context) => {
+    await controller.delete(context, cars, z.string().parse(context.req.param('id')))
 
     return context.body(null, 204)
   })
@@ -131,12 +134,12 @@ test('registration retains duplicate-name and instance-reuse checks', async () =
   mountCars(first, cars)
 
   try {
-    const car = JsonApiResponse.parse(await (await first.request('/test/cars', { method: 'POST' })).json()).data
+    const car = JsonApiResponse.parse(await (await request(first, '/test/cars', { method: 'POST' })).json()).data
 
     expect(() => first.register({ name: 'bikes' } as never)).toThrow('Collection')
     expect(() => first.register(new Collection('cars', model))).toThrow()
     expect(() => second.register(cars)).toThrow()
-    expect(JsonApiListResponse.parse(await (await first.request('/test/cars')).json()).data).toEqual([car])
+    expect(JsonApiListResponse.parse(await (await request(first, '/test/cars')).json()).data).toEqual([car])
   } finally {
     first.close()
     second.close()
@@ -157,14 +160,14 @@ test('Hedra lazily owns its default SQLite backend', async () => {
     first.register(cars)
     mountCars(first, cars)
     expect(existsSync(path)).toBe(true)
-    const car = JsonApiResponse.parse(await (await first.request('/test/cars', { method: 'POST' })).json()).data
+    const car = JsonApiResponse.parse(await (await request(first, '/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
 
     first.close()
-    expect((await first.request(`/test/cars/${id}`)).status).toBe(500)
+    expect((await request(first, `/test/cars/${id}`)).status).toBe(500)
     second.register(reopened)
     mountCars(second, reopened)
-    expect(JsonApiResponse.parse(await (await second.request(`/test/cars/${id}`)).json()).data).toEqual(car)
+    expect(JsonApiResponse.parse(await (await request(second, `/test/cars/${id}`)).json()).data).toEqual(car)
   } finally {
     first.close()
     second.close()
@@ -183,10 +186,10 @@ test('failed registration leaves a collection available for a later successful r
     expect(() => cars.controller).toThrow('registered')
     second.register(cars)
     mountCars(second, cars)
-    const car = JsonApiResponse.parse(await (await second.request('/test/cars', { method: 'POST' })).json()).data
+    const car = JsonApiResponse.parse(await (await request(second, '/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
 
-    expect(JsonApiResponse.parse(await (await second.request(`/test/cars/${id}`)).json()).data).toEqual(car)
+    expect(JsonApiResponse.parse(await (await request(second, `/test/cars/${id}`)).json()).data).toEqual(car)
   } finally {
     first.close()
     second.close()
@@ -224,10 +227,10 @@ test('a throwing controller constructor leaves the collection available for regi
     failing = false
     app.register(cars)
     mountCars(app, cars)
-    const car = JsonApiResponse.parse(await (await app.request('/test/cars', { method: 'POST' })).json()).data
+    const car = JsonApiResponse.parse(await (await request(app, '/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
 
-    expect(JsonApiResponse.parse(await (await app.request(`/test/cars/${id}`)).json()).data).toEqual(car)
+    expect(JsonApiResponse.parse(await (await request(app, `/test/cars/${id}`)).json()).data).toEqual(car)
   } finally {
     app.close()
   }
@@ -250,22 +253,34 @@ test('Hedra.close invalidates saved controller references without closing a borr
 
     mountCars(first, cars, saved)
     mountCars(second, otherCars)
-    const car = JsonApiResponse.parse(await (await first.request('/test/cars', { method: 'POST' })).json()).data
+    const car = JsonApiResponse.parse(await (await request(first, '/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
     const tenant = await config.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
-    first.onError((error, context) => {
-      errors.push(error)
+    const context = await scopedContext('http://localhost/cars')
 
-      return context.text('failed', 500)
-    })
     first.close()
     first.close()
-    expect((await first.request('/test/cars', { method: 'POST' })).status).toBe(500)
-    expect((await first.request(`/test/cars/${id}`)).status).toBe(500)
-    expect((await first.request('/test/cars')).status).toBe(500)
-    expect((await first.request(`/test/cars/${id}`, { method: 'PATCH' })).status).toBe(500)
-    expect((await first.request(`/test/cars/${id}`, { method: 'DELETE' })).status).toBe(500)
+    expect((await request(first, '/test/cars', { method: 'POST' })).status).toBe(500)
+    expect((await request(first, `/test/cars/${id}`)).status).toBe(500)
+    expect((await request(first, '/test/cars')).status).toBe(500)
+    expect((await request(first, `/test/cars/${id}`, { method: 'PATCH' })).status).toBe(500)
+    expect((await request(first, `/test/cars/${id}`, { method: 'DELETE' })).status).toBe(500)
+    const operations = [
+      () => saved.create(context, cars, { make: 'Toyota' }),
+      () => saved.id(context, cars, id),
+      () => saved.list(context, cars, context.req.url),
+      () => saved.update(context, cars, { make: 'Honda' }, id),
+      () => saved.delete(context, cars, id),
+    ]
+
+    for (const operation of operations) {
+      try {
+        await operation()
+      } catch (error) {
+        if (error instanceof Error) errors.push(error)
+      }
+    }
     expect(errors).toHaveLength(5)
 
     for (const error of errors) {
@@ -278,7 +293,7 @@ test('Hedra.close invalidates saved controller references without closing a borr
     }
     expect(errors[0]).toHaveProperty('detail', undefined)
     expect(() => first.register(new Collection('bikes', model))).toThrow()
-    expect(JsonApiResponse.parse(await (await second.request(`/test/cars/${id}`)).json()).data).toEqual(car)
+    expect(JsonApiResponse.parse(await (await request(second, `/test/cars/${id}`)).json()).data).toEqual(car)
     expect(await config.tenants.get(tenant.id)).toEqual(tenant)
   } finally {
     first.close()
@@ -296,10 +311,10 @@ test('collection registration adds HTTP routes and retains custom routes', async
   app.register(new Collection('bikes', Resource.extend({ make: z.string() })))
   try {
     expect(cars.endpoint).toBe('/cars')
-    expect((await app.request('/cars')).status).toBe(200)
-    expect((await app.request('/cars', { method: 'POST' })).status).toBe(415)
-    expect((await app.request('/existing')).status).toBe(200)
-    expect((await app.request('/bikes')).status).toBe(200)
+    expect((await request(app, '/cars')).status).toBe(200)
+    expect((await request(app, '/cars', { method: 'POST' })).status).toBe(415)
+    expect((await request(app, '/existing')).status).toBe(200)
+    expect((await request(app, '/bikes')).status).toBe(200)
   } finally {
     app.close()
   }

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 import { Collection, Config, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
+import { request } from '../../../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -33,7 +34,7 @@ test('ConfigStore borrows its supplied backend even when the configured path is 
   const backend = new SqliteBackend(':memory:')
   const first = new ConfigStore({ config, backend })
   const second = new ConfigStore({ backend })
-  const app = new Hedra({ config, backend })
+  const app = new Hedra({ config, backend, configDatastore: first })
 
   try {
     const tenant = await first.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
@@ -43,7 +44,7 @@ test('ConfigStore borrows its supplied backend even when the configured path is 
     expect(await first.tenants.get(tenant.id)).toEqual(tenant)
     expect(await second.tenants.get(tenant.id)).toEqual(tenant)
     app.register(new Collection('cars', Resource.extend({ make: z.string() })))
-    expect((await app.request('/cars')).status).toBe(200)
+    expect((await request(app, '/cars')).status).toBe(200)
   } finally {
     app.close()
     second.close()
@@ -135,12 +136,12 @@ test('ConfigStore instances share tenant storage and remain separate from app re
 
   try {
     app.register(cars)
-    app.post('/manual/cars', async (context) =>
+    app.scoped.post('/manual/cars', async (context) =>
       context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
     )
     const tenant = await first.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
     const car = Car.parse(
-      JsonApiResponse.parse(await (await app.request('/manual/cars', { method: 'POST' })).json()).data,
+      JsonApiResponse.parse(await (await request(app, '/manual/cars', { method: 'POST' })).json()).data,
     )
 
     expect(await second.tenants.list()).toEqual([tenant])
@@ -176,7 +177,7 @@ test('closing a shared backend ends access for every store using it', async () =
   const cars = new Collection('cars', Resource.extend({ make: z.string() }))
 
   app.register(cars)
-  app.post('/manual/cars', async (context) =>
+  app.scoped.post('/manual/cars', async (context) =>
     context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
   )
   app.onError((_error, context) => context.text('closed', 500))
@@ -184,7 +185,7 @@ test('closing a shared backend ends access for every store using it', async () =
 
   try {
     await expect(config.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })).rejects.toThrow()
-    expect((await app.request('/manual/cars', { method: 'POST' })).status).toBe(500)
+    expect((await request(app, '/manual/cars', { method: 'POST' })).status).toBe(500)
   } finally {
     app.close()
   }

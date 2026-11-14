@@ -8,6 +8,7 @@ import { assertResource, assertUnassociated } from '#controllers/associations.ts
 import { assertSafeKeys, jsonString, validateCandidate } from '#controllers/validation.ts'
 import { DatabaseFilter as FilterSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
 import { HedraError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
+import { requireRequestScope } from '#models/request-scope.ts'
 import { ResourceId, ResourceTimestamp } from '#models/resource.ts'
 import { ResourceInput as InputSchema, QueryParams as QuerySchema } from '#models/rest.ts'
 
@@ -27,6 +28,8 @@ export interface ControllerInterface {
 /** Removes server-owned attributes before generic JSON validation. */
 function attributes(input: ResourceInput): ResourceInput {
   const parsed = parseInput(z.record(z.string(), z.unknown()), input)
+
+  if (Object.hasOwn(input, 'environmentDomain')) throw new InputValidationError('Ownership is managed by the server')
   const value = { ...parsed, ...input }
 
   delete value.id
@@ -59,10 +62,17 @@ export class BaseController implements ControllerInterface {
 
   /** Creates a resource with server-owned identity and timestamps. */
   async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
+    const { environment } = requireRequestScope(context)
     const id = crypto.randomUUID()
     const timestamp = new Date().toISOString()
     const fields = attributes(input)
-    const record: DatabaseRecord = { ...fields, id, createdAt: timestamp, updatedAt: timestamp }
+    const record: DatabaseRecord = {
+      ...fields,
+      id,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      environmentDomain: environment.environmentDomain,
+    }
     let data: ResourceInput | undefined
 
     await this.backend.transaction((transaction) => {
@@ -78,11 +88,16 @@ export class BaseController implements ControllerInterface {
 
   /** Returns one resource. */
   async id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse> {
+    const { environment } = requireRequestScope(context)
     const key = parseInput(ResourceId, id)
-    const rows = await this.backend.select(collection.name, { id: key })
+    const rows = await this.backend.select(collection.name, {
+      id: key,
+      environmentDomain: environment.environmentDomain,
+    })
     const record = rows[0]
 
     if (!record) throw new RecordNotFoundError()
+    if (record.environmentDomain !== environment.environmentDomain) throw new RecordNotFoundError()
     if (record.id !== key) throw new HedraError('Resource ID cannot change')
 
     return { data: record, links: { self: resourceLink(context, key) } }
@@ -90,11 +105,12 @@ export class BaseController implements ControllerInterface {
 
   /** Returns matching resources. */
   async list(
-    _context: Context,
+    context: Context,
     collection: Collection,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
+    const { environment } = requireRequestScope(context)
     const options = queryParams === undefined ? {} : queryParams
 
     parseInput(QuerySchema, options)
@@ -107,22 +123,32 @@ export class BaseController implements ControllerInterface {
 
     parseInput(FilterSchema, filter)
     if (Object.getOwnPropertySymbols(filter).length) throw new InputValidationError('Filter keys must be strings')
+    if (Object.keys(filter).some((key) => key === 'environmentDomain' || key.startsWith('environmentDomain[')))
+      throw new InputValidationError('Ownership filters are managed by the server')
     const entries = Object.entries(filter).map(([key, value]) => [key, parseInput(ScalarSchema, value)] as const)
     const url = z.url().safeParse(baseUrl)
 
     if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
 
-    const records = await this.backend.select(collection.name, Object.fromEntries(entries))
+    const records = await this.backend.select(collection.name, {
+      ...Object.fromEntries(entries),
+      environmentDomain: environment.environmentDomain,
+    })
+
+    if (records.some((record) => record.environmentDomain !== environment.environmentDomain))
+      throw new OutputValidationError('Resource ownership cannot change')
 
     return { data: records, links: { self: url.data } }
   }
 
   /** Updates one resource. */
   async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+    const { environment } = requireRequestScope(context)
     const key = parseInput(ResourceId, id)
     const fields = attributes(input)
     let data: ResourceInput | undefined
     const modify = (current: DatabaseRecord): DatabaseRecord => {
+      if (current.environmentDomain !== environment.environmentDomain) throw new RecordNotFoundError()
       if (current.id !== key) throw new HedraError('Resource ID cannot change')
       const parsedTimestamp = ResourceTimestamp.safeParse(current.createdAt)
 
@@ -151,12 +177,14 @@ export class BaseController implements ControllerInterface {
   }
 
   /** Deletes one resource. */
-  async delete(_context: Context, collection: Collection, id: string): Promise<void> {
+  async delete(context: Context, collection: Collection, id: string): Promise<void> {
     const key = parseInput(ResourceId, id)
 
+    const { environment } = requireRequestScope(context)
+
     await this.backend.transaction((transaction) => {
-      assertResource(transaction, { collection: collection.name, id: key })
-      assertUnassociated(transaction, { collection: collection.name, id: key })
+      assertResource(transaction, { collection: collection.name, id: key }, environment.environmentDomain)
+      assertUnassociated(transaction, { collection: collection.name, id: key }, environment.environmentDomain)
       if (!transaction.delete(collection.name, key)) throw new RecordNotFoundError()
     })
   }

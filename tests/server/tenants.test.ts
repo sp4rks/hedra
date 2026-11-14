@@ -224,6 +224,7 @@ test('HTTP routes use a structural borrowed datastore and reject use after close
   const store = new ConfigStore({ backend })
   const operations = store.tenants
   const configDatastore: ConfigDatastore = {
+    environments: store.environments,
     tenants: {
       create: operations.create.bind(operations),
       get: operations.get.bind(operations),
@@ -262,6 +263,7 @@ test('tenant routes validate requests and redact invalid or failed datastore res
   const store = new ConfigStore({ backend })
   const id = crypto.randomUUID()
   const configDatastore: ConfigDatastore = {
+    environments: store.environments,
     tenants: {
       create: store.tenants.create.bind(store.tenants),
       get: async () => ({ id, name: 'missing domain' }) as Tenant,

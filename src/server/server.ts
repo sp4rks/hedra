@@ -1,21 +1,28 @@
-import type { z } from 'zod'
+import type { Context, MiddlewareHandler } from 'hono'
 import { Hono } from 'hono'
+import { z } from 'zod'
 
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
+import type { RequestScope } from '#models/request-scope.ts'
 import type { RouteValidators } from '#routes/resources.ts'
 import type { LoggerInterface } from '#server/logger.ts'
 import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
+import { EnvironmentController } from '#controllers/environment-controller.ts'
 import { TenantController } from '#controllers/tenant-controller.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
-import { ConfigStore, tenantTable } from '#datastores/categories/config/config.ts'
+import { ConfigStore, environmentTable, tenantTable } from '#datastores/categories/config/config.ts'
+import { modelIndexes } from '#datastores/indexes.ts'
 import { ConfigurationError, ConnectionError } from '#errors'
 import { Collection } from '#models/collection.ts'
+import { Environment, EnvironmentChanges, EnvironmentInput } from '#models/environment.ts'
+import { requireRequestScope } from '#models/request-scope.ts'
 import { Tenant } from '#models/tenant.ts'
-import { assertRouteValidators, registerRoutes } from '#routes/resources.ts'
+import { assertRouteValidators, guardedMiddleware, registerRoutes, routeHandler } from '#routes/resources.ts'
 import { Logger } from '#server/logger.ts'
+import { environmentMiddleware, tenantMiddleware } from '#server/request-scope.ts'
 
 export type HedraOptions = {
   config?: Config
@@ -23,6 +30,8 @@ export type HedraOptions = {
   configDatastore?: ConfigDatastore
   logger?: LoggerInterface
 }
+
+export type ScopedHandler = (context: Context, scope: RequestScope) => Response | Promise<Response>
 
 export class Hedra extends Hono {
   readonly config: Config
@@ -38,6 +47,26 @@ export class Hedra extends Hono {
   private closeBackend?: () => void
   private readonly collections = new Map<string, Collection>()
   private closed = false
+  private preparation: Promise<void> = Promise.resolve()
+  private readonly environmentMiddleware: MiddlewareHandler
+
+  readonly scoped = {
+    get: (path: string, handler: ScopedHandler) => this.scopedRoute('get', path, handler),
+    post: (path: string, handler: ScopedHandler) => this.scopedRoute('post', path, handler),
+    put: (path: string, handler: ScopedHandler) => this.scopedRoute('put', path, handler),
+    patch: (path: string, handler: ScopedHandler) => this.scopedRoute('patch', path, handler),
+    delete: (path: string, handler: ScopedHandler) => this.scopedRoute('delete', path, handler),
+  }
+
+  /** Registers custom handlers with the same provisioning middleware as application CRUD. */
+  private scopedRoute(method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string, handler: ScopedHandler): void {
+    if (this.closed) throw new ConfigurationError('Hedra is closed')
+    this[method](
+      path,
+      guardedMiddleware(this.environmentMiddleware),
+      routeHandler(async (context) => handler(context, requireRequestScope(context))),
+    )
+  }
 
   /** Loads configuration and a logger and sets the listen address. */
   constructor(options: HedraOptions = {}) {
@@ -51,6 +80,7 @@ export class Hedra extends Hono {
     this.hostname = this.config.serverListenIp
     this.backend = options.backend
     this.datastore = options.configDatastore
+    this.environmentMiddleware = environmentMiddleware(this.config, () => this.configDatastore)
 
     const tenants = new Collection('tenants', Tenant)
     const tenantController = new TenantController(this.config, () => this.configDatastore)
@@ -64,7 +94,22 @@ export class Hedra extends Hono {
         update: Tenant.pick({ name: true }).partial(),
         output: Tenant,
       },
-      (context) => tenantController.assertHost(context),
+      async (context, next) => {
+        tenantController.assertHost(context)
+        await next()
+      },
+      null,
+    )
+
+    const environments = new Collection('environments', Environment)
+
+    environments.bindController(new EnvironmentController(() => this.configDatastore))
+    registerRoutes(
+      this,
+      environments,
+      { create: EnvironmentInput, update: EnvironmentChanges, output: Environment },
+      tenantMiddleware(this.config, () => this.configDatastore),
+      'tenantDomain',
     )
 
     this.associations = new AssociationOperations(
@@ -108,9 +153,15 @@ export class Hedra extends Hono {
       return operation()
     }
     /** Turns synchronous guard and dependency failures into rejected backend promises. */
-    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> => guarded(operation)
+    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> => {
+      guarded(() => undefined)
+      await this.preparation
+
+      return guarded(operation)
+    }
 
     return {
+      ensureIndexes: (...args) => guardedAsync(() => backend.ensureIndexes(...args)),
       insert: (...args) => guardedAsync(() => backend.insert(...args)),
       select: (...args) => guardedAsync(() => backend.select(...args)),
       update: (...args) => guardedAsync(() => backend.update(...args)),
@@ -162,8 +213,12 @@ export class Hedra extends Hono {
 
       if (known && known !== candidate) throw new ConfigurationError(`Collection already registered: ${candidate.name}`)
       if (known) return
-      if (candidate.name === tenantTable || candidate.name === associationTable || candidate.name === 'tenants')
+      if ([tenantTable, environmentTable, associationTable, 'tenants', 'environments'].includes(candidate.name))
         throw new ConfigurationError('Collection name is reserved')
+      const ownership = candidate.model.shape.environmentDomain
+
+      if (!(ownership instanceof z.ZodString) || ownership.isOptional() || ownership.isNullable())
+        throw new ConfigurationError('Application resources require environmentDomain')
       if (candidate.isAttached) throw new ConfigurationError('Collection is already attached to an app')
 
       collectionsByName.set(candidate.name, candidate)
@@ -177,6 +232,7 @@ export class Hedra extends Hono {
     }
 
     visit(collection)
+    const indexes = pending.map((item) => modelIndexes(item.model))
 
     if (this.config.serverPrintRoutes) {
       this.log.info(`Registering collection: ${collection.name}`)
@@ -195,12 +251,22 @@ export class Hedra extends Hono {
       const backend = this.guard(this.backend as Backend)
       const controllers = pending.map((item) => [item, item.createController(backend)] as const)
 
+      this.preparation = this.preparation.then(async () => {
+        if (this.closed) throw new ConnectionError('Hedra is closed')
+        await Promise.all(
+          pending.map((item, index) => (this.backend as Backend).ensureIndexes(item.name, indexes[index] ?? [])),
+        )
+      })
+      // Keep initialization failures observable by every operation without background rejections.
+      void this.preparation.catch(() => {})
+
       for (const [item, controller] of controllers) {
         item.bindController(controller)
         this.collections.set(item.name, item)
       }
 
-      for (const item of pending) registerRoutes(this, item, item === collection ? validators : undefined)
+      for (const item of pending)
+        registerRoutes(this, item, item === collection ? validators : undefined, this.environmentMiddleware)
     } catch (error) {
       if (opened) {
         this.closeBackend?.()

@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import type { Backend, ControllerInterface } from '#hedra.ts'
 import { BaseController, Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource } from '#hedra.ts'
+import { request } from '../fixtures/scope.ts'
 
 const Car = Resource.extend({ make: z.string() })
 const quiet = {
@@ -50,17 +51,17 @@ test('registration constructs the default independent controller', async () => {
   try {
     app.register(cars)
     app.register(bikes)
-    app.post('/manual/cars', async (context) =>
+    app.scoped.post('/manual/cars', async (context) =>
       context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
     )
-    app.get('/manual/bikes', async (context) =>
+    app.scoped.get('/manual/bikes', async (context) =>
       context.json(await bikes.controller.list(context, bikes, 'http://localhost/bikes')),
     )
-    const created = JsonApiResponse.parse(await (await app.request('/manual/cars', { method: 'POST' })).json())
+    const created = JsonApiResponse.parse(await (await request(app, '/manual/cars', { method: 'POST' })).json())
 
     expect(cars.controller).toBeInstanceOf(BaseController)
     expect(created.data.make).toBe('Toyota')
-    expect(JsonApiListResponse.parse(await (await app.request('/manual/bikes')).json()).data).toEqual([])
+    expect(JsonApiListResponse.parse(await (await request(app, '/manual/bikes')).json()).data).toEqual([])
   } finally {
     app.close()
   }
@@ -117,14 +118,16 @@ test('registration preserves a custom independent controller and its extra metho
 
   try {
     app.register(cars)
-    app.post('/manual/cars', async (context) =>
+    app.scoped.post('/manual/cars', async (context) =>
       context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
     )
-    app.get('/manual/cars', async (context) => context.json(await cars.controller.byMake(context, cars, 'Toyota')))
-    const created = JsonApiResponse.parse(await (await app.request('/manual/cars', { method: 'POST' })).json())
+    app.scoped.get('/manual/cars', async (context) =>
+      context.json(await cars.controller.byMake(context, cars, 'Toyota')),
+    )
+    const created = JsonApiResponse.parse(await (await request(app, '/manual/cars', { method: 'POST' })).json())
 
     expect(cars.controller).toBeInstanceOf(CustomController)
-    expect(JsonApiListResponse.parse(await (await app.request('/manual/cars')).json()).data).toEqual([created.data])
+    expect(JsonApiListResponse.parse(await (await request(app, '/manual/cars')).json()).data).toEqual([created.data])
   } finally {
     app.close()
   }

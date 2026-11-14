@@ -4,7 +4,6 @@ import { z } from 'zod'
 import type { Config } from '#config'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
-import type { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
 import type { Collection } from '#models/collection.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { resourceLink } from '#controllers/controller.ts'
@@ -17,7 +16,8 @@ import {
 } from '#errors'
 import { ResourceId } from '#models/resource.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
-import { Tenant } from '#models/tenant.ts'
+import { Tenant, TenantChanges, TenantInput } from '#models/tenant.ts'
+import { requestHostname } from '#server/request-scope.ts'
 
 export class TenantController implements ControllerInterface {
   /** Uses app configuration and obtains its configuration datastore on demand. */
@@ -52,14 +52,7 @@ export class TenantController implements ControllerInterface {
 
   /** Requires requests to use the deployment API host. */
   assertHost(context: Context): void {
-    const host = context.req.header('host')
-    const match = host?.match(/^([a-z0-9.-]+)(?::([0-9]{1,5}))?$/i)
-
-    if (
-      !match ||
-      match[1]?.toLowerCase() !== this.config.deploymentApiDomain.toLowerCase() ||
-      (match[2] !== undefined && Number(match[2]) > 65535)
-    ) {
+    if (requestHostname(context) !== this.config.deploymentApiDomain.toLowerCase()) {
       throw new PreconditionFailedError('precondition failed', 'Tenant operations require the deployment API host.')
     }
   }
@@ -84,7 +77,7 @@ export class TenantController implements ControllerInterface {
     ) {
       throw new InputValidationError('Tenant domain must be a direct subdomain of the deployment domain')
     }
-    const tenant = this.tenantOutput(await this.datastore().tenants.create(fields as TenantCreate))
+    const tenant = this.tenantOutput(await this.datastore().tenants.create(parseInput(TenantInput, fields)))
 
     if (tenant.tenantDomain !== tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
 
@@ -139,7 +132,7 @@ export class TenantController implements ControllerInterface {
     const fields = this.attributes(input)
 
     if (Object.hasOwn(fields, 'tenantDomain')) throw new InputValidationError('Tenant domain cannot change')
-    const value = await this.datastore().tenants.update(key, fields as TenantUpdate)
+    const value = await this.datastore().tenants.update(key, parseInput(TenantChanges, fields))
 
     if (value === null) throw new RecordNotFoundError()
     const tenant = this.tenantOutput(value, key)

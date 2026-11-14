@@ -21,6 +21,18 @@ const hedra = new Hedra()
 // Custom application routes can live alongside the generated collection routes.
 hedra.get('/health', (context) => context.text('Hello Hedra!'))
 
+// Provision a demo tenant and environment explicitly before serving its resources.
+const tenantDomain = 'example.hedra.local'
+const environmentDomain = 'dev.example.hedra.local'
+const tenants = await hedra.configDatastore.tenants.list({ tenantDomain })
+
+if (!tenants.length) await hedra.configDatastore.tenants.create({ name: 'Example', tenantDomain })
+const environments = await hedra.configDatastore.environments.list(tenantDomain, { environmentDomain })
+
+if (!environments.length)
+  await hedra.configDatastore.environments.create(tenantDomain, { name: 'Development', environmentDomain })
+
+// Send collection requests with Host: dev.example.hedra.local.
 // Install create, read, list, update and delete routes backed by the collection's controller.
 hedra.register(cars)
 

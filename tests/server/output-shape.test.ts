@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import { Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
+import { fixtureDomain, request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 const headers = { 'content-type': 'application/json' }
@@ -14,7 +15,7 @@ test('loose web output schemas retain extra fields on every resource response', 
   app.register(new Collection('accounts', Account), { output: z.looseObject({ id: z.uuid(), name: z.string() }) })
 
   try {
-    const createdResponse = await app.request('/accounts', {
+    const createdResponse = await request(app, '/accounts', {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: 'Alice', password: 'secret', extra: 'retained' }),
@@ -23,6 +24,7 @@ test('loose web output schemas retain extra fields on every resource response', 
     const id = z.uuid().parse(created.id)
     const expected = {
       id,
+      environmentDomain: fixtureDomain,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
       name: 'Alice',
@@ -32,8 +34,8 @@ test('loose web output schemas retain extra fields on every resource response', 
 
     expect(createdResponse.status).toBe(201)
     expect(created).toEqual(expected)
-    expect(JsonApiResponse.parse(await (await app.request(`/accounts/${id}`)).json()).data).toEqual(expected)
-    const updatedResponse = await app.request(`/accounts/${id}`, {
+    expect(JsonApiResponse.parse(await (await request(app, `/accounts/${id}`)).json()).data).toEqual(expected)
+    const updatedResponse = await request(app, `/accounts/${id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ name: 'Bob' }),
@@ -43,7 +45,7 @@ test('loose web output schemas retain extra fields on every resource response', 
 
     expect(updatedResponse.status).toBe(200)
     expect(updated).toEqual(updatedExpected)
-    expect(JsonApiListResponse.parse(await (await app.request('/accounts')).json()).data).toEqual([updatedExpected])
+    expect(JsonApiListResponse.parse(await (await request(app, '/accounts')).json()).data).toEqual([updatedExpected])
   } finally {
     app.close()
     backend.close()
@@ -58,7 +60,7 @@ test('strict web output schemas reject extra fields without exposing controller 
   app.register(new Collection('accounts', Account), { output: z.strictObject({ id: z.uuid(), name: z.string() }) })
 
   try {
-    const created = await app.request('/accounts', {
+    const created = await request(app, '/accounts', {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: 'Alice', password: 'secret' }),
@@ -78,7 +80,7 @@ test('strict web output schemas reject extra fields without exposing controller 
     const id = z.uuid().parse(stored[0]?.id)
 
     for (const path of ['/accounts', `/accounts/${id}`]) {
-      const response = await app.request(path)
+      const response = await request(app, path)
 
       expect(response.status).toBe(500)
       expect(await response.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
@@ -99,7 +101,7 @@ test('web output catchalls retain valid extra fields and reject invalid ones', a
   })
 
   try {
-    const created = await app.request('/accounts', {
+    const created = await request(app, '/accounts', {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: 'Alice', extra: 'retained' }),
@@ -112,10 +114,11 @@ test('web output catchalls retain valid extra fields and reject invalid ones', a
       id,
       name: 'Alice',
       extra: 'retained',
+      environmentDomain: fixtureDomain,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
     })
-    const invalid = await app.request(`/accounts/${id}`, {
+    const invalid = await request(app, `/accounts/${id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ extra: 42 }),
@@ -152,7 +155,7 @@ test.each([
   })
 
   try {
-    const response = await app.request('/accounts', {
+    const response = await request(app, '/accounts', {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: 'Alice' }),
@@ -188,7 +191,7 @@ test.each([
   })
 
   try {
-    const response = await app.request('/accounts', {
+    const response = await request(app, '/accounts', {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: 'Alice' }),

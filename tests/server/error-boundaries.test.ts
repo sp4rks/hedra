@@ -18,6 +18,7 @@ import {
   Tenant,
   TenantController,
 } from '#hedra.ts'
+import { insert, request, scopedContext } from '../fixtures/scope.ts'
 
 test('invalid collection definitions report explicit validation issues', () => {
   let error: unknown
@@ -73,7 +74,7 @@ test('generated routes redact unexpected model failures without storing a resour
 
   try {
     app.register(new Collection('items', model))
-    const response = await app.request('/items', {
+    const response = await request(app, '/items', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Acme' }),
@@ -81,7 +82,7 @@ test('generated routes redact unexpected model failures without storing a resour
 
     expect(response.status).toBe(500)
     expect(await response.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
-    expect(((await (await app.request('/items')).json()) as { data: unknown[] }).data).toEqual([])
+    expect(((await (await request(app, '/items')).json()) as { data: unknown[] }).data).toEqual([])
   } finally {
     app.close()
     backend.close()
@@ -95,7 +96,7 @@ test('invalid backend input has explicit query error details', async () => {
     let caught: unknown
 
     try {
-      await backend.insert('invalid table', { id: 'one' })
+      await insert(backend, 'invalid table', { id: 'one' })
     } catch (error) {
       caught = error
     }
@@ -123,7 +124,7 @@ test('JSON schema failures have explicit input and query validation categories',
       inputError = error
     }
     try {
-      await backend.insert('items', { id: 'bad', value: Infinity })
+      await insert(backend, 'items', { id: 'bad', value: Infinity })
     } catch (error) {
       queryError = error
     }
@@ -146,7 +147,7 @@ test('controller propagates a thrown model callback unchanged', async () => {
     }),
   })
   const controller = new BaseController(backend)
-  const context = new Context(new Request('http://localhost/items'))
+  const context = await scopedContext('http://localhost/items')
 
   try {
     await expect(controller.create(context, new Collection('items', model), { name: 'Acme' })).rejects.toBe(cause)
@@ -188,7 +189,7 @@ test('invalid stored resources remain internal errors', async () => {
   const id = crypto.randomUUID()
 
   try {
-    await backend.insert('items', { id, createdAt: 'invalid', updatedAt: 'invalid' })
+    await insert(backend, 'items', { id, createdAt: 'invalid', updatedAt: 'invalid' })
     const resources = new ResourceOperations('items', backend)
 
     await expect(resources.get(id)).rejects.toBeInstanceOf(OutputValidationError)
@@ -203,11 +204,11 @@ test('generated routes report committed writes when output validation fails', as
   const output = model.extend({ name: z.string().refine(() => false, 'private detail') })
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const collection = new Collection('items', model)
-  const context = new Context(new Request('http://localhost/items'))
+  const context = await scopedContext('http://localhost/items')
 
   try {
     app.register(collection, { output })
-    const response = await app.request('/items', {
+    const response = await request(app, '/items', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'item' }),
@@ -241,7 +242,7 @@ test('configuration and logger input validation throw Hedra errors', () => {
 test('direct controller and scope input failures throw Hedra errors', async () => {
   const backend = new SqliteBackend(':memory:')
   const controller = new BaseController(backend)
-  const context = new Context(new Request('http://localhost/items'))
+  const context = await scopedContext('http://localhost/items')
 
   try {
     await expect(controller.id(context, new Collection('items', Resource), 'invalid')).rejects.toBeInstanceOf(
@@ -257,6 +258,7 @@ test('direct controller and scope input failures throw Hedra errors', async () =
 test('a guarded borrowed backend propagates failures to custom controllers', async () => {
   const cause = new Error('backend failed')
   const backend: Backend = {
+    ensureIndexes: async () => {},
     insert: async () => {
       throw cause
     },
@@ -328,6 +330,7 @@ test('tenant controller operations propagate injected datastore failures by iden
     }
     const controller = new TenantController(config, () => ({
       tenants: { create: fail, get: fail, list: fail, update: fail, replace: fail, delete: fail },
+      environments: { create: fail, get: fail, list: fail, update: fail, replace: fail, delete: fail },
     }))
     const calls = [
       () => controller.create(context, collection, fields),
@@ -359,6 +362,7 @@ test('tenant datastore reads and writes propagate backend failures by identity',
       throw cause
     }
     const backend: Backend = {
+      ensureIndexes: async () => {},
       insert: fail,
       select: fail,
       update: fail,

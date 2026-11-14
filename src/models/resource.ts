@@ -1,12 +1,15 @@
 import { z } from 'zod'
 
 import { ConfigurationError } from '#errors'
+import { Domain } from '#models/domain.ts'
+import { ResourceId, ResourceMetadata, ResourceTimestamp } from '#models/metadata.ts'
 
-export const ResourceId = z.uuid()
-export const ResourceTimestamp = z.iso.datetime()
+export { ResourceId, ResourceTimestamp }
 
-/** Base schema for independently stored resources with server-owned identity and timestamps. */
-export const Resource = z.object({ id: ResourceId, createdAt: ResourceTimestamp, updatedAt: ResourceTimestamp })
+/** Base schema for application resources with server-owned identity, timestamps and environment. */
+export const Resource = ResourceMetadata.extend({
+  environmentDomain: Domain.meta({ constraints: { indexed: true } }),
+})
 
 export type Resource = z.infer<typeof Resource>
 
@@ -22,7 +25,12 @@ export type ResourceReference = z.infer<typeof ResourceReference>
  * An explicit link between independent resources, with its own ID and resource addresses as endpoints.
  * Links are stored separately and block deletion of either endpoint until removed.
  */
-export const Association = z.object({ id: ResourceId, source: ResourceReference, target: ResourceReference })
+export const Association = z.object({
+  id: ResourceId,
+  environmentDomain: Domain,
+  source: ResourceReference,
+  target: ResourceReference,
+})
 
 export type Association = z.infer<typeof Association>
 

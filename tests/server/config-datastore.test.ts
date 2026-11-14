@@ -6,6 +6,7 @@ import { z } from 'zod'
 
 import type { ConfigDatastore } from '#hedra.ts'
 import { Collection, Config, ConfigStore, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { provision, request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -16,6 +17,7 @@ test('Hedra accepts a structural configuration datastore and retains its identit
   const store = new ConfigStore({ backend })
   const operations = store.tenants
   const configDatastore = {
+    environments: store.environments,
     tenants: {
       create: operations.create.bind(operations),
       get: operations.get.bind(operations),
@@ -47,6 +49,7 @@ test('Hedra borrows a configuration datastore shared by apps', async () => {
   const operations = store.tenants
   let closed = false
   const configDatastore = {
+    environments: store.environments,
     tenants: operations,
     close: () => {
       closed = true
@@ -159,7 +162,7 @@ test('configuration and application data use their own supplied datastores', asy
     app.register(projects)
     observer.register(new Collection('projects', Resource.extend({ title: z.string() })))
     const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
-    const project = await app.request('/projects', {
+    const project = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ title: 'First' }),
@@ -167,7 +170,7 @@ test('configuration and application data use their own supplied datastores', asy
 
     expect(project.status).toBe(201)
     const projectId = ((await project.json()) as { data: { id: string } }).data.id
-    const label = await app.request('/labels', {
+    const label = await request(app, '/labels', {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: 'Urgent' }),
@@ -176,11 +179,15 @@ test('configuration and application data use their own supplied datastores', asy
     expect(label.status).toBe(201)
     const labelId = ((await label.json()) as { data: { id: string } }).data.id
 
-    await app.associations.link({ collection: 'projects', id: projectId }, { collection: 'labels', id: labelId })
-    expect(await app.associations.list({ collection: 'projects', id: projectId })).toHaveLength(1)
+    await app.associations.link(
+      await provision(app),
+      { collection: 'projects', id: projectId },
+      { collection: 'labels', id: labelId },
+    )
+    expect(await app.associations.list(await provision(app), { collection: 'projects', id: projectId })).toHaveLength(1)
     expect(await configDatastore.tenants.get(tenant.id)).toEqual(tenant)
     expect(await otherConfigDatastore.tenants.list()).toEqual([])
-    expect(((await (await observer.request('/projects')).json()) as { data: unknown[] }).data).toEqual([])
+    expect(((await (await request(observer, '/projects')).json()) as { data: unknown[] }).data).toEqual([])
   } finally {
     app.close()
     observer.close()

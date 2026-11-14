@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import type { Collection as CollectionType, QueryParams, ResourceInput, ResourceScope } from '#hedra.ts'
 import { BaseController, Collection, Config, getResourceScope, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { request } from '../fixtures/scope.ts'
 
 const headers = { 'content-type': 'application/json' }
 
@@ -47,18 +48,18 @@ test('root REST requests describe collection and UUID targets', async () => {
   app.register(new Collection('cars', Resource.extend({ make: z.string() }), { controller: ScopedController }))
 
   try {
-    expect((await app.request('/cars')).status).toBe(200)
-    const created = await app.request('/cars', { method: 'POST', headers, body: JSON.stringify({ make: 'Toyota' }) })
+    expect((await request(app, '/cars')).status).toBe(200)
+    const created = await request(app, '/cars', { method: 'POST', headers, body: JSON.stringify({ make: 'Toyota' }) })
     const body = (await created.json()) as { data: { id: string }; links: { self: string } }
     const id = body.data.id
 
     expect(created.status).toBe(201)
     expect(created.headers.get('location')).toBe(body.links.self)
-    expect((await app.request(`/cars/${id}`)).status).toBe(200)
+    expect((await request(app, `/cars/${id}`)).status).toBe(200)
     expect(
-      (await app.request(`/cars/${id}`, { method: 'PATCH', headers, body: JSON.stringify({ make: 'Mazda' }) })).status,
+      (await request(app, `/cars/${id}`, { method: 'PATCH', headers, body: JSON.stringify({ make: 'Mazda' }) })).status,
     ).toBe(200)
-    expect((await app.request(`/cars/${id}`, { method: 'DELETE' })).status).toBe(204)
+    expect((await request(app, `/cars/${id}`, { method: 'DELETE' })).status).toBe(204)
     expect(seen).toEqual([
       { collection: 'cars', target: { kind: 'collection' as const } },
       { collection: 'cars', target: { kind: 'collection' as const } },

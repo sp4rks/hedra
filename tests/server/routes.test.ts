@@ -2,6 +2,7 @@ import { expect, setSystemTime, test } from 'bun:test'
 import { z } from 'zod'
 
 import { Collection, Config, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -15,7 +16,7 @@ test('registration exposes validated resource CRUD routes', async () => {
 
   try {
     app.register(cars)
-    const created = await app.request('/cars', {
+    const created = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ make: ' Toyota ' }),
@@ -25,17 +26,17 @@ test('registration exposes validated resource CRUD routes', async () => {
     expect(created.status).toBe(201)
     expect(body.data).toMatchObject({ make: 'Toyota', year: 2024 })
     expect(created.headers.get('location')).toContain(`/cars/${body.data.id}`)
-    expect((await app.request(`/cars/${body.data.id}`)).status).toBe(200)
-    expect((await app.request('/cars')).status).toBe(200)
-    const updated = await app.request(`/cars/${body.data.id}`, {
+    expect((await request(app, `/cars/${body.data.id}`)).status).toBe(200)
+    expect((await request(app, '/cars')).status).toBe(200)
+    const updated = await request(app, `/cars/${body.data.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ make: 'Honda' }),
     })
 
     expect(((await updated.json()) as { data: unknown }).data).toMatchObject({ make: 'Honda', year: 2024 })
-    expect((await app.request(`/cars/${body.data.id}`, { method: 'DELETE' })).status).toBe(204)
-    expect((await app.request(`/cars/${body.data.id}`)).status).toBe(404)
+    expect((await request(app, `/cars/${body.data.id}`, { method: 'DELETE' })).status).toBe(204)
+    expect((await request(app, `/cars/${body.data.id}`)).status).toBe(404)
   } finally {
     app.close()
     backend.close()
@@ -50,18 +51,18 @@ test('generated routes distinguish client errors from failed output validation',
 
   try {
     app.register(new Collection('cars', Car), { output })
-    const missingType = await app.request('/cars', { method: 'POST', body: '{}' })
-    const malformed = await app.request('/cars', {
+    const missingType = await request(app, '/cars', { method: 'POST', body: '{}' })
+    const malformed = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{',
     })
-    const invalid = await app.request('/cars', {
+    const invalid = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ make: '', year: 1 }),
     })
-    const outputFailure = await app.request('/cars', {
+    const outputFailure = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ make: 'Toyota', year: 1 }),
@@ -81,8 +82,8 @@ test('generated routes distinguish client errors from failed output validation',
       ],
     })
     expect(await backend.select('cars')).toHaveLength(1)
-    expect((await app.request('/cars/not-a-uuid')).status).toBe(422)
-    expect((await app.request('/cars?sort=make')).status).toBe(422)
+    expect((await request(app, '/cars/not-a-uuid')).status).toBe(422)
+    expect((await request(app, '/cars?sort=make')).status).toBe(422)
   } finally {
     app.close()
     backend.close()
@@ -97,7 +98,7 @@ test('unknown literal filter keys cannot silently select every resource', async 
     app.register(new Collection('cars', Resource.extend({ make: z.string() })))
     const filter = encodeURIComponent('{"__proto__":"secret"}')
 
-    expect((await app.request(`/cars?filter=${filter}`)).status).toBe(422)
+    expect((await request(app, `/cars?filter=${filter}`)).status).toBe(422)
   } finally {
     app.close()
     backend.close()
@@ -111,14 +112,14 @@ test('create applies model cross-field refinements before writing a resource', a
 
   try {
     app.register(new Collection('cars', Car))
-    const invalid = await app.request('/cars', {
+    const invalid = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ start: 10, end: 1 }),
     })
 
     expect(invalid.status).toBe(422)
-    expect(((await (await app.request('/cars')).json()) as { data: unknown[] }).data).toEqual([])
+    expect(((await (await request(app, '/cars')).json()) as { data: unknown[] }).data).toEqual([])
   } finally {
     app.close()
     backend.close()
@@ -133,18 +134,22 @@ test('update validates the complete candidate atomically', async () => {
 
   try {
     app.register(new Collection('cars', Car))
-    const created = await app.request('/cars', { method: 'POST', headers, body: JSON.stringify({ start: 1, end: 10 }) })
+    const created = await request(app, '/cars', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ start: 1, end: 10 }),
+    })
 
     expect(created.status).toBe(201)
     const car = ((await created.json()) as { data: { id: string } }).data
-    const invalid = await app.request(`/cars/${car.id}`, {
+    const invalid = await request(app, `/cars/${car.id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ start: 11 }),
     })
 
     expect(invalid.status).toBe(422)
-    expect(((await (await app.request(`/cars/${car.id}`)).json()) as { data: unknown }).data).toEqual(car)
+    expect(((await (await request(app, `/cars/${car.id}`)).json()) as { data: unknown }).data).toEqual(car)
   } finally {
     app.close()
     backend.close()
@@ -154,12 +159,12 @@ test('update validates the complete candidate atomically', async () => {
 test('strict UUID-only models allow server audit metadata without exposing undeclared fields', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Car = z.strictObject({ id: z.uuid(), name: z.string() })
+  const Car = z.strictObject({ id: z.uuid(), environmentDomain: Resource.shape.environmentDomain, name: z.string() })
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car))
-    const created = await app.request('/cars', { method: 'POST', headers, body: JSON.stringify({ name: 'Toyota' }) })
+    app.register(new Collection('cars', Car), { output: z.object({ id: Car.shape.id, name: Car.shape.name }) })
+    const created = await request(app, '/cars', { method: 'POST', headers, body: JSON.stringify({ name: 'Toyota' }) })
 
     expect(created.status).toBe(201)
     const car = ((await created.json()) as { data: { id: string; name: string } }).data
@@ -170,7 +175,7 @@ test('strict UUID-only models allow server audit metadata without exposing undec
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
     })
-    const changed = await app.request(`/cars/${car.id}`, {
+    const changed = await request(app, `/cars/${car.id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ name: 'Honda' }),
@@ -199,7 +204,7 @@ test('candidate validation cannot alter server-owned resource metadata', async (
   try {
     setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
     app.register(new Collection('cars', Car))
-    const created = await app.request('/cars', {
+    const created = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ make: 'Toyota' }),
@@ -225,7 +230,7 @@ test('candidate validation rejects transformations that alter managed timestamps
   try {
     setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
     app.register(new Collection('cars', Car))
-    const created = await app.request('/cars', {
+    const created = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ make: 'Toyota' }),
@@ -248,7 +253,7 @@ test('output validation cannot change identity on any resource response', async 
 
   try {
     app.register(new Collection('cars', Car), { output })
-    const created = await app.request('/cars', {
+    const created = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Toyota' }),
@@ -265,7 +270,7 @@ test('output validation cannot change identity on any resource response', async 
       [`/cars/${id}`, undefined],
       [`/cars/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{}' }],
     ] as const) {
-      const response = await app.request(path, init)
+      const response = await request(app, path, init)
 
       expect(response.status).toBe(500)
       expect(await response.json()).toEqual({

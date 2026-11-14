@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { Resource, ResourceOperations, SqliteBackend } from '#hedra.ts'
+import { ResourceOperations, Resource as ScopedResource, SqliteBackend } from '#hedra.ts'
+
+const Resource = ScopedResource.omit({ environmentDomain: true })
+
+type Resource = z.infer<typeof Resource>
 
 const CarModel = Resource.extend({ make: z.string().trim().min(1), year: z.number().int().default(2024) })
 

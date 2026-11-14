@@ -5,7 +5,7 @@ import type { HedraError } from '#errors'
 import { InputValidationError } from '#errors'
 
 type ObjectValue = Record<string, unknown>
-const metadata = ['id', 'createdAt', 'updatedAt'] as const
+const metadata = ['id', 'createdAt', 'updatedAt', 'environmentDomain'] as const
 
 /** Serializes a value only when JSON preserves it without loss. */
 export function jsonString(value: unknown, ErrorClass: typeof HedraError = InputValidationError): string {

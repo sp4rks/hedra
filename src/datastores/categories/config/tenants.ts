@@ -1,45 +1,57 @@
-import type { z } from 'zod'
-
+import type { Backend } from '#datastores/backend.ts'
 import type { TenantOperationsInterface } from '#datastores/categories/config/config.ts'
+import type { TenantChanges, TenantInput } from '#models/tenant.ts'
+import { catalogueRecord } from '#datastores/categories/config/records.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
-import { InputValidationError, OutputValidationError, parseInput, UniqueViolationError } from '#errors'
-import { ResourceId } from '#models/resource.ts'
-import { Tenant } from '#models/tenant.ts'
+import { ConflictError, InputValidationError, OutputValidationError, parseInput, UniqueViolationError } from '#errors'
+import { Environment } from '#models/environment.ts'
+import { ResourceId } from '#models/metadata.ts'
+import { TenantChanges as ChangesSchema, TenantInput as InputSchema, Tenant } from '#models/tenant.ts'
 
-const TenantCreate = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
-const TenantUpdate = Tenant.pick({ name: true }).partial()
-
-export type TenantCreate = z.infer<typeof TenantCreate>
-export type TenantUpdate = z.infer<typeof TenantUpdate>
-
-/** Validates a tenant read from the backend. */
-function storedTenant(input: unknown): Tenant {
-  const result = Tenant.safeParse(input)
-
-  if (!result.success) throw new OutputValidationError('output validation error', result.error.issues)
-
-  return result.data
-}
+export type TenantCreate = TenantInput
+export type TenantUpdate = TenantChanges
 
 export class TenantOperations extends ResourceOperations<Tenant> implements TenantOperationsInterface {
-  /** Returns a validated tenant, or null when it is absent. */
+  /** Shares catalogue readiness and the table needed for atomic child checks. */
+  constructor(
+    name: string,
+    backend: Backend,
+    private readonly environmentTable: string,
+    private readonly ready: Promise<void>,
+  ) {
+    super(name, backend)
+  }
+
+  /** Returns an active validated tenant, or null when absent or deleted. */
   override async get(id: string): Promise<Tenant | null> {
-    const tenant = await super.get(id)
+    await this.ready
+    const key = parseInput(ResourceId, id)
+    const record = (await this.backend.select(this.name, { id: key }))[0]
 
-    return tenant === null ? null : storedTenant(tenant)
+    if (!record) return null
+    const current = catalogueRecord(Tenant, record)
+
+    if (current.value.id !== key) throw new OutputValidationError('Resource ID cannot change')
+
+    return current.deleted ? null : current.value
   }
 
-  /** Returns validated tenants matching the supplied scalar criteria. */
+  /** Returns active tenants matching declared scalar fields. */
   override async list(filter: Partial<Tenant> = {}): Promise<Tenant[]> {
-    return (await super.list(filter)).map(storedTenant)
+    await this.ready
+    const criteria = parseInput(Tenant.partial(), filter)
+    const values = (await this.backend.select(this.name, criteria)).map((record) => catalogueRecord(Tenant, record))
+
+    return values.filter((record) => !record.deleted).map((record) => record.value)
   }
 
-  /** Creates a tenant if its canonical domain is not already in use. */
-  override async create(input: TenantCreate): Promise<Tenant> {
-    const attributes = parseInput(TenantCreate, input)
+  /** Creates a tenant while preserving every historical domain reservation. */
+  override async create(input: TenantInput): Promise<Tenant> {
+    await this.ready
+    const fields = parseInput(InputSchema, input)
     const timestamp = new Date().toISOString()
     const tenant = parseInput(Tenant, {
-      ...attributes,
+      ...fields,
       id: crypto.randomUUID(),
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -53,39 +65,71 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
     return tenant
   }
 
-  /** Changes a tenant name while retaining its domain and managed metadata. */
-  override async update(id: string, changes: TenantUpdate): Promise<Tenant | null> {
+  /** Applies a validated mutation to the current active tenant atomically. */
+  private async change(id: string, modify: (current: Tenant) => Tenant): Promise<Tenant | null> {
+    await this.ready
     const key = parseInput(ResourceId, id)
-    const fields = parseInput(TenantUpdate, changes)
-    const updated = await this.backend.update(this.name, key, (record) => {
-      const current = storedTenant(record)
 
-      if (current.id !== key) throw new OutputValidationError('Resource ID cannot change')
+    return await this.backend.transaction((transaction) => {
+      const record = transaction.select(this.name, { id: key })[0]
 
-      return parseInput(Tenant, { ...current, ...fields, updatedAt: new Date().toISOString() })
+      if (!record) return null
+      const current = catalogueRecord(Tenant, record)
+
+      if (current.deleted) return null
+      if (current.value.id !== key) throw new OutputValidationError('Resource ID cannot change')
+      const updated = parseInput(Tenant, modify(current.value))
+      const result = transaction.update(this.name, key, () => updated)
+
+      if (!result) throw new OutputValidationError('Backend did not apply the tenant update')
+      const output = catalogueRecord(Tenant, result)
+
+      if (output.deleted || output.value.id !== key || output.value.tenantDomain !== current.value.tenantDomain)
+        throw new OutputValidationError('Tenant identity cannot change')
+
+      return output.value
     })
-
-    return updated === null ? null : storedTenant(updated)
   }
 
-  /** Replaces a tenant only when its domain stays unchanged. */
-  override async replace(id: string, input: TenantCreate): Promise<Tenant | null> {
-    const key = parseInput(ResourceId, id)
-    const fields = parseInput(TenantCreate, input)
-    const updated = await this.backend.update(this.name, key, (record) => {
-      const current = storedTenant(record)
+  /** Changes the tenant name while retaining its domain and metadata. */
+  override async update(id: string, changes: TenantChanges): Promise<Tenant | null> {
+    const fields = parseInput(ChangesSchema, changes)
 
-      if (current.id !== key) throw new OutputValidationError('Resource ID cannot change')
+    return this.change(id, (current) => ({ ...current, ...fields, updatedAt: new Date().toISOString() }))
+  }
+
+  /** Replaces public attributes without changing ownership or identity. */
+  override async replace(id: string, input: TenantInput): Promise<Tenant | null> {
+    const fields = parseInput(InputSchema, input)
+
+    return this.change(id, (current) => {
       if (fields.tenantDomain !== current.tenantDomain) throw new InputValidationError('Tenant domain cannot change')
 
-      return parseInput(Tenant, {
-        ...fields,
-        id: key,
-        createdAt: current.createdAt,
-        updatedAt: new Date().toISOString(),
-      })
+      return { ...current, ...fields, updatedAt: new Date().toISOString() }
     })
+  }
 
-    return updated === null ? null : storedTenant(updated)
+  /** Reserves a deleted tenant domain after all active environments have been removed. */
+  override async delete(id: string): Promise<boolean> {
+    await this.ready
+    const key = parseInput(ResourceId, id)
+
+    return await this.backend.transaction((transaction) => {
+      const record = transaction.select(this.name, { id: key })[0]
+
+      if (!record) return false
+      const current = catalogueRecord(Tenant, record)
+
+      if (current.deleted) return false
+      const environments = transaction.select(this.environmentTable, { tenantDomain: current.value.tenantDomain })
+
+      if (environments.some((value) => !catalogueRecord(Environment, value).deleted))
+        throw new ConflictError('tenant has active environments')
+      const timestamp = new Date().toISOString()
+
+      transaction.update(this.name, key, () => ({ ...current.value, updatedAt: timestamp, deletedAt: timestamp }))
+
+      return true
+    })
   }
 }

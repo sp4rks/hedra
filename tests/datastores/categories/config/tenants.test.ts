@@ -25,6 +25,7 @@ test('tenant get rejects stored data that fails the complete Tenant model', asyn
 
       await backend.insert('hedra_config_tenants', { id, createdAt: timestamp, updatedAt: timestamp, ...attributes })
       await expect(store.tenants.get(id)).rejects.toMatchObject({ name: 'OutputValidationError', status: 500 })
+      await backend.delete('hedra_config_tenants', id)
     }
   } finally {
     store.close()
@@ -74,14 +75,14 @@ test('tenant reads return parsed values while retaining filters, ordering and ab
     await backend.insert('hedra_config_tenants', {
       ...canonical,
       name: ' Acme ',
-      tenantDomain: ' ACME.HEDRA.LOCAL ',
+      tenantDomain: 'acme.hedra.local',
     })
     const other = await store.tenants.create({ name: 'Other', tenantDomain: 'other.hedra.local' })
 
     expect(await store.tenants.get(id)).toEqual(canonical)
     expect(await store.tenants.list()).toEqual([canonical, other])
     expect(await store.tenants.list({ tenantDomain: ' ACME.HEDRA.LOCAL ' })).toEqual([canonical])
-    expect(await store.tenants.list({ tenantDomain: 'acme.hedra.local' })).toEqual([])
+    expect(await store.tenants.list({ tenantDomain: 'acme.hedra.local' })).toEqual([canonical])
   } finally {
     store.close()
     backend.close()
@@ -141,9 +142,9 @@ test('tenant domains are unique across stores, including concurrent creates', as
     if (!original) throw new Error('Tenant was not created')
     expect(original.tenantDomain).toBe('acme.hedra.local')
     expect(await first.tenants.delete(original.id)).toBe(true)
-    const recreated = await second.tenants.create({ name: 'New', tenantDomain: 'acme.hedra.local' })
-
-    expect(recreated.id).not.toBe(original.id)
+    await expect(second.tenants.create({ name: 'New', tenantDomain: 'acme.hedra.local' })).rejects.toMatchObject({
+      status: 409,
+    })
   } finally {
     first.close()
     second.close()
