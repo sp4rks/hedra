@@ -32,3 +32,7 @@ and nested CRUD, and the nested route/scope portions of [ADR 0010](0010-resource
 [ADR 0031](0031-controller-owned-public-output.md) supersedes this decision's recursive default
 output privacy and rejection of ambiguous dynamic compositions. Controllers retain output
 validation and write rollback; nested public fields become an explicit application policy.
+
+[ADR 0033](0033-schema-registration-and-reusable-children.md) accepts direct schema registration
+and reusable `child: true` resources with contained storage and nested CRUD. Its implementation is
+pending; the current runtime retains the root-only CRUD described here.
