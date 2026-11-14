@@ -127,7 +127,17 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
         throw new ConflictError('tenant has active environments')
       const timestamp = new Date().toISOString()
 
-      transaction.update(this.name, key, () => ({ ...current.value, updatedAt: timestamp, deletedAt: timestamp }))
+      const result = transaction.update(this.name, key, () => ({
+        ...current.value,
+        updatedAt: timestamp,
+        deletedAt: timestamp,
+      }))
+
+      if (!result) throw new OutputValidationError('Backend did not apply the tenant deletion')
+      const deleted = catalogueRecord(Tenant, result)
+
+      if (!deleted.deleted || deleted.value.id !== key || deleted.value.tenantDomain !== current.value.tenantDomain)
+        throw new OutputValidationError('Backend did not preserve the deleted tenant identity')
 
       return true
     })

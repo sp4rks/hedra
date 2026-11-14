@@ -29,8 +29,11 @@ export interface ControllerInterface {
 function attributes(input: ResourceInput): ResourceInput {
   const parsed = parseInput(z.record(z.string(), z.unknown()), input)
 
-  if (Object.hasOwn(input, 'environmentDomain')) throw new InputValidationError('Ownership is managed by the server')
+  if (Object.hasOwn(input, 'environmentDomain') || Object.hasOwn(parsed, 'environmentDomain'))
+    throw new InputValidationError('Ownership is managed by the server')
   const value = { ...parsed, ...input }
+
+  if (Object.hasOwn(value, 'environmentDomain')) throw new InputValidationError('Ownership is managed by the server')
 
   delete value.id
   delete value.createdAt
@@ -162,6 +165,7 @@ export class BaseController implements ControllerInterface {
         id: key,
         createdAt,
         updatedAt: timestamp,
+        environmentDomain: environment.environmentDomain,
       })
 
       data = updated

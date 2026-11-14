@@ -195,7 +195,17 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
       if (current.deleted) return false
       const timestamp = new Date().toISOString()
 
-      transaction.update(this.name, key, () => ({ ...current.value, updatedAt: timestamp, deletedAt: timestamp }))
+      const result = transaction.update(this.name, key, () => ({
+        ...current.value,
+        updatedAt: timestamp,
+        deletedAt: timestamp,
+      }))
+
+      if (!result) throw new OutputValidationError('Backend did not apply the environment deletion')
+      const deleted = this.record(result, owner, key)
+
+      if (!deleted.deleted || deleted.value.environmentDomain !== current.value.environmentDomain)
+        throw new OutputValidationError('Backend did not preserve the deleted environment identity')
 
       return true
     })

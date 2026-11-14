@@ -145,7 +145,7 @@ export class Hedra extends Hono {
    * stay synchronous. Guard each layer so closing the app during a transaction
    * also blocks subsequent session operations.
    */
-  private guard(backend: Backend): Backend {
+  private guard(backend: Backend, readiness: Promise<void> = this.preparation): Backend {
     /** Blocks operations after closure while keeping transaction sessions synchronous. */
     const guarded = <T>(operation: () => T): T => {
       if (this.closed) throw new ConnectionError('Datastore connection is closed')
@@ -153,11 +153,20 @@ export class Hedra extends Hono {
       return operation()
     }
     /** Turns synchronous guard and dependency failures into rejected backend promises. */
-    const guardedAsync = async <T>(operation: () => Promise<T>): Promise<T> => {
-      guarded(() => undefined)
-      await this.preparation
+    const guardedAsync = <T>(operation: () => Promise<T>): Promise<T> => {
+      const pending = (async () => {
+        guarded(() => undefined)
+        await readiness
 
-      return guarded(operation)
+        return guarded(operation)
+      })()
+
+      // Failed graph construction can abandon controllers that already hold pending work.
+      void readiness.catch(() => {
+        void pending.catch(() => {})
+      })
+
+      return pending
     }
 
     return {
@@ -247,18 +256,21 @@ export class Hedra extends Hono {
       this.closeBackend = () => backend.close()
     }
 
-    try {
-      const backend = this.guard(this.backend as Backend)
-      const controllers = pending.map((item) => [item, item.createController(backend)] as const)
+    const registration = Promise.withResolvers<void>()
+    const rawBackend = this.backend as Backend
 
-      this.preparation = this.preparation.then(async () => {
+    // Constructors receive their pending dependency before they can initiate asynchronous work.
+    void registration.promise.catch(() => {})
+    try {
+      const backend = this.guard(rawBackend, registration.promise)
+      const controllers = pending.map((item) => [item, item.createController(backend)] as const)
+      const preparation = this.preparation.then(async () => {
         if (this.closed) throw new ConnectionError('Hedra is closed')
-        await Promise.all(
-          pending.map((item, index) => (this.backend as Backend).ensureIndexes(item.name, indexes[index] ?? [])),
-        )
+        await Promise.all(pending.map((item, index) => rawBackend.ensureIndexes(item.name, indexes[index] ?? [])))
       })
-      // Keep initialization failures observable by every operation without background rejections.
-      void this.preparation.catch(() => {})
+
+      this.preparation = registration.promise
+      void preparation.then(registration.resolve, registration.reject)
 
       for (const [item, controller] of controllers) {
         item.bindController(controller)
@@ -268,6 +280,7 @@ export class Hedra extends Hono {
       for (const item of pending)
         registerRoutes(this, item, item === collection ? validators : undefined, this.environmentMiddleware)
     } catch (error) {
+      registration.reject(error)
       if (opened) {
         this.closeBackend?.()
         this.closeBackend = undefined

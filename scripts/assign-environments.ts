@@ -6,9 +6,11 @@ import { Config } from '#config'
 import { associationTable } from '#controllers/associations.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore, environmentTable, tenantTable } from '#datastores/categories/config/config.ts'
-import { InputValidationError, parseInput } from '#errors'
+import { InputValidationError, OutputValidationError, parseInput } from '#errors'
 import { Domain, isDirectDomain } from '#models/domain.ts'
+import { RequestScope } from '#models/request-scope.ts'
 import { Association, Resource, ResourceId, ResourceReference } from '#models/resource.ts'
+import { Tenant } from '#models/tenant.ts'
 import { Logger } from '#server/logger.ts'
 
 const Assignments = z.record(ResourceReference.shape.collection, z.record(ResourceId, Domain))
@@ -26,12 +28,19 @@ export async function assignEnvironments(backend: Backend, datastore: ConfigData
     const parent = domain.slice(domain.indexOf('.') + 1)
     const tenants = await datastore.tenants.list({ tenantDomain: parent })
 
-    if (tenants.length !== 1 || !isDirectDomain(domain, parent))
+    if (tenants.length === 0 || !isDirectDomain(domain, parent))
       throw new InputValidationError('Assignment requires a provisioned tenant')
+    const tenant = Tenant.safeParse(tenants[0])
+
+    if (tenants.length !== 1 || !tenant.success || tenant.data.tenantDomain !== parent)
+      throw new OutputValidationError('Invalid assignment tenant resolution')
     const environments = await datastore.environments.list(parent, { environmentDomain: domain })
 
-    if (environments.length !== 1 || environments[0]?.tenantDomain !== parent)
-      throw new InputValidationError('Assignment requires a provisioned environment')
+    if (environments.length === 0) throw new InputValidationError('Assignment requires a provisioned environment')
+    const scope = RequestScope.safeParse({ tenant: tenant.data, environment: environments[0] })
+
+    if (environments.length !== 1 || !scope.success || scope.data.environment.environmentDomain !== domain)
+      throw new OutputValidationError('Invalid assignment environment resolution')
   }
 
   await backend.transaction((transaction) => {
