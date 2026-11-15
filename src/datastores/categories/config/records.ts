@@ -4,7 +4,7 @@ import { OutputValidationError } from '#errors'
 import { ResourceTimestamp } from '#models/resource.ts'
 
 /** Validates internal deletion metadata and returns a public catalogue value. */
-export function catalogueRecord<S extends z.ZodObject>(
+export function parseRecord<S extends z.ZodObject>(
   model: S,
   input: unknown,
 ): { value: z.output<S>; deleted: boolean } {

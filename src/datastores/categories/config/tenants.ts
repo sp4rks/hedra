@@ -2,7 +2,7 @@ import type { z } from 'zod'
 
 import type { Backend } from '#datastores/backend.ts'
 import type { TenantOperationsInterface } from '#datastores/categories/config/config.ts'
-import { catalogueRecord } from '#datastores/categories/config/records.ts'
+import { parseRecord } from '#datastores/categories/config/records.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, UniqueViolationError } from '#errors'
 import { Domain } from '#models/domain.ts'
@@ -35,7 +35,7 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
     const record = (await this.backend.select(this.name, { tenantDomain: key }))[0]
 
     if (!record) return null
-    const current = catalogueRecord(Tenant, record)
+    const current = parseRecord(Tenant, record)
 
     if (current.value.tenantDomain !== key) throw new OutputValidationError('Tenant identity cannot change')
 
@@ -46,7 +46,7 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
   override async list(filter: Partial<Tenant> = {}): Promise<Tenant[]> {
     await this.ready
     const criteria = parseInput(Tenant.partial(), filter)
-    const values = (await this.backend.select(this.name, criteria)).map((record) => catalogueRecord(Tenant, record))
+    const values = (await this.backend.select(this.name, criteria)).map((record) => parseRecord(Tenant, record))
 
     return values.filter((record) => !record.deleted).map((record) => record.value)
   }
@@ -80,7 +80,7 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
       const record = transaction.select(this.name, { tenantDomain: key })[0]
 
       if (!record) return null
-      const current = catalogueRecord(Tenant, record)
+      const current = parseRecord(Tenant, record)
 
       if (current.deleted) return null
       if (current.value.tenantDomain !== key) throw new OutputValidationError('Tenant identity cannot change')
@@ -91,7 +91,7 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
       const result = transaction.update(this.name, current.value.id, () => updated)
 
       if (!result) throw new OutputValidationError('Backend did not apply the tenant update')
-      const output = catalogueRecord(Tenant, result)
+      const output = parseRecord(Tenant, result)
 
       if (
         output.deleted ||
@@ -131,13 +131,13 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
       const record = transaction.select(this.name, { tenantDomain: key })[0]
 
       if (!record) return false
-      const current = catalogueRecord(Tenant, record)
+      const current = parseRecord(Tenant, record)
 
       if (current.value.tenantDomain !== key) throw new OutputValidationError('Tenant identity cannot change')
       if (current.deleted) return false
       const environments = transaction.select(this.environmentTable, { tenantDomain: current.value.tenantDomain })
 
-      if (environments.some((value) => !catalogueRecord(Environment, value).deleted))
+      if (environments.some((value) => !parseRecord(Environment, value).deleted))
         throw new ConflictError('tenant has active environments')
       const timestamp = new Date().toISOString()
 
@@ -148,7 +148,7 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
       }))
 
       if (!result) throw new OutputValidationError('Backend did not apply the tenant deletion')
-      const deleted = catalogueRecord(Tenant, result)
+      const deleted = parseRecord(Tenant, result)
 
       if (
         !deleted.deleted ||

@@ -2,7 +2,7 @@ import type { z } from 'zod'
 
 import type { Backend, BackendTransaction } from '#datastores/backend.ts'
 import type { EnvironmentOperationsInterface } from '#datastores/categories/config/config.ts'
-import { catalogueRecord } from '#datastores/categories/config/records.ts'
+import { parseRecord } from '#datastores/categories/config/records.ts'
 import {
   InputValidationError,
   OutputValidationError,
@@ -36,7 +36,7 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
     const record = transaction.select(this.tenantTable, { tenantDomain })[0]
 
     if (!record) throw new RecordNotFoundError()
-    const tenant = catalogueRecord(Tenant, record)
+    const tenant = parseRecord(Tenant, record)
 
     if (tenant.value.tenantDomain !== tenantDomain) throw new OutputValidationError('Tenant identity cannot change')
     if (tenant.deleted) throw new RecordNotFoundError()
@@ -44,7 +44,7 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
 
   /** Validates the complete stored value and its immutable tenant relationship. */
   private record(input: unknown, owner: string, domain?: string) {
-    const current = catalogueRecord(Environment, input)
+    const current = parseRecord(Environment, input)
 
     if (
       current.value.tenantDomain !== owner ||
