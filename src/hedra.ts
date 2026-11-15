@@ -1,20 +1,27 @@
 import type { ControllerInterface } from '#controllers'
-import type { Backend, BackendTransaction, RecordModifier } from '#datastores/backend.ts'
 import type {
+  Backend,
+  BackendTransaction,
   ConfigDatastore,
   ConfigStoreOptions,
   EnvironmentOperationsInterface,
+  RecordModifier,
   TenantOperationsInterface,
-} from '#datastores/categories/config/config.ts'
+} from '#datastores'
 import type { LogFields, LoggerInterface } from '#server/logger.ts'
 import type { HedraOptions, RegistrationOptions, ScopedHandler } from '#server/server.ts'
 import type { RouteValidators } from '#web/resources.ts'
 import { Config } from '#config'
 import { BaseController, EnvironmentController, TenantController } from '#controllers'
-import { DatabaseFilter, DatabaseIndex, DatabaseRecord, DatabaseScalar } from '#datastores/backend.ts'
-import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
-import { ConfigStore } from '#datastores/categories/config/config.ts'
-import { ResourceOperations } from '#datastores/resource-operations.ts'
+import {
+  ConfigStore,
+  DatabaseFilter,
+  DatabaseIndex,
+  DatabaseRecord,
+  DatabaseScalar,
+  ResourceOperations,
+  SqliteBackend,
+} from '#datastores'
 import { Environment } from '#models/environment.ts'
 import { getRequestScope, RequestScope } from '#models/request-scope.ts'
 import { Association, Resource, ResourceReference } from '#models/resource.ts'

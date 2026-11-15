@@ -3,17 +3,21 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import type { ControllerInterface } from '#controllers'
-import type { Backend } from '#datastores/backend.ts'
-import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
+import type { Backend, ConfigDatastore } from '#datastores'
 import type { RequestScope } from '#models'
 import type { LoggerInterface } from '#server/logger.ts'
 import type { RouteValidators } from '#web/resources.ts'
 import { Config } from '#config'
 import { BaseController, EnvironmentController, TenantController } from '#controllers'
-import { AssociationOperations, associationTable } from '#datastores/associations.ts'
-import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
-import { ConfigStore, environmentTable, tenantTable } from '#datastores/categories/config/config.ts'
-import { modelIndexes } from '#datastores/indexes.ts'
+import {
+  AssociationOperations,
+  associationTable,
+  ConfigStore,
+  environmentTable,
+  modelIndexes,
+  SqliteBackend,
+  tenantTable,
+} from '#datastores'
 import { ConfigurationError, ConnectionError } from '#errors'
 import { environmentMiddleware, tenantMiddleware } from '#middleware/request-scope.ts'
 import { assertChildren, assertResourceModel, requireRequestScope, resourceName } from '#models'

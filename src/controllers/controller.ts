@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import { z } from 'zod'
 
-import type { Backend, DatabaseRecord } from '#datastores/backend.ts'
+import type { Backend, DatabaseRecord } from '#datastores'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import {
   assertChildInput,
@@ -13,8 +13,12 @@ import {
   readChildren,
 } from '#controllers/children.ts'
 import { assertSafeKeys, jsonString, validateCandidate } from '#controllers/validation.ts'
-import { assertResource, assertUnassociated } from '#datastores/associations.ts'
-import { DatabaseFilter as FilterSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
+import {
+  assertResource,
+  assertUnassociated,
+  DatabaseFilter as FilterSchema,
+  DatabaseScalar as ScalarSchema,
+} from '#datastores'
 import { HedraError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { assertChildOwnership } from '#models/children.ts'
 import { requireRequestScope } from '#models/request-scope.ts'

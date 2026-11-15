@@ -51,9 +51,9 @@ tests/          mirrors src/
 
 - Routes validate public input and handle HTTP transport. REST controllers implement resource actions, protect server-owned fields and shape resource responses. Programmatic datastore operations stay independent of HTTP; generic backends own persistence and transactions.
 - Name every file for what it holds, never `index.ts`, so open tabs stay distinguishable. A module that grows into its own directory names its main file after the directory, as in `tenancy/tenancy.ts`.
-- Expose the public interface through deliberate exports from `src/hedra.ts`, the package entry point; everything else is internal. The internal entry points `src/models/models.ts` and `src/controllers/controllers.ts` are the exceptions to avoiding barrel files that only re-export.
+- Expose the public interface through deliberate exports from `src/hedra.ts`, the package entry point; everything else is internal. The internal entry points `src/models/models.ts`, `src/controllers/controllers.ts` and `src/datastores/datastores.ts` are the exceptions to avoiding barrel files that only re-export.
 - Import Hedra modules through a `#` alias from `src/` and from `tests/`, including within the same area. A `#` path maps to `src/`. Config is `#config` and `#config/*`. Errors are `#errors`.
-- Use `#models` and `#controllers` outside their respective directories when combining imports shortens the formatted import block. Within each directory, import concrete modules to keep dependencies acyclic. Single-module consumers may keep their direct imports.
+- Use `#models`, `#controllers` and `#datastores` outside their respective directories when combining imports reduces the number of import declarations. Within each directory, import concrete modules to keep dependencies acyclic. Single-module consumers may keep their direct imports.
 - Keep files cohesive, around 100–300 lines. Extend an established area before adding a new one.
 
 ## Readability
