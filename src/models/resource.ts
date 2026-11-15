@@ -37,12 +37,24 @@ export const Association = z.object({
 
 export type Association = z.infer<typeof Association>
 
-/** Ensures a stored resource model requires a UUID identifier. */
+/** Requires complete server-managed metadata on stored application models. */
 export function assertResourceModel(model: z.ZodObject): void {
   if (!(model instanceof z.ZodObject)) throw new ConfigurationError('Resource model must be a Zod object')
 
   if (!(model.shape.id instanceof z.ZodUUID)) {
     throw new ConfigurationError('Resource model must require a UUID id')
+  }
+
+  for (const key of ['createdAt', 'updatedAt', 'environmentDomain'] as const) {
+    let field = model.shape[key] as z.ZodType | undefined
+
+    while (field instanceof z.ZodPipe) field = field.in as z.ZodType
+    const valid =
+      key === 'environmentDomain'
+        ? field instanceof z.ZodString
+        : field instanceof z.ZodISODateTime || (field instanceof z.ZodString && field.format === 'datetime')
+
+    if (!valid) throw new ConfigurationError(`Resource model must require ${key}`)
   }
 }
 

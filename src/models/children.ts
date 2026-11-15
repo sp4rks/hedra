@@ -90,8 +90,6 @@ export function childFields(model: z.ZodObject): ChildField[] {
     if (item instanceof z.ZodObject && isChild(item)) {
       assertChildField(name)
       assertResourceModel(item)
-      if (!item.shape.environmentDomain || !item.shape.createdAt || !item.shape.updatedAt)
-        throw new ConfigurationError('Children require resource metadata')
       fields.push({
         name,
         kind,

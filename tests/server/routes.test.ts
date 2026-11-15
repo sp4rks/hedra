@@ -155,10 +155,10 @@ test('update validates the complete candidate atomically', async () => {
   }
 })
 
-test('strict UUID-only models allow server audit metadata without exposing undeclared fields', async () => {
+test('strict Resource models store audit metadata while explicit output may omit it', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const Car = z.strictObject({ id: z.uuid(), environmentDomain: Resource.shape.environmentDomain, name: z.string() })
+  const Car = Resource.extend({ name: z.string() }).strict()
   const headers = { 'content-type': 'application/json' }
 
   try {
@@ -215,6 +215,45 @@ test('candidate validation cannot alter server-owned resource metadata', async (
     setSystemTime()
     app.close()
     backend.close()
+  }
+})
+
+test('model removal of managed metadata rejects create and rolls back update', async () => {
+  const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
+  let removeAudit = true
+  const Car = Resource.extend({ name: z.string() }).overwrite((value) => {
+    if (removeAudit) Reflect.deleteProperty(value, 'updatedAt')
+
+    return value
+  })
+  const headers = { 'content-type': 'application/json' }
+
+  try {
+    app.register(Car.meta({ name: 'cars' }))
+    const rejected = await request(app, '/cars', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Rejected' }),
+    })
+
+    expect(rejected.status).toBe(422)
+    expect(((await (await request(app, '/cars')).json()) as { data: unknown[] }).data).toEqual([])
+    removeAudit = false
+    const created = await request(app, '/cars', { method: 'POST', headers, body: JSON.stringify({ name: 'Toyota' }) })
+    const car = ((await created.json()) as { data: { id: string; name: string } }).data
+
+    expect(created.status).toBe(201)
+    removeAudit = true
+    const changed = await request(app, `/cars/${car.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ name: 'Honda' }),
+    })
+
+    expect(changed.status).toBe(422)
+    expect(((await (await request(app, `/cars/${car.id}`)).json()) as { data: unknown }).data).toEqual(car)
+  } finally {
+    app.close()
   }
 })
 

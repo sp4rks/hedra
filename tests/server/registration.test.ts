@@ -40,6 +40,52 @@ test('registration validates root names, identity and controller options before 
   }
 })
 
+test('registration requires every core field on roots and managed children before construction', () => {
+  const app = new Hedra({ config: new Config(quiet) })
+  let constructed = 0
+
+  class Observed extends BaseController {
+    /** Records whether invalid registration reached a controller constructor. */
+    constructor(backend: Backend) {
+      super(backend)
+      constructed++
+    }
+  }
+
+  try {
+    for (const key of ['createdAt', 'updatedAt', 'environmentDomain'] as const) {
+      const field = Resource.shape[key]
+      const variants = [
+        Resource.omit({ [key]: true } as never),
+        Resource.extend({ [key]: field.optional() }),
+        Resource.extend({ [key]: field.nullable() }),
+        Resource.extend({ [key]: z.number() }),
+        Resource.extend({ [key]: field.default('default') }),
+      ]
+
+      for (const variant of variants) {
+        expect(() => app.register(variant.meta({ name: 'invalid' }), { controller: Observed })).toThrow()
+        const child = variant.meta({ child: true })
+        const root = Resource.extend({ child }).meta({ name: 'invalid' })
+
+        expect(() => app.register(root, { controller: Observed })).toThrow()
+      }
+    }
+    expect(constructed).toBe(0)
+    expect(app.register(Car.meta({ name: 'invalid' }))).toBeInstanceOf(BaseController)
+    const independent = z.object({
+      id: z.uuid().refine(() => true),
+      createdAt: z.iso.datetime().refine(() => true),
+      updatedAt: z.string().datetime(),
+      environmentDomain: Resource.shape.environmentDomain.refine(() => true),
+    })
+
+    expect(app.register(independent.meta({ name: 'independent' }))).toBeInstanceOf(BaseController)
+  } finally {
+    app.close()
+  }
+})
+
 test('registration constructs the default independent controller', async () => {
   const app = new Hedra({ config: new Config(quiet) })
   const cars = Car.meta({ name: 'cars' })

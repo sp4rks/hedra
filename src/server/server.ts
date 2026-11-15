@@ -248,10 +248,6 @@ export class Hedra extends Hono {
         throw new ConfigurationError('Collection name is reserved')
       assertResourceModel(candidate)
       assertChildren(candidate)
-      const ownership = candidate.shape.environmentDomain
-
-      if (!(ownership instanceof z.ZodString) || ownership.isOptional() || ownership.isNullable())
-        throw new ConfigurationError('Application resources require environmentDomain')
       names.set(candidateName, candidate)
       pending.push(candidate)
     }
