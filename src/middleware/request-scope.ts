@@ -3,10 +3,7 @@ import type { Context, MiddlewareHandler } from 'hono'
 import type { Config } from '#config'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
 import { OutputValidationError, PreconditionFailedError, RecordNotFoundError } from '#errors'
-import { Domain, isDirectDomain } from '#models/domain.ts'
-import { Environment } from '#models/environment.ts'
-import { issueRequestScope, issueTenantScope, RequestScope } from '#models/request-scope.ts'
-import { Tenant } from '#models/tenant.ts'
+import { Domain, Environment, isDirectDomain, issueRequestScope, issueTenantScope, RequestScope, Tenant } from '#models'
 
 /** Parses the actual Host header without trusting forwarded headers or malformed ports. */
 export function requestHostname(context: Context): string {

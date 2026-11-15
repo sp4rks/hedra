@@ -1,10 +1,9 @@
 import type { z } from 'zod'
 
 import type { Backend, BackendTransaction, DatabaseRecord } from '#datastores/backend.ts'
-import type { Association, ResourceReference } from '#models/resource.ts'
+import type { Association, ResourceReference } from '#models'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
-import { Domain } from '#models/domain.ts'
-import { Association as AssociationSchema, ResourceReference as ReferenceSchema } from '#models/resource.ts'
+import { Association as AssociationSchema, Domain, ResourceReference as ReferenceSchema } from '#models'
 
 export const associationTable = 'hedra_associations'
 

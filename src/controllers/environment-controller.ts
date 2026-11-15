@@ -3,14 +3,11 @@ import { z } from 'zod'
 
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
-import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
+import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models'
 import { resourceLink } from '#controllers/controller.ts'
 import { EnvironmentCreate, EnvironmentUpdate } from '#datastores/categories/config/environments.ts'
 import { InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
-import { Domain, isDirectDomain } from '#models/domain.ts'
-import { Environment } from '#models/environment.ts'
-import { requireTenantScope } from '#models/request-scope.ts'
-import { QueryParams as QuerySchema } from '#models/rest.ts'
+import { Domain, Environment, isDirectDomain, QueryParams as QuerySchema, requireTenantScope } from '#models'
 
 export class EnvironmentController implements ControllerInterface {
   /** Obtains configuration operations only after request middleware resolved a tenant. */

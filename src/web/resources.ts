@@ -5,10 +5,7 @@ import type { ControllerInterface } from '#controllers/controller.ts'
 import { assertSafeKeys } from '#controllers/validation.ts'
 import { DatabaseScalar } from '#datastores/backend.ts'
 import { BadRequestError, ConfigurationError, InputValidationError, UnsupportedMediaTypeError } from '#errors'
-import { assertChildOwnership, childInput } from '#models/children.ts'
-import { Domain } from '#models/domain.ts'
-import { ResourceId, resourceName } from '#models/resource.ts'
-import { setResourceScope } from '#models/scope.ts'
+import { assertChildOwnership, childInput, Domain, ResourceId, resourceName, setResourceScope } from '#models'
 import { response, routeHandler } from '#web/responses.ts'
 
 export type RouteValidators = {

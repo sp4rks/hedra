@@ -10,9 +10,7 @@ import {
   RecordNotFoundError,
   UniqueViolationError,
 } from '#errors'
-import { Domain, isDirectDomain } from '#models/domain.ts'
-import { Environment } from '#models/environment.ts'
-import { Tenant } from '#models/tenant.ts'
+import { Domain, Environment, isDirectDomain, Tenant } from '#models'
 
 export const EnvironmentCreate = Environment.pick({ name: true, environmentDomain: true })
 

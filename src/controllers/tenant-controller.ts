@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { Config } from '#config'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
-import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
+import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models'
 import { resourceLink } from '#controllers/controller.ts'
 import { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
 import {
@@ -15,9 +15,7 @@ import {
   RecordNotFoundError,
 } from '#errors'
 import { requestHostname } from '#middleware/request-scope.ts'
-import { Domain } from '#models/domain.ts'
-import { QueryParams as QuerySchema } from '#models/rest.ts'
-import { Tenant } from '#models/tenant.ts'
+import { Domain, QueryParams as QuerySchema, Tenant } from '#models'
 
 export class TenantController implements ControllerInterface {
   /** Uses app configuration and obtains its configuration datastore on demand. */

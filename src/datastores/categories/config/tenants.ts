@@ -5,9 +5,7 @@ import type { TenantOperationsInterface } from '#datastores/categories/config/co
 import { parseRecord } from '#datastores/categories/config/records.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, UniqueViolationError } from '#errors'
-import { Domain } from '#models/domain.ts'
-import { Environment } from '#models/environment.ts'
-import { Tenant } from '#models/tenant.ts'
+import { Domain, Environment, Tenant } from '#models'
 
 export const TenantCreate = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
 
