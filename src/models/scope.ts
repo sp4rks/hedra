@@ -4,11 +4,24 @@ import { z } from 'zod'
 import { parseInput } from '#errors'
 import { ResourceId, ResourceReference } from '#models/resource.ts'
 
+export const ChildStep = z.strictObject({
+  field: z.string(),
+  selector: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('array'), id: ResourceId.optional() }),
+    z.strictObject({ kind: z.literal('dictionary'), key: z.string().optional() }),
+    z.strictObject({ kind: z.literal('single') }),
+    z.strictObject({ kind: z.literal('object') }),
+  ]),
+})
+
+export type ChildStep = z.infer<typeof ChildStep>
+
 export const ResourceScope = z.strictObject({
   collection: ResourceReference.shape.collection,
   target: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('collection') }),
     z.strictObject({ kind: z.literal('resource'), id: ResourceId }),
+    z.strictObject({ kind: z.literal('child'), rootId: ResourceId, steps: z.array(ChildStep).min(1) }),
   ]),
 })
 

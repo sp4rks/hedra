@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
+import { Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
 import { fixtureDomain, request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
@@ -12,7 +12,7 @@ test('loose web output schemas retain extra fields on every resource response', 
   const Account = Resource.extend({ name: z.string(), password: z.string() }).loose()
   const app = new Hedra({ config: new Config(quiet), backend })
 
-  app.register(new Collection('accounts', Account), { output: z.looseObject({ id: z.uuid(), name: z.string() }) })
+  app.register(Account.meta({ name: 'accounts' }), { output: z.looseObject({ id: z.uuid(), name: z.string() }) })
 
   try {
     const createdResponse = await request(app, '/accounts', {
@@ -57,7 +57,7 @@ test('strict web output schemas reject extra fields without exposing controller 
   const Account = Resource.extend({ name: z.string(), password: z.string() })
   const app = new Hedra({ config: new Config(quiet), backend })
 
-  app.register(new Collection('accounts', Account), { output: z.strictObject({ id: z.uuid(), name: z.string() }) })
+  app.register(Account.meta({ name: 'accounts' }), { output: z.strictObject({ id: z.uuid(), name: z.string() }) })
 
   try {
     const created = await request(app, '/accounts', {
@@ -96,7 +96,7 @@ test('web output catchalls retain valid extra fields and reject invalid ones', a
   const Account = Resource.extend({ name: z.string() }).loose()
   const app = new Hedra({ config: new Config(quiet), backend })
 
-  app.register(new Collection('accounts', Account), {
+  app.register(Account.meta({ name: 'accounts' }), {
     output: z.object({ id: z.uuid(), name: z.string() }).catchall(z.string()),
   })
 
@@ -150,7 +150,7 @@ test.each([
   const Account = Resource.extend({ name: z.string() })
   const app = new Hedra({ config: new Config(quiet), backend })
 
-  app.register(new Collection('accounts', Account), {
+  app.register(Account.meta({ name: 'accounts' }), {
     output: Account.pick({ name: true }).extend({ name: z.string().transform(() => value) }),
   })
 
@@ -186,7 +186,7 @@ test.each([
   const Account = Resource.extend({ name: z.string() })
   const app = new Hedra({ config: new Config(quiet), backend })
 
-  app.register(new Collection('accounts', Account), {
+  app.register(Account.meta({ name: 'accounts' }), {
     output: Account.pick({ name: true }).overwrite(() => value as never),
   })
 

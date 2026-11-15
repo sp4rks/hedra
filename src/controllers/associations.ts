@@ -1,5 +1,6 @@
+import type { z } from 'zod'
+
 import type { Backend, BackendTransaction, DatabaseRecord } from '#datastores/backend.ts'
-import type { Collection } from '#models/collection.ts'
 import type { Association, ResourceReference } from '#models/resource.ts'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
 import { Domain } from '#models/domain.ts'
@@ -123,7 +124,9 @@ export class AssociationOperations {
   /** Uses the app's guarded backend and registered collection definitions. */
   constructor(
     private readonly backend: () => Backend,
-    private readonly collection: (name: string) => Collection | undefined,
+    private readonly collection: (
+      name: string,
+    ) => { model: z.ZodObject; associations: readonly z.ZodObject[] } | undefined,
   ) {}
 
   /** Validates that the selected source declares the target association. */
@@ -133,7 +136,8 @@ export class AssociationOperations {
     const definition = this.collection(from.collection)
     const destination = this.collection(to.collection)
 
-    if (!definition || !destination || !definition.associations.includes(destination)) throw new InputValidationError()
+    if (!definition || !destination || !definition.associations.includes(destination.model))
+      throw new InputValidationError()
 
     return [from, to]
   }

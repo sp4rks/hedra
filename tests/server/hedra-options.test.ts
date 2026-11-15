@@ -1,7 +1,7 @@
 import { expect, expectTypeOf, test } from 'bun:test'
 
 import type { HedraOptions, Logger, LoggerInterface } from '#hedra.ts'
-import { Collection, Config, Hedra, Resource } from '#hedra.ts'
+import { Config, Hedra, Resource } from '#hedra.ts'
 
 test('HedraOptions has no environment option', () => {
   expectTypeOf<'env' extends keyof HedraOptions ? true : false>().toEqualTypeOf<false>()
@@ -67,7 +67,7 @@ test('Hedra retains a custom LoggerInterface and uses it for collection registra
   const app = new Hedra({ config, logger })
 
   expect(app.log).toBe(logger)
-  app.register(new Collection('widgets', Resource))
+  app.register(Resource.meta({ name: 'widgets' }))
   expect(records).toEqual(['Registering collection: widgets'])
   app.close()
   expect(closed).toBe(false)

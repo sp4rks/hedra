@@ -45,3 +45,16 @@ export function assertResourceModel(model: z.ZodObject): void {
     throw new ConfigurationError('Resource model must require a UUID id')
   }
 }
+
+/** Reads the safe storage and route name declared by a root schema. */
+export function resourceName(model: z.ZodObject): string {
+  if (!(model instanceof z.ZodObject)) throw new ConfigurationError('Expected a resource schema')
+  const metadata = z
+    .object({ name: ResourceReference.shape.collection, child: z.boolean().optional() })
+    .safeParse(model.meta())
+
+  if (!metadata.success) throw new ConfigurationError('Invalid resource metadata', metadata.error.issues)
+  if (metadata.data.child) throw new ConfigurationError('Child resources cannot be registered as roots')
+
+  return metadata.data.name
+}

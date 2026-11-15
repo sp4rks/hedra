@@ -4,7 +4,6 @@ import { z } from 'zod'
 import type { Config } from '#config'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
-import type { Collection } from '#models/collection.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { resourceLink } from '#controllers/controller.ts'
 import { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
@@ -59,7 +58,7 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Creates a tenant in the configuration catalogue. */
-  async create(context: Context, _collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
+  async create(context: Context, _collection: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse> {
     this.assertHost(context)
     const fields = this.attributes(input)
     const tenantDomain = parseInput(Tenant.shape.tenantDomain, fields.tenantDomain)
@@ -86,7 +85,7 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Returns one tenant. */
-  async id(context: Context, _collection: Collection, id: string): Promise<JsonApiResponse> {
+  async id(context: Context, _collection: z.ZodObject, id: string): Promise<JsonApiResponse> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
     const value = await this.datastore().tenants.get(key)
@@ -100,7 +99,7 @@ export class TenantController implements ControllerInterface {
   /** Returns tenants matching domain scalar fields. */
   async list(
     context: Context,
-    _collection: Collection,
+    _collection: z.ZodObject,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
@@ -127,7 +126,7 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Changes a tenant name without allowing its domain to change. */
-  async update(context: Context, _collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+  async update(context: Context, _collection: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
     const fields = this.attributes(input)
@@ -142,7 +141,7 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Deletes one tenant. */
-  async delete(context: Context, _collection: Collection, id: string): Promise<void> {
+  async delete(context: Context, _collection: z.ZodObject, id: string): Promise<void> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
 

@@ -2,7 +2,6 @@ import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import {
-  Collection,
   Config,
   ConfigStore,
   Hedra,
@@ -21,7 +20,7 @@ test('application CRUD and scoped handlers require provisioned scope and isolate
   const store = new ConfigStore({ backend: configBackend })
   const app = new Hedra({ config: new Config(quiet), backend, configDatastore: store })
   const Widget = Resource.extend({ name: z.string() })
-  const widgets = new Collection('widgets', Widget)
+  const widgets = Widget.meta({ name: 'widgets' })
   const tenant = await store.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
   const dev = await store.environments.create(tenant.tenantDomain, {
     name: 'Dev',

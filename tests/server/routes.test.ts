@@ -1,7 +1,7 @@
 import { expect, setSystemTime, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, Config, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { Config, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 import { request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
@@ -9,10 +9,9 @@ const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'si
 test('registration exposes validated resource CRUD routes', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const cars = new Collection(
-    'cars',
-    Resource.extend({ make: z.string().trim().min(1), year: z.number().default(2024) }),
-  )
+  const cars = Resource.extend({ make: z.string().trim().min(1), year: z.number().default(2024) }).meta({
+    name: 'cars',
+  })
 
   try {
     app.register(cars)
@@ -50,7 +49,7 @@ test('generated routes distinguish client errors from failed output validation',
   const output = z.object({ id: z.uuid(), make: z.string(), year: z.number() }).refine(() => false)
 
   try {
-    app.register(new Collection('cars', Car), { output })
+    app.register(Car.meta({ name: 'cars' }), { output })
     const missingType = await request(app, '/cars', { method: 'POST', body: '{}' })
     const malformed = await request(app, '/cars', {
       method: 'POST',
@@ -95,7 +94,7 @@ test('unknown literal filter keys cannot silently select every resource', async 
   const app = new Hedra({ config: new Config(quiet), backend })
 
   try {
-    app.register(new Collection('cars', Resource.extend({ make: z.string() })))
+    app.register(Resource.extend({ make: z.string() }).meta({ name: 'cars' }))
     const filter = encodeURIComponent('{"__proto__":"secret"}')
 
     expect((await request(app, `/cars?filter=${filter}`)).status).toBe(422)
@@ -111,7 +110,7 @@ test('create applies model cross-field refinements before writing a resource', a
   const Car = Resource.extend({ start: z.number(), end: z.number() }).refine((value) => value.end > value.start)
 
   try {
-    app.register(new Collection('cars', Car))
+    app.register(Car.meta({ name: 'cars' }))
     const invalid = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -133,7 +132,7 @@ test('update validates the complete candidate atomically', async () => {
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car))
+    app.register(Car.meta({ name: 'cars' }))
     const created = await request(app, '/cars', {
       method: 'POST',
       headers,
@@ -163,7 +162,7 @@ test('strict UUID-only models allow server audit metadata without exposing undec
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(new Collection('cars', Car), { output: z.object({ id: Car.shape.id, name: Car.shape.name }) })
+    app.register(Car.meta({ name: 'cars' }), { output: z.object({ id: Car.shape.id, name: Car.shape.name }) })
     const created = await request(app, '/cars', { method: 'POST', headers, body: JSON.stringify({ name: 'Toyota' }) })
 
     expect(created.status).toBe(201)
@@ -203,7 +202,7 @@ test('candidate validation cannot alter server-owned resource metadata', async (
 
   try {
     setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
-    app.register(new Collection('cars', Car))
+    app.register(Car.meta({ name: 'cars' }))
     const created = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -229,7 +228,7 @@ test('candidate validation rejects transformations that alter managed timestamps
 
   try {
     setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
-    app.register(new Collection('cars', Car))
+    app.register(Car.meta({ name: 'cars' }))
     const created = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -252,7 +251,7 @@ test('output validation cannot change identity on any resource response', async 
   const output = Car.overwrite((value) => ({ ...value, id: '00000000-0000-4000-8000-000000000000' }))
 
   try {
-    app.register(new Collection('cars', Car), { output })
+    app.register(Car.meta({ name: 'cars' }), { output })
     const created = await request(app, '/cars', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

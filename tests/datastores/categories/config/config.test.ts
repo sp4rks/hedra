@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { Collection, Config, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
+import { Config, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
 import { request } from '../../../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
@@ -43,7 +43,7 @@ test('ConfigStore borrows its supplied backend even when the configured path is 
     first.close()
     expect(await first.tenants.get(tenant.id)).toEqual(tenant)
     expect(await second.tenants.get(tenant.id)).toEqual(tenant)
-    app.register(new Collection('cars', Resource.extend({ make: z.string() })))
+    app.register(Resource.extend({ make: z.string() }).meta({ name: 'cars' }))
     expect((await request(app, '/cars')).status).toBe(200)
   } finally {
     app.close()
@@ -132,12 +132,13 @@ test('ConfigStore instances share tenant storage and remain separate from app re
   const second = new ConfigStore({ backend })
   const app = new Hedra({ config: new Config(quiet), backend })
   const Car = Resource.extend({ make: z.string() })
-  const cars = new Collection('cars', Car)
+  const cars = Car.meta({ name: 'cars' })
 
   try {
-    app.register(cars)
+    const carsController = app.register(cars)
+
     app.scoped.post('/manual/cars', async (context) =>
-      context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
+      context.json(await carsController.create(context, cars, { make: 'Toyota' })),
     )
     const tenant = await first.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
     const car = Car.parse(
@@ -159,11 +160,10 @@ test('application registration rejects the reserved tenant table without changin
 
   try {
     const tenant = await config.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
-    const collection = new Collection('hedra_config_tenants', Resource.extend({ name: z.string() }))
+    const collection = Resource.extend({ name: z.string() }).meta({ name: 'hedra_config_tenants' })
 
     expect(() => app.register(collection)).toThrow('reserved')
     expect(await config.tenants.list()).toEqual([tenant])
-    expect(() => collection.controller).toThrow('registered')
   } finally {
     app.close()
     backend.close()
@@ -174,11 +174,12 @@ test('closing a shared backend ends access for every store using it', async () =
   const backend = new SqliteBackend(':memory:')
   const config = new ConfigStore({ backend })
   const app = new Hedra({ config: new Config(quiet), backend })
-  const cars = new Collection('cars', Resource.extend({ make: z.string() }))
+  const cars = Resource.extend({ make: z.string() }).meta({ name: 'cars' })
 
-  app.register(cars)
+  const carsController = app.register(cars)
+
   app.scoped.post('/manual/cars', async (context) =>
-    context.json(await cars.controller.create(context, cars, { make: 'Toyota' })),
+    context.json(await carsController.create(context, cars, { make: 'Toyota' })),
   )
   app.onError((_error, context) => context.text('closed', 500))
   backend.close()

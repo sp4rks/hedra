@@ -2,16 +2,7 @@ import { expect, setSystemTime, test } from 'bun:test'
 import { z } from 'zod'
 
 import type { ControllerInterface, QueryParams } from '#hedra.ts'
-import {
-  BaseController,
-  Collection,
-  Config,
-  Hedra,
-  JsonApiListResponse,
-  JsonApiResponse,
-  Resource,
-  SqliteBackend,
-} from '#hedra.ts'
+import { BaseController, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
 import { fixtureDomain, insert, request } from '../fixtures/scope.ts'
 
 const Car = Resource.extend({ make: z.string() })
@@ -20,8 +11,8 @@ test('BaseController implements the REST contract across collections', async () 
   const backend = new SqliteBackend(':memory:')
   const controller = new BaseController(backend)
   const contract: ControllerInterface = controller
-  const cars = new Collection('cars', Car)
-  const labels = new Collection('labels', Resource.extend({ label: z.string() }))
+  const cars = Car.meta({ name: 'cars' })
+  const labels = Resource.extend({ label: z.string() }).meta({ name: 'labels' })
   const app = new Hedra({
     config: new Config({
       HEDRA_SQLITE_PATH: ':memory:',
@@ -57,7 +48,7 @@ test('BaseController implements the REST contract across collections', async () 
 test('create replaces client metadata and preserves ordinary attributes', async () => {
   const backend = new SqliteBackend(':memory:')
   const controller = new BaseController(backend)
-  const cars = new Collection('cars', Car)
+  const cars = Car.meta({ name: 'cars' })
   const app = new Hedra({
     config: new Config({
       HEDRA_SQLITE_PATH: ':memory:',
@@ -93,7 +84,7 @@ test('create replaces client metadata and preserves ordinary attributes', async 
 test('id returns the addressed resource and reports absent resources', async () => {
   const backend = new SqliteBackend(':memory:')
   const controller = new BaseController(backend)
-  const cars = new Collection('cars', Car)
+  const cars = Car.meta({ name: 'cars' })
   const app = new Hedra({
     config: new Config({
       HEDRA_SQLITE_PATH: ':memory:',
@@ -131,7 +122,7 @@ test('update preserves identity and creation time while refreshing update time',
   const backend = new SqliteBackend(':memory:')
   const controller = new BaseController(backend)
   const Model = Car.extend({ note: z.string().optional() })
-  const cars = new Collection('cars', Model)
+  const cars = Model.meta({ name: 'cars' })
   const app = new Hedra({
     config: new Config({
       HEDRA_SQLITE_PATH: ':memory:',
@@ -180,7 +171,7 @@ test('list retains equality filters and correct response links', async () => {
   const backend = new SqliteBackend(':memory:')
   const controller = new BaseController(backend)
   const Model = Resource.extend({ make: z.string(), value: z.union([z.string(), z.number(), z.boolean(), z.null()]) })
-  const cars = new Collection('cars', Model)
+  const cars = Model.meta({ name: 'cars' })
   const app = new Hedra({
     config: new Config({
       HEDRA_SQLITE_PATH: ':memory:',
@@ -265,7 +256,7 @@ test('list retains equality filters and correct response links', async () => {
 test('REST lookup and mutation use expected absence behaviour', async () => {
   const backend = new SqliteBackend(':memory:')
   const controller = new BaseController(backend)
-  const cars = new Collection('cars', Car)
+  const cars = Car.meta({ name: 'cars' })
   const app = new Hedra({
     config: new Config({
       HEDRA_SQLITE_PATH: ':memory:',

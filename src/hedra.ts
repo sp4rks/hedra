@@ -8,7 +8,7 @@ import type {
 } from '#datastores/categories/config/config.ts'
 import type { RouteValidators } from '#routes/resources.ts'
 import type { LogFields, LoggerInterface } from '#server/logger.ts'
-import type { HedraOptions, ScopedHandler } from '#server/server.ts'
+import type { HedraOptions, RegistrationOptions, ScopedHandler } from '#server/server.ts'
 import { Config } from '#config'
 import { BaseController } from '#controllers/controller.ts'
 import { EnvironmentController } from '#controllers/environment-controller.ts'
@@ -17,7 +17,6 @@ import { DatabaseFilter, DatabaseIndex, DatabaseRecord, DatabaseScalar } from '#
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore } from '#datastores/categories/config/config.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
-import { Collection } from '#models/collection.ts'
 import { Environment } from '#models/environment.ts'
 import { getRequestScope, RequestScope } from '#models/request-scope.ts'
 import { Association, Resource, ResourceReference } from '#models/resource.ts'
@@ -39,6 +38,7 @@ export type {
   LogFields,
   LoggerInterface,
   RecordModifier,
+  RegistrationOptions,
   RouteValidators,
   ScopedHandler,
   TenantOperationsInterface,
@@ -46,7 +46,6 @@ export type {
 export {
   Association,
   BaseController,
-  Collection,
   Config,
   ConfigStore,
   DatabaseFilter,

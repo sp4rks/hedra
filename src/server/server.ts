@@ -10,6 +10,7 @@ import type { RouteValidators } from '#routes/resources.ts'
 import type { LoggerInterface } from '#server/logger.ts'
 import { Config } from '#config'
 import { AssociationOperations, associationTable } from '#controllers/associations.ts'
+import { BaseController } from '#controllers/controller.ts'
 import { EnvironmentController } from '#controllers/environment-controller.ts'
 import { TenantController } from '#controllers/tenant-controller.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
@@ -17,9 +18,10 @@ import { ConfigStore, environmentTable, tenantTable } from '#datastores/categori
 import { modelIndexes } from '#datastores/indexes.ts'
 import { ConfigurationError, ConnectionError } from '#errors'
 import { environmentMiddleware, tenantMiddleware } from '#middleware/request-scope.ts'
-import { Collection } from '#models/collection.ts'
+import { assertChildren } from '#models/children.ts'
 import { Environment } from '#models/environment.ts'
 import { requireRequestScope } from '#models/request-scope.ts'
+import { assertResourceModel, resourceName } from '#models/resource.ts'
 import { Tenant } from '#models/tenant.ts'
 import { EnvironmentChanges, EnvironmentInput, TenantChanges, TenantInput } from '#routes/catalogue-inputs.ts'
 import { assertRouteValidators, guardedMiddleware, registerRoutes, routeHandler } from '#routes/resources.ts'
@@ -30,6 +32,13 @@ export type HedraOptions = {
   backend?: Backend
   configDatastore?: ConfigDatastore
   logger?: LoggerInterface
+}
+
+type ControllerConstructor<C extends ControllerInterface> = new (backend: Backend) => C
+
+export type RegistrationOptions<C extends ControllerInterface = BaseController> = RouteValidators & {
+  controller?: ControllerConstructor<C>
+  associations?: z.ZodObject[]
 }
 
 export type ScopedHandler = (context: Context, scope: RequestScope) => Response | Promise<Response>
@@ -46,7 +55,10 @@ export class Hedra extends Hono {
   private datastore?: ConfigDatastore
   private closeConfigDatastore?: () => void
   private closeBackend?: () => void
-  private readonly collections = new Map<string, Collection>()
+  private readonly collections = new Map<
+    string,
+    { model: z.ZodObject; controller: ControllerInterface; associations: readonly z.ZodObject[] }
+  >()
   private closed = false
   private preparation: Promise<void> = Promise.resolve()
   private readonly environmentMiddleware: MiddlewareHandler
@@ -83,13 +95,13 @@ export class Hedra extends Hono {
     this.datastore = options.configDatastore
     this.environmentMiddleware = environmentMiddleware(this.config, () => this.configDatastore)
 
-    const tenants = new Collection('tenants', Tenant)
+    const tenants = Tenant.meta({ name: 'tenants' })
     const tenantController = new TenantController(this.config, () => this.configDatastore)
 
-    tenants.bindController(tenantController)
     registerRoutes(
       this,
       tenants,
+      tenantController,
       {
         create: TenantInput,
         update: TenantChanges,
@@ -102,12 +114,12 @@ export class Hedra extends Hono {
       null,
     )
 
-    const environments = new Collection('environments', Environment)
+    const environments = Environment.meta({ name: 'environments' })
 
-    environments.bindController(new EnvironmentController(() => this.configDatastore))
     registerRoutes(
       this,
       environments,
+      new EnvironmentController(() => this.configDatastore),
       { create: EnvironmentInput, update: EnvironmentChanges, output: Environment },
       tenantMiddleware(this.config, () => this.configDatastore),
       'tenantDomain',
@@ -194,62 +206,58 @@ export class Hedra extends Hono {
     }
   }
 
-  /** Constructs the selected controller using this app's backend. */
-  register<S extends z.ZodObject, C extends ControllerInterface>(
-    collection: Collection<S, C>,
-    validators: RouteValidators = {},
-  ): void {
+  /** Registers a named stored schema and returns its app-local controller. */
+  register<C extends ControllerInterface>(
+    model: z.ZodObject,
+    options: RegistrationOptions<C> & { controller: ControllerConstructor<C> },
+  ): C
+  register(model: z.ZodObject, options?: RegistrationOptions<ControllerInterface>): ControllerInterface
+  register<C extends ControllerInterface = BaseController>(
+    model: z.ZodObject,
+    options: RegistrationOptions<C> = {},
+  ): C {
     if (this.closed) throw new ConfigurationError('Hedra is closed')
-    if (!(collection instanceof Collection)) throw new ConfigurationError('Expected a Collection')
-    if (this.collections.has(collection.name))
-      throw new ConfigurationError(`Collection already registered: ${collection.name}`)
+    const name = resourceName(model)
+
+    if (this.collections.has(name)) throw new ConfigurationError(`Collection already registered: ${name}`)
+    const parsedOptions = z
+      .strictObject({
+        controller: z.custom<ControllerConstructor<C>>((value) => typeof value === 'function').optional(),
+        associations: z.array(z.instanceof(z.ZodObject)).optional(),
+        create: z.instanceof(z.ZodObject).optional(),
+        update: z.instanceof(z.ZodObject).optional(),
+        output: z.instanceof(z.ZodObject).optional(),
+      })
+      .safeParse(options)
+
+    if (!parsedOptions.success) throw new ConfigurationError('configuration error', parsedOptions.error.issues)
+    const { controller: Constructor, associations = [], ...validators } = parsedOptions.data
 
     assertRouteValidators(validators)
-    const collectionsByName = new Map(this.collections)
-    const pending: Collection[] = []
-    const visiting = new Set<Collection>()
-    const visited = new Set<Collection>()
+    const definitions = [...associations, model]
+    const pending: z.ZodObject[] = []
+    const names = new Map<string, z.ZodObject>()
 
-    /**
-     * Validates a collection and its association graph, queuing targets before their source.
-     * This pass only changes local state; controllers and routes are created after
-     * every reachable collection passes validation.
-     *
-     * The visiting set tracks the current recursion chain. Check it before reusing a
-     * known collection so a cycle cannot be mistaken for a shared association target.
-     */
-    const visit = (candidate: Collection): void => {
-      if (visiting.has(candidate)) throw new ConfigurationError('Cyclic association definitions are not supported')
-      if (visited.has(candidate)) return
-      const known = collectionsByName.get(candidate.name)
+    for (const candidate of definitions) {
+      const candidateName = resourceName(candidate)
+      const known = this.collections.get(candidateName)?.model ?? names.get(candidateName)
 
-      if (known && known !== candidate) throw new ConfigurationError(`Collection already registered: ${candidate.name}`)
-      if (known) return
-      if ([tenantTable, environmentTable, associationTable, 'tenants', 'environments'].includes(candidate.name))
+      if (known && known !== candidate) throw new ConfigurationError(`Collection already registered: ${candidateName}`)
+      if (known) continue
+      if ([tenantTable, environmentTable, associationTable, 'tenants', 'environments'].includes(candidateName))
         throw new ConfigurationError('Collection name is reserved')
-      const ownership = candidate.model.shape.environmentDomain
+      assertResourceModel(candidate)
+      assertChildren(candidate)
+      const ownership = candidate.shape.environmentDomain
 
       if (!(ownership instanceof z.ZodString) || ownership.isOptional() || ownership.isNullable())
         throw new ConfigurationError('Application resources require environmentDomain')
-      if (candidate.isAttached) throw new ConfigurationError('Collection is already attached to an app')
-
-      collectionsByName.set(candidate.name, candidate)
-      visiting.add(candidate)
-
-      for (const target of candidate.associations) visit(target)
-
-      visiting.delete(candidate)
-      visited.add(candidate)
+      names.set(candidateName, candidate)
       pending.push(candidate)
     }
+    const indexes = pending.map(modelIndexes)
 
-    visit(collection)
-    const indexes = pending.map((item) => modelIndexes(item.model))
-
-    if (this.config.serverPrintRoutes) {
-      this.log.info(`Registering collection: ${collection.name}`)
-    }
-
+    if (this.config.serverPrintRoutes) this.log.info(`Registering collection: ${name}`)
     const opened = this.backend === undefined
 
     if (opened) {
@@ -258,30 +266,38 @@ export class Hedra extends Hono {
       this.backend = backend
       this.closeBackend = () => backend.close()
     }
-
     const registration = Promise.withResolvers<void>()
     const rawBackend = this.backend as Backend
 
-    // Constructors receive their pending dependency before they can initiate asynchronous work.
+    // Constructor work depends on this registration before it can reach the backend.
     void registration.promise.catch(() => {})
     try {
       const backend = this.guard(rawBackend, registration.promise)
-      const controllers = pending.map((item) => [item, item.createController(backend)] as const)
+      const controllers = pending.map(
+        (item) =>
+          [item, item === model && Constructor ? new Constructor(backend) : new BaseController(backend)] as const,
+      )
       const preparation = this.preparation.then(async () => {
         if (this.closed) throw new ConnectionError('Hedra is closed')
-        await Promise.all(pending.map((item, index) => rawBackend.ensureIndexes(item.name, indexes[index] ?? [])))
+        await Promise.all(
+          pending.map((item, index) => rawBackend.ensureIndexes(resourceName(item), indexes[index] ?? [])),
+        )
       })
 
       this.preparation = registration.promise
       void preparation.then(registration.resolve, registration.reject)
 
-      for (const [item, controller] of controllers) {
-        item.bindController(controller)
-        this.collections.set(item.name, item)
-      }
+      for (const [item, controller] of controllers)
+        this.collections.set(resourceName(item), {
+          model: item,
+          controller,
+          associations: item === model ? associations : [],
+        })
 
-      for (const item of pending)
-        registerRoutes(this, item, item === collection ? validators : undefined, this.environmentMiddleware)
+      for (const [item, controller] of controllers)
+        registerRoutes(this, item, controller, item === model ? validators : undefined, this.environmentMiddleware)
+
+      return this.collections.get(name)?.controller as C
     } catch (error) {
       registration.reject(error)
       if (opened) {

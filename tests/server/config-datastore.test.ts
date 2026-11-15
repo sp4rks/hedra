@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 import type { ConfigDatastore } from '#hedra.ts'
-import { Collection, Config, ConfigStore, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { Config, ConfigStore, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 import { provision, request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
@@ -154,13 +154,13 @@ test('configuration and application data use their own supplied datastores', asy
   const config = new Config(quiet)
   const app = new Hedra({ config, backend: appBackend, configDatastore })
   const observer = new Hedra({ config, backend: configBackend })
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
+  const labels = Resource.extend({ name: z.string() }).meta({ name: 'labels' })
+  const projects = Resource.extend({ title: z.string() }).meta({ name: 'projects' })
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(projects)
-    observer.register(new Collection('projects', Resource.extend({ title: z.string() })))
+    app.register(projects, { associations: [labels] })
+    observer.register(Resource.extend({ title: z.string() }).meta({ name: 'projects' }))
     const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
     const project = await request(app, '/projects', {
       method: 'POST',

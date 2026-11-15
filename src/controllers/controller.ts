@@ -2,27 +2,39 @@ import type { Context } from 'hono'
 import { z } from 'zod'
 
 import type { Backend, DatabaseRecord } from '#datastores/backend.ts'
-import type { Collection } from '#models/collection.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { assertResource, assertUnassociated } from '#controllers/associations.ts'
+import {
+  assertChildInput,
+  assertChildMetadata,
+  childTarget,
+  mutateChildren,
+  prepareChildren,
+  readChildren,
+} from '#controllers/children.ts'
 import { assertSafeKeys, jsonString, validateCandidate } from '#controllers/validation.ts'
 import { DatabaseFilter as FilterSchema, DatabaseScalar as ScalarSchema } from '#datastores/backend.ts'
 import { HedraError, InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
+import { assertChildOwnership } from '#models/children.ts'
 import { requireRequestScope } from '#models/request-scope.ts'
-import { ResourceId, ResourceTimestamp } from '#models/resource.ts'
+import { ResourceId, ResourceTimestamp, resourceName } from '#models/resource.ts'
 import { ResourceInput as InputSchema, QueryParams as QuerySchema } from '#models/rest.ts'
 
+/**
+ * Operates on the raw root schema. Child-scoped calls return the complete containing root;
+ * list returns a one-root envelope so web can apply the parent's output before selecting children.
+ */
 export interface ControllerInterface {
-  create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse>
-  id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse>
+  create(context: Context, collection: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse>
+  id(context: Context, collection: z.ZodObject, id: string): Promise<JsonApiResponse>
   list(
     context: Context,
-    collection: Collection,
+    collection: z.ZodObject,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse>
-  update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse>
-  delete(context: Context, collection: Collection, id: string): Promise<void>
+  update(context: Context, collection: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse>
+  delete(context: Context, collection: z.ZodObject, id: string): Promise<void>
 }
 
 /** Removes server-owned attributes before generic JSON validation. */
@@ -59,18 +71,28 @@ export function resourceLink(context: Context, id: string): string {
   return url.toString()
 }
 
+/** Returns complete root snapshots for both root and child-scoped calls; web owns child projection. */
 export class BaseController implements ControllerInterface {
   /** Uses the supplied backend for each collection operation. */
   constructor(protected readonly backend: Backend) {}
 
   /** Creates a resource with server-owned identity and timestamps. */
-  async create(context: Context, collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
+  async create(context: Context, collection: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse> {
+    const target = childTarget(context)
+
+    if (target) {
+      assertChildInput(collection, target, input)
+
+      return mutateChildren(this.backend, context, collection, target, 'create', attributes(input))
+    }
     const { environment } = requireRequestScope(context)
+
+    assertChildOwnership(collection, input)
     const id = crypto.randomUUID()
     const timestamp = new Date().toISOString()
     const fields = attributes(input)
     const record: DatabaseRecord = {
-      ...fields,
+      ...prepareChildren(collection, fields, undefined, timestamp, environment.environmentDomain),
       id,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -79,9 +101,11 @@ export class BaseController implements ControllerInterface {
     let data: ResourceInput | undefined
 
     await this.backend.transaction((transaction) => {
-      const validated = validateCandidate(collection.model, record)
+      const validated = validateCandidate(collection, record)
 
-      transaction.insert(collection.name, validated)
+      assertChildMetadata(collection, record, validated)
+
+      transaction.insert(resourceName(collection), validated)
       data = validated
     })
     if (!data) throw new HedraError('Backend did not apply the resource create')
@@ -90,10 +114,14 @@ export class BaseController implements ControllerInterface {
   }
 
   /** Returns one resource. */
-  async id(context: Context, collection: Collection, id: string): Promise<JsonApiResponse> {
+  async id(context: Context, collection: z.ZodObject, id: string): Promise<JsonApiResponse> {
+    const target = childTarget(context)
+
+    if (target)
+      return { data: await readChildren(this.backend, context, collection, target), links: { self: context.req.url } }
     const { environment } = requireRequestScope(context)
     const key = parseInput(ResourceId, id)
-    const rows = await this.backend.select(collection.name, {
+    const rows = await this.backend.select(resourceName(collection), {
       id: key,
       environmentDomain: environment.environmentDomain,
     })
@@ -109,10 +137,14 @@ export class BaseController implements ControllerInterface {
   /** Returns matching resources. */
   async list(
     context: Context,
-    collection: Collection,
+    collection: z.ZodObject,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
+    const target = childTarget(context)
+
+    if (target)
+      return { data: [await readChildren(this.backend, context, collection, target)], links: { self: baseUrl } }
     const { environment } = requireRequestScope(context)
     const options = queryParams === undefined ? {} : queryParams
 
@@ -133,7 +165,7 @@ export class BaseController implements ControllerInterface {
 
     if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
 
-    const records = await this.backend.select(collection.name, {
+    const records = await this.backend.select(resourceName(collection), {
       ...Object.fromEntries(entries),
       environmentDomain: environment.environmentDomain,
     })
@@ -145,9 +177,18 @@ export class BaseController implements ControllerInterface {
   }
 
   /** Updates one resource. */
-  async update(context: Context, collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+  async update(context: Context, collection: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+    const target = childTarget(context)
+
+    if (target) {
+      assertChildInput(collection, target, input)
+
+      return mutateChildren(this.backend, context, collection, target, 'update', attributes(input))
+    }
     const { environment } = requireRequestScope(context)
     const key = parseInput(ResourceId, id)
+
+    assertChildOwnership(collection, input)
     const fields = attributes(input)
     let data: ResourceInput | undefined
     const modify = (current: DatabaseRecord): DatabaseRecord => {
@@ -159,20 +200,22 @@ export class BaseController implements ControllerInterface {
         throw new OutputValidationError('output validation error', parsedTimestamp.error.issues)
       const createdAt = parsedTimestamp.data
       const timestamp = new Date().toISOString()
-      const updated = validateCandidate(collection.model, {
+      const candidate = {
         ...current,
-        ...fields,
+        ...prepareChildren(collection, fields, current, timestamp, environment.environmentDomain),
         id: key,
         createdAt,
         updatedAt: timestamp,
         environmentDomain: environment.environmentDomain,
-      })
+      }
+      const updated = validateCandidate(collection, candidate)
 
+      assertChildMetadata(collection, candidate, updated)
       data = updated
 
       return updated
     }
-    const result = await this.backend.update(collection.name, key, modify)
+    const result = await this.backend.update(resourceName(collection), key, modify)
 
     if (!result) throw new RecordNotFoundError()
     if (!data) throw new HedraError('Backend did not apply the resource update')
@@ -181,15 +224,22 @@ export class BaseController implements ControllerInterface {
   }
 
   /** Deletes one resource. */
-  async delete(context: Context, collection: Collection, id: string): Promise<void> {
+  async delete(context: Context, collection: z.ZodObject, id: string): Promise<void> {
+    const target = childTarget(context)
+
+    if (target) {
+      await mutateChildren(this.backend, context, collection, target, 'delete')
+
+      return
+    }
     const key = parseInput(ResourceId, id)
 
     const { environment } = requireRequestScope(context)
 
     await this.backend.transaction((transaction) => {
-      assertResource(transaction, { collection: collection.name, id: key }, environment.environmentDomain)
-      assertUnassociated(transaction, { collection: collection.name, id: key }, environment.environmentDomain)
-      if (!transaction.delete(collection.name, key)) throw new RecordNotFoundError()
+      assertResource(transaction, { collection: resourceName(collection), id: key }, environment.environmentDomain)
+      assertUnassociated(transaction, { collection: resourceName(collection), id: key }, environment.environmentDomain)
+      if (!transaction.delete(resourceName(collection), key)) throw new RecordNotFoundError()
     })
   }
 }

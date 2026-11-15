@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
+import { Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
 import { fixtureDomain, insert, request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
@@ -11,9 +11,9 @@ test('default and ordinary web output schemas strip private fields without chang
   const Account = Resource.extend({ username: z.string(), password: z.string(), token: z.string() })
     .loose()
     .refine((value) => value.password.length > 0)
-  const accounts = new Collection('accounts', Account)
-  const restricted = new Collection('restricted', Account)
-  const explicit = new Collection('explicit', Account)
+  const accounts = Account.meta({ name: 'accounts' })
+  const restricted = Account.meta({ name: 'restricted' })
+  const explicit = Account.meta({ name: 'explicit' })
   const app = new Hedra({ config: new Config(quiet), backend })
 
   app.register(accounts)
@@ -98,7 +98,7 @@ test('web validates update output once after its atomic mutation', async () => {
   const Model = Resource.extend({ name: z.string() })
   let validations = 0
   const outputValidator = z.object({ id: z.uuid(), name: z.string() }).refine(() => ++validations === 1)
-  const users = new Collection('users', Model)
+  const users = Model.meta({ name: 'users' })
   const app = new Hedra({ config: new Config(quiet), backend })
   const id = crypto.randomUUID()
   const timestamp = '2026-01-02T03:04:05.000Z'
@@ -128,7 +128,7 @@ test('output validator failures never return unfiltered resources', async () => 
   const backend = new SqliteBackend(':memory:')
   const Model = Resource.extend({ name: z.string(), password: z.string() })
   const outputValidator = z.object({ id: z.uuid(), name: z.string().refine(() => false) })
-  const users = new Collection('users', Model)
+  const users = Model.meta({ name: 'users' })
   const app = new Hedra({ config: new Config(quiet), backend })
   const id = crypto.randomUUID()
   const timestamp = '2026-01-02T03:04:05.000Z'
@@ -212,7 +212,7 @@ test('output transforms cannot mutate nested attributes persisted by create or u
       return profile
     }),
   })
-  const users = new Collection('users', Model)
+  const users = Model.meta({ name: 'users' })
   const app = new Hedra({ config: new Config(quiet), backend })
 
   app.register(users, { output: outputValidator })
@@ -258,7 +258,7 @@ test('output transforms cannot mutate an existing nested attribute during update
       return profile
     }),
   })
-  const users = new Collection('users', Model)
+  const users = Model.meta({ name: 'users' })
   const app = new Hedra({ config: new Config(quiet), backend })
   const id = crypto.randomUUID()
   const timestamp = '2026-01-02T03:04:05.000Z'

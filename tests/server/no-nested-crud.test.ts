@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, Config, Hedra, JsonApiListResponse, Resource, ResourceScope, SqliteBackend } from '#hedra.ts'
+import { Config, Hedra, JsonApiListResponse, Resource, ResourceScope, SqliteBackend } from '#hedra.ts'
 import { fixtureDomain, insert, request } from '../fixtures/scope.ts'
 
 const headers = { 'content-type': 'application/json' }
@@ -10,7 +10,7 @@ test('nested values use their model data and are replaced through the parent', a
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const Note = Resource.extend({ text: z.string() })
-  const projects = new Collection('projects', Resource.extend({ notes: z.array(Note) }))
+  const projects = Resource.extend({ notes: z.array(Note) }).meta({ name: 'projects' })
   const note = {
     environmentDomain: fixtureDomain,
     id: crypto.randomUUID(),
@@ -79,7 +79,7 @@ test('parent writes validate cross-field rules involving nested data atomically'
   }).refine((value) => value.values.reduce((sum, item) => sum + item, 0) <= value.limit)
 
   try {
-    app.register(new Collection('projects', model))
+    app.register(model.meta({ name: 'projects' }))
     const created = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -106,7 +106,7 @@ test('default controller preserves nested fields allowed by their schemas', asyn
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const Note = z.looseObject({ text: z.string(), password: z.string() })
   const model = Resource.extend({ password: z.string(), notes: z.array(Note) }).loose()
-  const projects = new Collection('projects', model)
+  const projects = model.meta({ name: 'projects' })
   const note = { text: 'visible', password: 'nested-password', secret: 'nested-extra' }
 
   try {
@@ -173,7 +173,7 @@ test('tuple and intersection outputs preserve fields allowed by their schemas', 
   const selected = { ...fixed, extra: 'declared' }
 
   try {
-    app.register(new Collection('projects', model))
+    app.register(model.meta({ name: 'projects' }))
     const response = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -203,7 +203,7 @@ test('explicit output schemas hide nested secrets on every resource response', a
   const note = { text: 'visible', password: 'private', secret: 'unknown' }
 
   try {
-    app.register(new Collection('projects', model), { output: outputValidator })
+    app.register(model.meta({ name: 'projects' }), { output: outputValidator })
     const created = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -249,7 +249,7 @@ test('default output accepts ordinary nested unions and intersections', async ()
   const note = { text: 'visible', password: 'ordinary dictionary value', secret: 'unknown' }
 
   try {
-    app.register(new Collection('projects', model))
+    app.register(model.meta({ name: 'projects' }))
     const response = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -286,7 +286,7 @@ test('shared schemas remain usable in multiple public union fields', async () =>
   }
 
   try {
-    app.register(new Collection('projects', Resource.extend({ value: choice })))
+    app.register(Resource.extend({ value: choice }).meta({ name: 'projects' }))
     const response = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -317,7 +317,7 @@ test('default output preserves finite recursive data', async () => {
   })
 
   try {
-    app.register(new Collection('projects', Resource.extend({ tree: z.union([Tree, z.string()]) })))
+    app.register(Resource.extend({ tree: z.union([Tree, z.string()]) }).meta({ name: 'projects' }))
     const leaf = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -348,7 +348,7 @@ test('dictionary keys are data while unsafe prototype keys cannot be silently lo
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
 
   try {
-    app.register(new Collection('projects', Resource.extend({ values: z.record(z.string(), z.string()) })))
+    app.register(Resource.extend({ values: z.record(z.string(), z.string()) }).meta({ name: 'projects' }))
     const rejected = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -400,9 +400,17 @@ test('public scope and list schemas describe root resources only', () => {
 })
 
 test('obsolete parent collection options reject', () => {
-  const project = new Collection('projects', Resource.extend({ name: z.string() }))
+  const project = Resource.extend({ name: z.string() }).meta({ name: 'projects' })
 
-  expect(() => new Collection('notes', Resource, { parent: project } as never)).toThrow('configuration error')
+  const app = new Hedra({ config: new Config({ HEDRA_SQLITE_PATH: ':memory:', HEDRA_SERVER_SILENT_STARTUP: 'true' }) })
+
+  try {
+    expect(() => app.register(Resource.meta({ name: 'notes' }), { parent: project } as never)).toThrow(
+      'configuration error',
+    )
+  } finally {
+    app.close()
+  }
 })
 
 test('ordinary nested schema wrappers accept Resource values', async () => {
@@ -425,7 +433,7 @@ test('ordinary nested schema wrappers accept Resource values', async () => {
   }
 
   try {
-    app.register(new Collection('projects', model))
+    app.register(model.meta({ name: 'projects' }))
     const created = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -466,7 +474,7 @@ test('default output preserves nested wrappers and their fallback values', async
   })
 
   try {
-    app.register(new Collection('projects', model))
+    app.register(model.meta({ name: 'projects' }))
     const created = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -508,11 +516,11 @@ test('default output preserves nested wrappers and their fallback values', async
 test('association navigation and unlink routes are absent', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
+  const labels = Resource.extend({ name: z.string() }).meta({ name: 'labels' })
+  const projects = Resource.extend({ title: z.string() }).meta({ name: 'projects' })
 
   try {
-    app.register(projects)
+    app.register(projects, { associations: [labels] })
     const project = await request(app, '/projects', { method: 'POST', headers, body: JSON.stringify({ title: 'A' }) })
     const label = await request(app, '/labels', { method: 'POST', headers, body: JSON.stringify({ name: 'B' }) })
     const projectId = ((await project.json()) as { data: { id: string } }).data.id

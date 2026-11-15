@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 import type { ConfigDatastore } from '#hedra.ts'
-import { Collection, Config, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
+import { Config, ConfigStore, Hedra, JsonApiResponse, Resource, SqliteBackend, Tenant } from '#hedra.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 const headers = { host: 'deployment.hedra.local', 'content-type': 'application/json' }
@@ -203,14 +203,12 @@ test('tenant API rejects invalid mutations and duplicate domains without changin
 test('reserved tenant collection names cannot be registered directly or through associations', () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const tenants = new Collection('tenants', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ name: z.string() }), { associations: [tenants] })
+  const tenants = Resource.extend({ name: z.string() }).meta({ name: 'tenants' })
+  const projects = Resource.extend({ name: z.string() }).meta({ name: 'projects' })
 
   try {
     expect(() => app.register(tenants)).toThrow('reserved')
-    expect(() => app.register(projects)).toThrow('reserved')
-    expect(() => projects.controller).toThrow('registered')
-    expect(() => tenants.controller).toThrow('registered')
+    expect(() => app.register(projects, { associations: [tenants] })).toThrow('reserved')
   } finally {
     app.close()
     backend.close()

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import type { ControllerInterface } from '#hedra.ts'
-import { Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource } from '#hedra.ts'
+import { Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource } from '#hedra.ts'
 import { request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
@@ -43,21 +43,24 @@ test('generated routes preserve web schema output and isolate custom controller 
   }
   const app = new Hedra({ config: new Config(quiet) })
   const Account = Resource.extend({ name: z.string(), password: z.string(), token: z.string() })
-  const accounts = new Collection('accounts', Account, { controller: CustomController })
+  const accounts = Account.meta({ name: 'accounts' })
 
   try {
     app.register(accounts, {
-      output: Account.pick({ id: true, name: true })
-        .extend({
-          profile: z.unknown().transform((value) => {
-            const profile = value as { displayName: string; secret?: string }
+      ...{ controller: CustomController },
+      ...{
+        output: Account.pick({ id: true, name: true })
+          .extend({
+            profile: z.unknown().transform((value) => {
+              const profile = value as { displayName: string; secret?: string }
 
-            delete profile.secret
+              delete profile.secret
 
-            return profile
-          }),
-        })
-        .overwrite((value) => ({ ...value, label: 'Public account' })),
+              return profile
+            }),
+          })
+          .overwrite((value) => ({ ...value, label: 'Public account' })),
+      },
     })
 
     for (const [path, init] of [
@@ -122,8 +125,11 @@ test('malformed custom output never bypasses web validation or exposes private d
   const Account = Resource.extend({ name: z.string() })
 
   try {
-    app.register(new Collection('accounts', Account, { controller: CustomController }), {
-      output: Account.pick({ name: true }),
+    app.register(Account.meta({ name: 'accounts' }), {
+      ...{ controller: CustomController },
+      ...{
+        output: Account.pick({ name: true }),
+      },
     })
 
     for (const invalid of [

@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import type { Backend } from '#hedra.ts'
 import { ConnectionError } from '#errors'
-import { BaseController, Collection, Config, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { BaseController, Config, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 import { fixtureDomain, provision, request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
@@ -12,8 +12,8 @@ const headers = { 'content-type': 'application/json' }
 test('associated resources can be shared and block deletion until unlinked', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
+  const labels = Resource.extend({ name: z.string() }).meta({ name: 'labels' })
+  const projects = Resource.extend({ title: z.string() }).meta({ name: 'projects' })
   const create = async (path: string, body: object) => {
     const response = await request(app, path, { method: 'POST', headers, body: JSON.stringify(body) })
 
@@ -23,7 +23,7 @@ test('associated resources can be shared and block deletion until unlinked', asy
   }
 
   try {
-    app.register(projects)
+    app.register(projects, { associations: [labels] })
     const first = await create('/projects', { title: 'First' })
     const second = await create('/projects', { title: 'Second' })
     const label = await create('/labels', { name: 'Urgent' })
@@ -86,20 +86,25 @@ test('failed graph registration leaves every collection reusable', async () => {
       if (fails) throw new Error('cannot construct')
     }
   }
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), {
-    controller: SometimesFails,
-    associations: [labels],
-  })
+  const labels = Resource.extend({ name: z.string() }).meta({ name: 'labels' })
+  const projects = Resource.extend({ title: z.string() }).meta({ name: 'projects' })
 
   try {
-    expect(() => first.register(projects)).toThrow('cannot construct')
-    expect(() => projects.controller).toThrow('registered')
-    expect(() => labels.controller).toThrow('registered')
+    expect(() =>
+      first.register(projects, {
+        controller: SometimesFails,
+        associations: [labels],
+      }),
+    ).toThrow('cannot construct')
+
     expect((await request(first, '/projects')).status).toBe(404)
     expect((await request(first, '/labels')).status).toBe(404)
     fails = false
-    second.register(projects)
+    second.register(projects, {
+      controller: SometimesFails,
+      associations: [labels],
+    })
+
     expect((await request(second, '/projects')).status).toBe(200)
     expect((await request(second, '/labels')).status).toBe(200)
   } finally {
@@ -112,11 +117,11 @@ test('failed graph registration leaves every collection reusable', async () => {
 test('saved association operations stop with the app while a borrowed backend remains usable', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config(quiet), backend })
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
+  const labels = Resource.extend({ name: z.string() }).meta({ name: 'labels' })
+  const projects = Resource.extend({ title: z.string() }).meta({ name: 'projects' })
 
   try {
-    app.register(projects)
+    app.register(projects, { associations: [labels] })
     const created = await request(app, '/projects', {
       method: 'POST',
       headers,
@@ -141,11 +146,11 @@ test('saved association operations stop with the app while a borrowed backend re
 test('association operations refuse foreign environment endpoints without revealing links', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }), backend })
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ name: z.string() }), { associations: [labels] })
+  const labels = Resource.extend({ name: z.string() }).meta({ name: 'labels' })
+  const projects = Resource.extend({ name: z.string() }).meta({ name: 'projects' })
 
   try {
-    app.register(projects)
+    app.register(projects, { associations: [labels] })
     const domain = await provision(app)
     const parent = domain.slice(domain.indexOf('.') + 1)
     const prod = await app.configDatastore.environments.create(parent, {

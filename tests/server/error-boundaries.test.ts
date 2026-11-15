@@ -6,7 +6,6 @@ import type { Backend, BackendTransaction } from '#hedra.ts'
 import { ConfigurationError, HedraError, InputValidationError, OutputValidationError, QueryError } from '#errors'
 import {
   BaseController,
-  Collection,
   Config,
   ConfigStore,
   getResourceScope,
@@ -22,11 +21,14 @@ import { insert, request, scopedContext } from '../fixtures/scope.ts'
 
 test('invalid collection definitions report explicit validation issues', () => {
   let error: unknown
+  const app = new Hedra({ config: new Config({ HEDRA_SQLITE_PATH: ':memory:', HEDRA_SERVER_SILENT_STARTUP: 'true' }) })
 
   try {
-    new Collection('Invalid name', Resource)
+    app.register(Resource.meta({ name: 'Invalid name' }))
   } catch (caught) {
     error = caught
+  } finally {
+    app.close()
   }
 
   expect(error).toBeInstanceOf(ConfigurationError)
@@ -73,7 +75,7 @@ test('generated routes redact unexpected model failures without storing a resour
   })
 
   try {
-    app.register(new Collection('items', model))
+    app.register(model.meta({ name: 'items' }))
     const response = await request(app, '/items', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -150,7 +152,7 @@ test('controller propagates a thrown model callback unchanged', async () => {
   const context = await scopedContext('http://localhost/items')
 
   try {
-    await expect(controller.create(context, new Collection('items', model), { name: 'Acme' })).rejects.toBe(cause)
+    await expect(controller.create(context, model.meta({ name: 'items' }), { name: 'Acme' })).rejects.toBe(cause)
   } finally {
     backend.close()
   }
@@ -203,11 +205,11 @@ test('generated routes report committed writes when output validation fails', as
   const model = Resource.extend({ name: z.string() })
   const output = model.extend({ name: z.string().refine(() => false, 'private detail') })
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
-  const collection = new Collection('items', model)
+  const collection = model.meta({ name: 'items' })
   const context = await scopedContext('http://localhost/items')
 
   try {
-    app.register(collection, { output })
+    const collectionController = app.register(collection, { output })
     const response = await request(app, '/items', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -224,7 +226,7 @@ test('generated routes report committed writes when output validation fails', as
         },
       ],
     })
-    expect((await collection.controller.list(context, collection, 'http://localhost/items')).data).toHaveLength(1)
+    expect((await collectionController.list(context, collection, 'http://localhost/items')).data).toHaveLength(1)
   } finally {
     app.close()
     backend.close()
@@ -245,9 +247,7 @@ test('direct controller and scope input failures throw Hedra errors', async () =
   const context = await scopedContext('http://localhost/items')
 
   try {
-    await expect(controller.id(context, new Collection('items', Resource), 'invalid')).rejects.toBeInstanceOf(
-      HedraError,
-    )
+    await expect(controller.id(context, Resource.meta({ name: 'items' }), 'invalid')).rejects.toBeInstanceOf(HedraError)
     context.set('hedraResourceScope' as never, { rootId: 'invalid' } as never)
     expect(() => getResourceScope(context)).toThrow(HedraError)
   } finally {
@@ -295,19 +295,19 @@ test('a guarded borrowed backend propagates failures to custom controllers', asy
   }
 
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
-  const collection = new Collection('items', Resource, { controller: CustomController })
+  const collection = Resource.meta({ name: 'items' })
 
   try {
-    app.register(collection)
+    const collectionController = app.register(collection, { controller: CustomController })
     let caught: unknown
 
     try {
-      await collection.controller.insert()
+      await collectionController.insert()
     } catch (error) {
       caught = error
     }
     expect(caught).toBe(cause)
-    await collection.controller.transaction()
+    await collectionController.transaction()
   } finally {
     app.close()
   }
@@ -320,7 +320,7 @@ test('tenant controller operations propagate injected datastore failures by iden
       headers: { host: 'deployment.hedra.local' },
     }),
   )
-  const collection = new Collection('tenants', Tenant)
+  const collection = Tenant.meta({ name: 'tenants' })
   const id = crypto.randomUUID()
   const fields = { name: 'Acme', tenantDomain: 'acme.hedra.local' }
 
@@ -406,14 +406,14 @@ test('tenant controller classifies invalid list response URLs', async () => {
     let caught: unknown
 
     try {
-      await controller.list(context, new Collection('tenants', Tenant), 'not a URL')
+      await controller.list(context, Tenant.meta({ name: 'tenants' }), 'not a URL')
     } catch (error) {
       caught = error
     }
     expect(caught).toBeInstanceOf(OutputValidationError)
     expect((caught as HedraError).detail).toMatchObject([{ code: 'invalid_format' }])
     await expect(
-      controller.list(context, new Collection('tenants', Tenant), context.req.url, null as never),
+      controller.list(context, Tenant.meta({ name: 'tenants' }), context.req.url, null as never),
     ).rejects.toBeInstanceOf(InputValidationError)
   } finally {
     store.close()

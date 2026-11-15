@@ -2,8 +2,10 @@ import type { Context, Hono, MiddlewareHandler } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { z } from 'zod'
 
-import type { Collection } from '#models/collection.ts'
+import type { ChildTarget } from '#controllers/children.ts'
+import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ResourceInput } from '#models/rest.ts'
+import { childObject, childPlacement } from '#controllers/children.ts'
 import { assertSafeKeys, jsonString } from '#controllers/validation.ts'
 import { DatabaseScalar } from '#datastores/backend.ts'
 import {
@@ -14,7 +16,8 @@ import {
   OutputValidationError,
   UnsupportedMediaTypeError,
 } from '#errors'
-import { ResourceId } from '#models/resource.ts'
+import { assertChildOwnership, childFields, childInput, safeChildKey } from '#models/children.ts'
+import { ResourceId, resourceName } from '#models/resource.ts'
 import { ErrorResponse, JsonApiListResponse, JsonApiResponse, ResourceInput as ResourceSchema } from '#models/rest.ts'
 import { setResourceScope } from '#models/scope.ts'
 
@@ -46,7 +49,12 @@ export function assertRouteValidators(validators: RouteValidators): void {
 function response(
   output: z.ZodObject,
   value: unknown,
-  options: { list?: boolean; writeSucceeded?: boolean; id?: string } = {},
+  options: {
+    list?: boolean
+    writeSucceeded?: boolean
+    id?: string
+    child?: { model: z.ZodObject; target: ChildTarget; create?: boolean; url: string }
+  } = {},
 ) {
   try {
     const json: unknown = JSON.parse(jsonString(value, OutputValidationError))
@@ -72,6 +80,90 @@ function response(
       return { ...resource.data, ...(jsonOutput as ResourceInput) }
     }
 
+    if (options.child) {
+      const { model, target, create, url } = options.child
+      const original = Array.isArray(envelope.data)
+        ? envelope.data.length === 1
+          ? envelope.data[0]
+          : undefined
+        : envelope.data
+
+      if (!original || original.id !== target.rootId) throw new OutputValidationError('Invalid containing root')
+      const visible = validateOutput(original)
+      const address = structuredClone(target)
+      const last = address.steps.at(-1)
+
+      if (!last) throw new OutputValidationError()
+      if (create && last.selector.kind === 'array') {
+        const self = new URL(envelope.links.self)
+        const request = new URL(url)
+        const prefix = `${request.pathname.replace(/\/+$/, '')}/`
+        const id = self.pathname.slice(prefix.length)
+
+        if (self.origin !== request.origin || !self.pathname.startsWith(prefix) || self.search || self.hash)
+          throw new OutputValidationError('Invalid child self link')
+        last.selector.id = ResourceId.parse(id)
+      }
+      const stored = childPlacement(original, model, address.steps)
+      const projected = childPlacement(visible, model, address.steps)
+      const raw = stored.value
+      const exposed = projected.value
+
+      if (raw === undefined || raw === null || exposed === undefined || exposed === null)
+        throw new OutputValidationError('Hidden child placement')
+      /** Checks visible child identity against this original placement, never another parent's data. */
+      const selected = (before: unknown, after: unknown): ResourceInput => {
+        const originalChild = childObject(before)
+        const visibleChild = childObject(after)
+
+        if (typeof originalChild.id !== 'string' || visibleChild.id !== originalChild.id)
+          throw new OutputValidationError('Output changed child identity')
+        const parsed = ResourceSchema.safeParse(visibleChild)
+
+        if (!parsed.success) throw new OutputValidationError()
+
+        return { ...parsed.data, ...visibleChild } as ResourceInput
+      }
+
+      // Every managed ancestor must keep its identity at the original addressed placement.
+      for (let index = 0; index < address.steps.length - 1; index++) {
+        if (address.steps[index]?.selector.kind === 'object') continue
+        const steps = address.steps.slice(0, index + 1)
+
+        selected(childPlacement(original, model, steps).value, childPlacement(visible, model, steps).value)
+      }
+
+      if (last.selector.kind === 'array' && last.selector.id === undefined) {
+        if (!Array.isArray(raw) || !Array.isArray(exposed)) throw new OutputValidationError()
+        const ids = new Set<string>()
+        const data = exposed.map((item) => {
+          const id = childObject(item).id
+
+          if (typeof id !== 'string' || ids.has(id)) throw new OutputValidationError('Duplicate child identity')
+          ids.add(id)
+
+          return selected(
+            raw.find((entry) => childObject(entry).id === id),
+            item,
+          )
+        })
+
+        return { data, links: envelope.links }
+      }
+      if (last.selector.kind === 'dictionary' && last.selector.key === undefined) {
+        const before = childObject(raw)
+        const data = Object.fromEntries(
+          Object.entries(childObject(exposed)).map(([key, item]) => [safeChildKey(key), selected(before[key], item)]),
+        )
+        const parsed = z.record(z.string(), ResourceSchema).safeParse(data)
+
+        if (!parsed.success) throw new OutputValidationError()
+
+        return { data: parsed.data, links: envelope.links }
+      }
+
+      return { data: selected(raw, exposed), links: envelope.links }
+    }
     const data = Array.isArray(envelope.data) ? envelope.data.map(validateOutput) : validateOutput(envelope.data)
 
     if (options.id !== undefined && !Array.isArray(envelope.data) && envelope.data.id !== options.id)
@@ -101,6 +193,7 @@ async function body(
   schema: z.ZodObject,
   submittedOnly: boolean,
   ownership: string | null,
+  model?: z.ZodObject,
 ): Promise<Record<string, unknown>> {
   const contentType = context.req.header('content-type')?.split(';')[0]?.trim().toLowerCase()
 
@@ -119,6 +212,7 @@ async function body(
 
   if (ownership !== null && Object.hasOwn(object, ownership))
     throw new InputValidationError('Ownership is managed by the server')
+  if (model) assertChildOwnership(model, object)
   const attributes = Object.fromEntries(
     Object.entries(object).filter(([key]) => !['id', 'createdAt', 'updatedAt'].includes(key)),
   )
@@ -201,21 +295,23 @@ export function guardedMiddleware(middleware: MiddlewareHandler): MiddlewareHand
 /** Registers generated REST routes for one collection. */
 export function registerRoutes(
   app: Hono,
-  collection: Collection,
+  model: z.ZodObject,
+  controller: ControllerInterface,
   validators: RouteValidators = {},
   before?: MiddlewareHandler,
   ownership: 'environmentDomain' | 'tenantDomain' | null = 'environmentDomain',
 ): void {
-  const path = collection.endpoint
-  const model = collection.model
+  const name = resourceName(model)
+  const path = `/${name}`
   const mask = Object.fromEntries(
     ['id', 'createdAt', 'updatedAt', ...(ownership === null ? [] : [ownership])]
       .filter((key) => Object.hasOwn(model.shape, key))
       .map((key) => [key, true]),
   )
   const attributes = model.clone({ ...model.def, checks: [] } as never).omit(mask as never)
-  const createInput = validators.create ?? attributes
-  const updateInput = validators.update ?? attributes.partial()
+  const createInput = validators.create ?? (ownership === 'environmentDomain' ? childInput(model, false) : attributes)
+  const updateInput =
+    validators.update ?? (ownership === 'environmentDomain' ? childInput(model, true) : attributes.partial())
   const updateSubmittedOnly = validators.update === undefined
   const output =
     validators.output ?? z.object(Object.fromEntries(Object.entries(model.shape).filter(([key]) => key !== 'password')))
@@ -231,14 +327,9 @@ export function registerRoutes(
     path,
     middleware,
     routeHandler(async (context) => {
-      setResourceScope(context, { collection: collection.name, target: { kind: 'collection' } })
+      setResourceScope(context, { collection: name, target: { kind: 'collection' } })
 
-      const result = await collection.controller.list(
-        context,
-        collection,
-        context.req.url,
-        query(context, model, output, ownership),
-      )
+      const result = await controller.list(context, model, context.req.url, query(context, model, output, ownership))
 
       return context.json(response(output, result, { list: true }))
     }),
@@ -247,9 +338,9 @@ export function registerRoutes(
     path,
     middleware,
     routeHandler(async (context) => {
-      setResourceScope(context, { collection: collection.name, target: { kind: 'collection' } })
-      const value = await body(context, createInput, false, ownership)
-      const result = await collection.controller.create(context, collection, value as never)
+      setResourceScope(context, { collection: name, target: { kind: 'collection' } })
+      const value = await body(context, createInput, false, ownership, model)
+      const result = await controller.create(context, model, value as never)
       const validated = response(output, result, { writeSucceeded: true })
 
       context.header('Location', validated.links.self)
@@ -263,9 +354,9 @@ export function registerRoutes(
     routeHandler(async (context) => {
       const id = input(ResourceId, context.req.param('id'))
 
-      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
+      setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
 
-      const result = await collection.controller.id(context, collection, id)
+      const result = await controller.id(context, model, id)
 
       return context.json(response(output, result, { id }))
     }),
@@ -276,10 +367,10 @@ export function registerRoutes(
     routeHandler(async (context) => {
       const id = input(ResourceId, context.req.param('id'))
 
-      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
-      const value = await body(context, updateInput, updateSubmittedOnly, ownership)
+      setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
+      const value = await body(context, updateInput, updateSubmittedOnly, ownership, model)
 
-      const result = await collection.controller.update(context, collection, value as never, id)
+      const result = await controller.update(context, model, value as never, id)
 
       return context.json(response(output, result, { writeSucceeded: true, id }))
     }),
@@ -290,11 +381,128 @@ export function registerRoutes(
     routeHandler(async (context) => {
       const id = input(ResourceId, context.req.param('id'))
 
-      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
+      setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
 
-      await collection.controller.delete(context, collection, id)
+      await controller.delete(context, model, id)
 
       return context.body(null, 204)
     }),
   )
+
+  if (ownership === 'environmentDomain') registerChildRoutes(app, model, controller, output, middleware)
+}
+
+/** Registers finite child paths whose controllers always return containing-root snapshots. */
+function registerChildRoutes(
+  app: Hono,
+  root: z.ZodObject,
+  controller: ControllerInterface,
+  output: z.ZodObject,
+  middleware: MiddlewareHandler,
+): void {
+  type Address = { field: string; kind: 'array' | 'dictionary' | 'single' | 'object'; parameter?: string }
+  const name = resourceName(root)
+  /** Installs one nested operation using an explicit root UUID and ordered child selectors. */
+  const mount = (
+    method: 'get' | 'post' | 'patch' | 'delete',
+    path: string,
+    steps: Address[],
+    model: z.ZodObject,
+    list = false,
+  ): void => {
+    app[method](
+      path,
+      middleware,
+      routeHandler(async (context) => {
+        const rootId = input(ResourceId, context.req.param('rootId'))
+        const target: ChildTarget = {
+          kind: 'child',
+          rootId,
+          steps: steps.map((step) => ({
+            field: step.field,
+            selector:
+              step.kind === 'single' || step.kind === 'object'
+                ? { kind: step.kind }
+                : step.kind === 'array'
+                  ? {
+                      kind: 'array',
+                      ...(step.parameter ? { id: input(ResourceId, context.req.param(step.parameter)) } : {}),
+                    }
+                  : {
+                      kind: 'dictionary',
+                      ...(step.parameter ? { key: safeChildKey(context.req.param(step.parameter) ?? '') } : {}),
+                    },
+          })),
+        }
+
+        setResourceScope(context, { collection: name, target })
+        if (new URL(context.req.url).search) throw new InputValidationError('Child queries are not supported')
+        if (method === 'delete') {
+          const snapshot = await controller.id(context, root, rootId)
+
+          response(output, snapshot, { child: { model: root, target, url: context.req.url } })
+          await controller.delete(context, root, rootId)
+
+          return context.body(null, 204)
+        }
+        let result: unknown
+
+        if (method === 'get')
+          result = list
+            ? await controller.list(context, root, context.req.url)
+            : await controller.id(context, root, rootId)
+        else {
+          const value = await body(
+            context,
+            childInput(model, method === 'patch'),
+            method === 'patch',
+            'environmentDomain',
+            model,
+          )
+
+          result =
+            method === 'post'
+              ? await controller.create(context, root, value as never)
+              : await controller.update(context, root, value as never, rootId)
+        }
+        const validated = response(output, result, {
+          list,
+          writeSucceeded: method !== 'get',
+          child: { model: root, target, create: method === 'post', url: context.req.url },
+        })
+
+        if (method === 'post') context.header('Location', validated.links.self)
+
+        return context.json(validated, method === 'post' ? 201 : 200)
+      }),
+    )
+  }
+  /** Walks only discovered managed placements; ordinary nested data gains no endpoints. */
+  const walk = (model: z.ZodObject, prefix: string, ancestors: Address[]): void => {
+    for (const field of childFields(model)) {
+      const path = `${prefix}/${field.name}`
+
+      if (field.kind === 'object') {
+        walk(field.model, path, [...ancestors, { field: field.name, kind: 'object' }])
+        continue
+      }
+      const parameter = `child${ancestors.length}`
+      const collection = [...ancestors, { field: field.name, kind: field.kind }]
+      const item = [
+        ...ancestors,
+        { field: field.name, kind: field.kind, ...(field.kind === 'single' ? {} : { parameter }) },
+      ]
+      const itemPath = field.kind === 'single' ? path : `${path}/:${parameter}`
+
+      if (field.kind !== 'single') mount('get', path, collection, field.model, true)
+      if (field.kind === 'array') mount('post', path, collection, field.model)
+      else mount('post', itemPath, item, field.model)
+      mount('get', itemPath, item, field.model)
+      mount('patch', itemPath, item, field.model)
+      mount('delete', itemPath, item, field.model)
+      walk(field.model, itemPath, item)
+    }
+  }
+
+  walk(root, `/${name}/:rootId`, [])
 }

@@ -6,10 +6,9 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import type { Backend, ControllerInterface } from '#hedra.ts'
-import { ConnectionError, HedraError } from '#errors'
+import { ConnectionError } from '#errors'
 import {
   BaseController,
-  Collection,
   Config,
   ConfigStore,
   Hedra,
@@ -70,8 +69,8 @@ test.each([
   (value, level, logsRegistration) => {
     const dir = mkdtempSync(join(tmpdir(), 'hedra-registration-'))
     const entry = join(import.meta.dir, '../../src/hedra.ts')
-    const script = `import { Hedra, Collection, Resource } from ${JSON.stringify(entry)};
-      const app = new Hedra(); app.register(new Collection('cars', Resource)); app.close()`
+    const script = `import { Hedra, Resource } from ${JSON.stringify(entry)};
+      const app = new Hedra(); app.register((Resource).meta({ name: 'cars' })); app.close()`
 
     try {
       const proc = Bun.spawnSync([process.execPath, '--no-env-file', '-e', script], {
@@ -103,7 +102,7 @@ test.each([
 )
 
 /** Adds explicit test routes using a collection's registered controller. */
-function mountCars(app: Hedra, cars: Collection, controller: ControllerInterface = cars.controller): void {
+function mountCars(app: Hedra, cars: z.ZodObject, controller: ControllerInterface): void {
   app.scoped.post('/test/cars', async (context) =>
     context.json(await controller.create(context, cars, { make: 'Toyota' })),
   )
@@ -128,18 +127,19 @@ test('registration retains duplicate-name and instance-reuse checks', async () =
   const first = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
   const second = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
   const model = Resource.extend({ make: z.string() })
-  const cars = new Collection('cars', model)
+  const cars = model.meta({ name: 'cars' })
 
-  first.register(cars)
-  first.register(new Collection('bikes', model))
-  mountCars(first, cars)
+  const carsController = first.register(cars)
+
+  first.register(model.meta({ name: 'bikes' }))
+  mountCars(first, cars, carsController)
 
   try {
     const car = JsonApiResponse.parse(await (await request(first, '/test/cars', { method: 'POST' })).json()).data
 
-    expect(() => first.register({ name: 'bikes' } as never)).toThrow('Collection')
-    expect(() => first.register(new Collection('cars', model))).toThrow()
-    expect(() => second.register(cars)).toThrow()
+    expect(() => first.register({ name: 'bikes' } as never)).toThrow('resource schema')
+    expect(() => first.register(model.meta({ name: 'cars' }))).toThrow()
+    expect(second.register(cars)).toBeInstanceOf(BaseController)
     expect(JsonApiListResponse.parse(await (await request(first, '/test/cars')).json()).data).toEqual([car])
   } finally {
     first.close()
@@ -153,21 +153,23 @@ test('Hedra lazily owns its default SQLite backend', async () => {
   const model = Resource.extend({ make: z.string() })
   const first = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: path }) })
   const second = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: path }) })
-  const cars = new Collection('cars', model)
-  const reopened = new Collection('cars', model)
+  const cars = model.meta({ name: 'cars' })
+  const reopened = model.meta({ name: 'cars' })
 
   try {
     expect(existsSync(path)).toBe(false)
-    first.register(cars)
-    mountCars(first, cars)
+    const carsController = first.register(cars)
+
+    mountCars(first, cars, carsController)
     expect(existsSync(path)).toBe(true)
     const car = JsonApiResponse.parse(await (await request(first, '/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
 
     first.close()
     expect((await request(first, `/test/cars/${id}`)).status).toBe(500)
-    second.register(reopened)
-    mountCars(second, reopened)
+    const reopenedController = second.register(reopened)
+
+    mountCars(second, reopened, reopenedController)
     expect(JsonApiResponse.parse(await (await request(second, `/test/cars/${id}`)).json()).data).toEqual(car)
   } finally {
     first.close()
@@ -180,13 +182,14 @@ test('failed registration leaves a collection available for a later successful r
   const dir = mkdtempSync(join(tmpdir(), 'hedra-sqlite-'))
   const first = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: dir }) })
   const second = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
-  const cars = new Collection('cars', Resource.extend({ make: z.string() }))
+  const cars = Resource.extend({ make: z.string() }).meta({ name: 'cars' })
 
   try {
     expect(() => first.register(cars)).toThrow()
-    expect(() => cars.controller).toThrow('registered')
-    second.register(cars)
-    mountCars(second, cars)
+
+    const carsController = second.register(cars)
+
+    mountCars(second, cars, carsController)
     const car = JsonApiResponse.parse(await (await request(second, '/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
 
@@ -212,22 +215,22 @@ test('a throwing controller constructor leaves the collection available for regi
   }
 
   const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
-  const cars = new Collection('cars', model, { controller: CustomController })
+  const cars = model.meta({ name: 'cars' })
 
   try {
     let caught: unknown
 
     try {
-      app.register(cars)
+      app.register(cars, { controller: CustomController })
     } catch (error) {
       caught = error
     }
     expect(caught).toBe(cause)
-    expect(() => cars.controller).toThrow(HedraError)
-    expect(() => cars.controller).toThrow('registered')
+
     failing = false
-    app.register(cars)
-    mountCars(app, cars)
+    const carsController = app.register(cars, { controller: CustomController })
+
+    mountCars(app, cars, carsController)
     const car = JsonApiResponse.parse(await (await request(app, '/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
 
@@ -243,17 +246,17 @@ test('Hedra.close invalidates saved controller references without closing a borr
   const first = new Hedra({ config: new Config(quiet), backend })
   const second = new Hedra({ config: new Config(quiet), backend })
   const model = Resource.extend({ make: z.string() })
-  const cars = new Collection('cars', model)
-  const otherCars = new Collection('cars', model)
+  const cars = model.meta({ name: 'cars' })
+  const otherCars = model.meta({ name: 'cars' })
   const errors: Error[] = []
 
   try {
-    first.register(cars)
-    second.register(otherCars)
-    const saved = cars.controller
+    const carsController = first.register(cars)
+    const otherCarsController = second.register(otherCars)
+    const saved = carsController
 
     mountCars(first, cars, saved)
-    mountCars(second, otherCars)
+    mountCars(second, otherCars, otherCarsController)
     const car = JsonApiResponse.parse(await (await request(first, '/test/cars', { method: 'POST' })).json()).data
     const id = z.uuid().parse(car.id)
     const tenant = await config.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
@@ -293,7 +296,7 @@ test('Hedra.close invalidates saved controller references without closing a borr
       })
     }
     expect(errors[0]).toHaveProperty('detail', undefined)
-    expect(() => first.register(new Collection('bikes', model))).toThrow()
+    expect(() => first.register(model.meta({ name: 'bikes' }))).toThrow()
     expect(JsonApiResponse.parse(await (await request(second, `/test/cars/${id}`)).json()).data).toEqual(car)
     expect(await config.tenants.get(tenant.id)).toEqual(tenant)
   } finally {
@@ -305,13 +308,13 @@ test('Hedra.close invalidates saved controller references without closing a borr
 
 test('collection registration adds HTTP routes and retains custom routes', async () => {
   const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: ':memory:' }) })
-  const cars = new Collection('cars', Resource.extend({ make: z.string() }))
+  const cars = Resource.extend({ make: z.string() }).meta({ name: 'cars' })
 
   app.get('/existing', (context) => context.text('ok'))
   app.register(cars)
-  app.register(new Collection('bikes', Resource.extend({ make: z.string() })))
+
+  app.register(Resource.extend({ make: z.string() }).meta({ name: 'bikes' }))
   try {
-    expect(cars.endpoint).toBe('/cars')
     expect((await request(app, '/cars')).status).toBe(200)
     expect((await request(app, '/cars', { method: 'POST' })).status).toBe(415)
     expect((await request(app, '/existing')).status).toBe(200)
@@ -334,11 +337,12 @@ test('transaction sessions honor app closure without closing a borrowed backend'
       })
     }
   }
-  const cars = new Collection('cars', Resource.extend({ make: z.string() }), { controller: CloseDuringTransaction })
+  const cars = Resource.extend({ make: z.string() }).meta({ name: 'cars' })
 
   try {
-    app.register(cars)
-    await expect(cars.controller.writeAfterClose()).rejects.toThrow('closed')
+    const carsController = app.register(cars, { controller: CloseDuringTransaction })
+
+    await expect(carsController.writeAfterClose()).rejects.toThrow('closed')
     expect(await backend.select('items')).toEqual([])
   } finally {
     app.close()

@@ -2,8 +2,8 @@ import type { Context } from 'hono'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
-import type { Collection as CollectionType, QueryParams, ResourceInput, ResourceScope } from '#hedra.ts'
-import { BaseController, Collection, Config, getResourceScope, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import type { QueryParams, ResourceInput, ResourceScope } from '#hedra.ts'
+import { BaseController, Config, getResourceScope, Hedra, Resource, SqliteBackend } from '#hedra.ts'
 import { request } from '../fixtures/scope.ts'
 
 const headers = { 'content-type': 'application/json' }
@@ -15,37 +15,37 @@ test('root REST requests describe collection and UUID targets', async () => {
 
   class ScopedController extends BaseController {
     /** Records the request scope before delegating resource creation. */
-    override async create(context: Context, collection: CollectionType, input: ResourceInput) {
+    override async create(context: Context, collection: z.ZodObject, input: ResourceInput) {
       seen.push(getResourceScope(context))
 
       return super.create(context, collection, input)
     }
     /** Records the request scope before delegating resource lookup. */
-    override async id(context: Context, collection: CollectionType, id: string) {
+    override async id(context: Context, collection: z.ZodObject, id: string) {
       seen.push(getResourceScope(context))
 
       return super.id(context, collection, id)
     }
     /** Records the request scope before delegating resource listing. */
-    override async list(context: Context, collection: CollectionType, baseUrl: string, params?: QueryParams) {
+    override async list(context: Context, collection: z.ZodObject, baseUrl: string, params?: QueryParams) {
       seen.push(getResourceScope(context))
 
       return super.list(context, collection, baseUrl, params)
     }
     /** Records the request scope before delegating resource update. */
-    override async update(context: Context, collection: CollectionType, input: ResourceInput, id: string) {
+    override async update(context: Context, collection: z.ZodObject, input: ResourceInput, id: string) {
       seen.push(getResourceScope(context))
 
       return super.update(context, collection, input, id)
     }
     /** Records the request scope before delegating resource deletion. */
-    override async delete(context: Context, collection: CollectionType, id: string) {
+    override async delete(context: Context, collection: z.ZodObject, id: string) {
       seen.push(getResourceScope(context))
 
       return super.delete(context, collection, id)
     }
   }
-  app.register(new Collection('cars', Resource.extend({ make: z.string() }), { controller: ScopedController }))
+  app.register(Resource.extend({ make: z.string() }).meta({ name: 'cars' }), { controller: ScopedController })
 
   try {
     expect((await request(app, '/cars')).status).toBe(200)
