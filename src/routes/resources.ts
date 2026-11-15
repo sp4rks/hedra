@@ -5,7 +5,7 @@ import { z } from 'zod'
 import type { ChildTarget } from '#controllers/children.ts'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ResourceInput } from '#models/rest.ts'
-import { childObject, childPlacement } from '#controllers/children.ts'
+import { assertChildValues, childObject, childPlacement } from '#controllers/children.ts'
 import { assertSafeKeys, jsonString } from '#controllers/validation.ts'
 import { DatabaseScalar } from '#datastores/backend.ts'
 import {
@@ -45,6 +45,62 @@ export function assertRouteValidators(validators: RouteValidators): void {
   if (!parsed.success) throw new ConfigurationError('configuration error', parsed.error.issues)
 }
 
+/** Checks only exposed managed identity claims, retaining native output omission, filtering and transforms. */
+function assertChildOutput(model: z.ZodObject, before: ResourceInput, after: ResourceInput): void {
+  for (const field of childFields(model)) {
+    const visible = after[field.name]
+    const original = before[field.name]
+
+    if (!visible || typeof visible !== 'object') continue
+    if (field.kind === 'object') {
+      if (!Array.isArray(visible))
+        assertChildOutput(
+          field.model,
+          original && typeof original === 'object' && !Array.isArray(original) ? (original as ResourceInput) : {},
+          visible as ResourceInput,
+        )
+      continue
+    }
+    const entries =
+      field.kind === 'array' && Array.isArray(visible)
+        ? visible.map((value) => [undefined, value] as const)
+        : field.kind === 'dictionary' && !Array.isArray(visible)
+          ? Object.entries(visible)
+          : field.kind === 'single' && !Array.isArray(visible)
+            ? [[undefined, visible] as const]
+            : []
+    const ids = new Set<string>()
+
+    for (const [key, value] of entries) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const child = value as ResourceInput
+      const previous =
+        field.kind === 'array'
+          ? Array.isArray(original)
+            ? original.find((item) => item && typeof item === 'object' && !Array.isArray(item) && item.id === child.id)
+            : undefined
+          : field.kind === 'dictionary'
+            ? original &&
+              typeof original === 'object' &&
+              !Array.isArray(original) &&
+              key !== undefined &&
+              Object.hasOwn(original, key)
+              ? original[key]
+              : undefined
+            : original
+      const stored =
+        previous && typeof previous === 'object' && !Array.isArray(previous) ? (previous as ResourceInput) : {}
+
+      if (Object.hasOwn(child, 'id')) {
+        if (typeof child.id !== 'string' || child.id !== stored.id || ids.has(child.id))
+          throw new OutputValidationError('Output changed child identity')
+        ids.add(child.id)
+      }
+      assertChildOutput(field.model, stored, child)
+    }
+  }
+}
+
 /** Validates a controller envelope and its web output before transport. */
 function response(
   output: z.ZodObject,
@@ -53,6 +109,7 @@ function response(
     list?: boolean
     writeSucceeded?: boolean
     id?: string
+    model?: z.ZodObject
     child?: { model: z.ZodObject; target: ChildTarget; create?: boolean; url: string }
   } = {},
 ) {
@@ -66,7 +123,16 @@ function response(
     /** Applies the output schema while preserving JSON integrity and resource identity. */
     function validateOutput(record: ResourceInput): ResourceInput {
       const id = record.id
-      const result = output.safeParse(record)
+      const model = options.model ?? options.child?.model
+
+      if (model)
+        assertChildValues(
+          model,
+          record,
+          typeof record.environmentDomain === 'string' ? record.environmentDomain : '',
+          OutputValidationError,
+        )
+      const result = output.safeParse(structuredClone(record))
 
       if (!result.success) throw new OutputValidationError('output validation error', result.error.issues)
       const jsonOutput: unknown = JSON.parse(jsonString(result.data, OutputValidationError))
@@ -75,6 +141,8 @@ function response(
       if (!resource.success) throw new OutputValidationError('output validation error', resource.error.issues)
       if (Object.hasOwn(resource.data, 'id') && resource.data.id !== id)
         throw new OutputValidationError('Output changed resource identity')
+
+      if (model) assertChildOutput(model, record, jsonOutput as ResourceInput)
 
       // Preserve literal JSON property names that the resource parser may omit.
       return { ...resource.data, ...(jsonOutput as ResourceInput) }
@@ -331,7 +399,7 @@ export function registerRoutes(
 
       const result = await controller.list(context, model, context.req.url, query(context, model, output, ownership))
 
-      return context.json(response(output, result, { list: true }))
+      return context.json(response(output, result, { list: true, model }))
     }),
   )
   app.post(
@@ -341,7 +409,7 @@ export function registerRoutes(
       setResourceScope(context, { collection: name, target: { kind: 'collection' } })
       const value = await body(context, createInput, false, ownership, model)
       const result = await controller.create(context, model, value as never)
-      const validated = response(output, result, { writeSucceeded: true })
+      const validated = response(output, result, { writeSucceeded: true, model })
 
       context.header('Location', validated.links.self)
 
@@ -358,7 +426,7 @@ export function registerRoutes(
 
       const result = await controller.id(context, model, id)
 
-      return context.json(response(output, result, { id }))
+      return context.json(response(output, result, { id, model }))
     }),
   )
   app.patch(
@@ -372,7 +440,7 @@ export function registerRoutes(
 
       const result = await controller.update(context, model, value as never, id)
 
-      return context.json(response(output, result, { writeSucceeded: true, id }))
+      return context.json(response(output, result, { writeSucceeded: true, id, model }))
     }),
   )
   app.delete(
@@ -414,6 +482,11 @@ function registerChildRoutes(
       path,
       middleware,
       routeHandler(async (context) => {
+        try {
+          decodeURIComponent(new URL(context.req.url).pathname)
+        } catch {
+          throw new InputValidationError('Invalid child URI encoding')
+        }
         const rootId = input(ResourceId, context.req.param('rootId'))
         const target: ChildTarget = {
           kind: 'child',

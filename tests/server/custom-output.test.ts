@@ -47,20 +47,18 @@ test('generated routes preserve web schema output and isolate custom controller 
 
   try {
     app.register(accounts, {
-      ...{ controller: CustomController },
-      ...{
-        output: Account.pick({ id: true, name: true })
-          .extend({
-            profile: z.unknown().transform((value) => {
-              const profile = value as { displayName: string; secret?: string }
+      controller: CustomController,
+      output: Account.pick({ id: true, name: true })
+        .extend({
+          profile: z.unknown().transform((value) => {
+            const profile = value as { displayName: string; secret?: string }
 
-              delete profile.secret
+            delete profile.secret
 
-              return profile
-            }),
-          })
-          .overwrite((value) => ({ ...value, label: 'Public account' })),
-      },
+            return profile
+          }),
+        })
+        .overwrite((value) => ({ ...value, label: 'Public account' })),
     })
 
     for (const [path, init] of [
@@ -126,10 +124,8 @@ test('malformed custom output never bypasses web validation or exposes private d
 
   try {
     app.register(Account.meta({ name: 'accounts' }), {
-      ...{ controller: CustomController },
-      ...{
-        output: Account.pick({ name: true }),
-      },
+      controller: CustomController,
+      output: Account.pick({ name: true }),
     })
 
     for (const invalid of [

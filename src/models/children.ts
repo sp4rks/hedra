@@ -49,12 +49,23 @@ function containsChild(schema: z.ZodType, seen = new Set<z.ZodType>()): boolean 
   return Object.values(schema.def).some(contains)
 }
 
-/** Validates a literal field or dictionary selector before using it in routes or JSON. */
+/** Validates a decoded dictionary key that can occupy exactly one URI segment. */
 export function safeChildKey(value: string): string {
-  if (!/^[A-Za-z0-9_-]+$/.test(value) || ['__proto__', 'constructor', 'prototype'].includes(value))
+  if (!value || ['.', '..', '__proto__', 'constructor', 'prototype'].includes(value) || /[/\\\p{Cc}]/u.test(value))
     throw new InputValidationError('Unsafe child key')
+  try {
+    encodeURIComponent(value)
+  } catch {
+    throw new InputValidationError('Invalid child URI encoding')
+  }
 
   return value
+}
+
+/** Keeps static field names free of route syntax and prototype selectors. */
+function assertChildField(name: string): void {
+  if (!/^[A-Za-z0-9_-]+$/.test(name) || ['__proto__', 'constructor', 'prototype'].includes(name))
+    throw new ConfigurationError('Unsafe child field name')
 }
 
 /** Discovers direct managed placements; ordinary nested resources remain ordinary data. */
@@ -65,20 +76,19 @@ export function childFields(model: z.ZodObject): ChildField[] {
     const schema = raw as z.ZodType
     const container = unwrap(schema)
     const kind = container instanceof z.ZodArray ? 'array' : container instanceof z.ZodRecord ? 'dictionary' : 'single'
-    const item = unwrap(
+    const entry =
       container instanceof z.ZodArray
         ? (container.element as z.ZodType)
         : container instanceof z.ZodRecord
           ? (container.valueType as z.ZodType)
-          : container,
-    )
+          : container
+    const item = unwrap(entry)
+
+    if (kind !== 'single' && item !== entry && containsChild(entry))
+      throw new ConfigurationError(`Unsupported child collection item wrapper: ${name}`)
 
     if (item instanceof z.ZodObject && isChild(item)) {
-      try {
-        safeChildKey(name)
-      } catch {
-        throw new ConfigurationError('Unsafe child field name')
-      }
+      assertChildField(name)
       assertResourceModel(item)
       if (!item.shape.environmentDomain || !item.shape.createdAt || !item.shape.updatedAt)
         throw new ConfigurationError('Children require resource metadata')
@@ -90,11 +100,7 @@ export function childFields(model: z.ZodObject): ChildField[] {
         ...(container instanceof z.ZodRecord ? { key: container.keyType as z.ZodType } : {}),
       })
     } else if (container instanceof z.ZodObject && containsChild(container)) {
-      try {
-        safeChildKey(name)
-      } catch {
-        throw new ConfigurationError('Unsafe child field name')
-      }
+      assertChildField(name)
       fields.push({ name, kind: 'object', model: container, schema })
     } else if (containsChild(schema)) throw new ConfigurationError(`Unsupported child placement: ${name}`)
   }

@@ -49,7 +49,7 @@ export class EnvironmentController implements ControllerInterface {
   }
 
   /** Creates an environment beneath the request tenant. */
-  async create(context: Context, _collection: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse> {
+  async create(context: Context, _model: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse> {
     const tenant = requireTenantScope(context)
     const fields = parseInput(EnvironmentCreate, this.attributes(input))
 
@@ -65,7 +65,7 @@ export class EnvironmentController implements ControllerInterface {
   }
 
   /** Returns an environment in the request tenant. */
-  async id(context: Context, _collection: z.ZodObject, id: string): Promise<JsonApiResponse> {
+  async id(context: Context, _model: z.ZodObject, id: string): Promise<JsonApiResponse> {
     const tenant = requireTenantScope(context)
     const key = parseInput(ResourceId, id)
     const value = await this.datastore().environments.get(tenant.tenantDomain, key)
@@ -78,7 +78,7 @@ export class EnvironmentController implements ControllerInterface {
   /** Lists environments with compulsory tenant ownership. */
   async list(
     context: Context,
-    _collection: z.ZodObject,
+    _model: z.ZodObject,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
@@ -94,7 +94,7 @@ export class EnvironmentController implements ControllerInterface {
   }
 
   /** Changes an environment name through tenant-scoped configuration operations. */
-  async update(context: Context, _collection: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+  async update(context: Context, _model: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse> {
     const tenant = requireTenantScope(context)
     const key = parseInput(ResourceId, id)
     const value = await this.datastore().environments.update(
@@ -109,7 +109,7 @@ export class EnvironmentController implements ControllerInterface {
   }
 
   /** Hides an environment while retaining its permanent domain reservation. */
-  async delete(context: Context, _collection: z.ZodObject, id: string): Promise<void> {
+  async delete(context: Context, _model: z.ZodObject, id: string): Promise<void> {
     const tenant = requireTenantScope(context)
     const key = parseInput(ResourceId, id)
 

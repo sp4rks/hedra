@@ -58,7 +58,7 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Creates a tenant in the configuration catalogue. */
-  async create(context: Context, _collection: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse> {
+  async create(context: Context, _model: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse> {
     this.assertHost(context)
     const fields = this.attributes(input)
     const tenantDomain = parseInput(Tenant.shape.tenantDomain, fields.tenantDomain)
@@ -85,7 +85,7 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Returns one tenant. */
-  async id(context: Context, _collection: z.ZodObject, id: string): Promise<JsonApiResponse> {
+  async id(context: Context, _model: z.ZodObject, id: string): Promise<JsonApiResponse> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
     const value = await this.datastore().tenants.get(key)
@@ -99,7 +99,7 @@ export class TenantController implements ControllerInterface {
   /** Returns tenants matching domain scalar fields. */
   async list(
     context: Context,
-    _collection: z.ZodObject,
+    _model: z.ZodObject,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
@@ -126,7 +126,7 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Changes a tenant name without allowing its domain to change. */
-  async update(context: Context, _collection: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+  async update(context: Context, _model: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
     const fields = this.attributes(input)
@@ -141,7 +141,7 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Deletes one tenant. */
-  async delete(context: Context, _collection: z.ZodObject, id: string): Promise<void> {
+  async delete(context: Context, _model: z.ZodObject, id: string): Promise<void> {
     this.assertHost(context)
     const key = parseInput(ResourceId, id)
 

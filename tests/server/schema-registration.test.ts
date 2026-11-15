@@ -75,3 +75,56 @@ test('invalid managed declarations fail before controller construction and leave
     app.close()
   }
 })
+
+test('managed collection item wrappers reject before construction while container and singleton wrappers remain supported', async () => {
+  const Child = Resource.extend({ value: z.string() }).meta({ child: true })
+  const timestamp = new Date().toISOString()
+  const wrapped = [
+    Child.optional(),
+    Child.nullable(),
+    Child.default({
+      id: crypto.randomUUID(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      environmentDomain: 'dev.fixture.hedra.local',
+      value: 'Default',
+    }),
+  ]
+  let constructed = 0
+
+  class Observed extends BaseController {
+    /** Observes that unsupported declarations fail before controller construction. */
+    constructor(...args: ConstructorParameters<typeof BaseController>) {
+      super(...args)
+      constructed++
+    }
+  }
+  const app = new Hedra({ config: new Config(quiet) })
+
+  try {
+    for (const item of wrapped) {
+      for (const children of [z.array(item), z.record(z.string(), item)]) {
+        const Root = Resource.extend({ children }).meta({ name: 'roots' })
+
+        expect(() => app.register(Root, { controller: Observed })).toThrow()
+      }
+    }
+    expect(constructed).toBe(0)
+    const Valid = Resource.extend({
+      array: z.array(Child).optional(),
+      dictionary: z.record(z.string(), Child).default({}),
+      single: Child.nullable().optional(),
+    }).meta({ name: 'roots' })
+
+    app.register(Valid)
+    const created = await request(app, '/roots', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ single: null }),
+    })
+
+    expect(created.status).toBe(201)
+  } finally {
+    app.close()
+  }
+})

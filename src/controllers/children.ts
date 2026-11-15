@@ -3,16 +3,16 @@ import type { z } from 'zod'
 
 import type { Backend, DatabaseRecord } from '#datastores/backend.ts'
 import type { ChildField } from '#models/children.ts'
-import type { ChildStep } from '#models/scope.ts'
+import type { ChildStep, ResourceScope } from '#models/scope.ts'
 import { validateCandidate } from '#controllers/validation.ts'
 import { ConflictError, HedraError, InputValidationError, OutputValidationError, RecordNotFoundError } from '#errors'
 import { assertChildOwnership, childFields, safeChildKey } from '#models/children.ts'
 import { requireRequestScope } from '#models/request-scope.ts'
-import { resourceName } from '#models/resource.ts'
+import { Resource, resourceName } from '#models/resource.ts'
 import { getResourceScope } from '#models/scope.ts'
 
 type ObjectValue = Record<string, unknown>
-export type ChildTarget = { kind: 'child'; rootId: string; steps: ChildStep[] }
+export type ChildTarget = Extract<ResourceScope['target'], { kind: 'child' }>
 
 /** Requires a plain child object before inspecting its data or managed metadata. */
 export function childObject(value: unknown): ObjectValue {
@@ -135,6 +135,47 @@ export function prepareChildren(
   return result
 }
 
+/** Validates managed metadata recursively without parsing private application attributes. */
+export function assertChildValues(
+  model: z.ZodObject,
+  root: ObjectValue,
+  owner: string,
+  ErrorClass: typeof InputValidationError | typeof OutputValidationError,
+): void {
+  for (const field of childFields(model)) {
+    const value = root[field.name]
+
+    if (value === undefined || value === null) {
+      if (!(value === undefined ? field.schema.isOptional() : field.schema.isNullable()))
+        throw new ErrorClass('Missing managed child placement')
+      continue
+    }
+    if (field.kind === 'array' && !Array.isArray(value)) throw new ErrorClass('Invalid managed child array')
+    if (field.kind !== 'array' && (typeof value !== 'object' || Array.isArray(value)))
+      throw new ErrorClass('Invalid managed child container')
+    const items =
+      field.kind === 'array' ? (value as unknown[]) : field.kind === 'dictionary' ? Object.values(value) : [value]
+    const ids = new Set<string>()
+
+    for (const item of items) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ErrorClass('Invalid managed child')
+      const child = item as ObjectValue
+
+      if (field.kind !== 'object') {
+        const parsed = Resource.pick({ id: true, createdAt: true, updatedAt: true, environmentDomain: true }).safeParse(
+          child,
+        )
+
+        if (!parsed.success) throw new ErrorClass('Invalid managed child metadata', parsed.error.issues)
+        if (child.environmentDomain !== owner || ids.has(parsed.data.id))
+          throw new ErrorClass('Invalid managed child ownership or identity')
+        ids.add(parsed.data.id)
+      }
+      assertChildValues(field.model, child, owner, ErrorClass)
+    }
+  }
+}
+
 /** Rejects model transforms that alter any child's identity, ownership or audit metadata. */
 export function assertChildMetadata(model: z.ZodObject, before: ObjectValue, after: ObjectValue): void {
   for (const field of childFields(model)) {
@@ -155,6 +196,14 @@ export function assertChildMetadata(model: z.ZodObject, before: ObjectValue, aft
         : field.kind === 'dictionary'
           ? Object.entries(childObject(original))
           : [['single', original] as const]
+
+    if (
+      field.kind === 'array' &&
+      (!Array.isArray(result) ||
+        result.length !== entries.length ||
+        new Set(result.map((item) => childObject(item).id)).size !== result.length)
+    )
+      throw new InputValidationError('Model changed child identities')
     const values =
       field.kind === 'array' && Array.isArray(result)
         ? Object.fromEntries(result.map((item) => [String(childObject(item).id), item]))
@@ -239,6 +288,7 @@ export async function readChildren(
 
   if (!root || root.environmentDomain !== owner) throw new RecordNotFoundError()
   if (root.id !== target.rootId) throw new OutputValidationError('Resource ID cannot change')
+  assertChildValues(model, root, owner, OutputValidationError)
   const placement = childPlacement(root, model, target.steps)
 
   if (placement.value === undefined || placement.value === null) throw new RecordNotFoundError()
@@ -261,6 +311,7 @@ export async function mutateChildren(
   const result = await backend.update(resourceName(model), target.rootId, (stored) => {
     if (stored.environmentDomain !== owner) throw new RecordNotFoundError()
     if (stored.id !== target.rootId) throw new HedraError('Resource ID cannot change')
+    assertChildValues(model, stored, owner, OutputValidationError)
     const root = structuredClone(stored)
     const { parent, field, step, value, ancestors } = childPlacement(root, model, target.steps)
     const timestamp = new Date().toISOString()
@@ -333,6 +384,7 @@ export async function mutateChildren(
     const validated = validateCandidate(model, root)
 
     assertChildMetadata(model, root, validated)
+    assertChildValues(model, validated, owner, InputValidationError)
     data = validated
 
     return validated

@@ -191,7 +191,7 @@ test('associated collections retain their own registered web constraints', async
 
   try {
     app.register(target, { output: Model.pick({ id: true, name: true }) })
-    app.register(source, { ...{ associations: [target] }, ...{ output: Model.pick({ id: true, token: true }) } })
+    app.register(source, { associations: [target], output: Model.pick({ id: true, token: true }) })
 
     for (const [path, expected] of [
       ['/targets', { name: 'Alice' }],
