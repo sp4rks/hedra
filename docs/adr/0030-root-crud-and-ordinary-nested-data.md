@@ -34,5 +34,5 @@ output privacy and rejection of ambiguous dynamic compositions. Controllers reta
 validation and write rollback; nested public fields become an explicit application policy.
 
 [ADR 0033](0033-schema-registration-and-reusable-children.md) accepts direct schema registration
-and reusable `child: true` resources with contained storage and nested CRUD. Its implementation is
-pending; the current runtime retains the root-only CRUD described here.
+and reusable `child: true` resources with contained storage and nested CRUD. It is implemented and
+revises the root-only registration and routing above. Unmarked nested values remain ordinary Zod data.

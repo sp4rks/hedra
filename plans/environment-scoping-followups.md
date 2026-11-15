@@ -1,8 +1,8 @@
 # Work after the environment-scoping walkthrough
 
-Implement these items after the walkthrough is complete. All items are pending.
+Work through these items one at a time. Checked items are implemented and reviewed.
 
-- [ ] **Reusable child resources and schema registration.** Implement `child: true` metadata for
+- [x] **Reusable child resources and schema registration.** Implement `child: true` metadata for
   reusable contained resources with nested CRUD, and register schemas directly without a public
   Collection wrapper. Follow [ADR 0033](../docs/adr/0033-schema-registration-and-reusable-children.md).
 - [ ] **Signed request scope.** Add signing middleware so signing is the sole proof of request-scope
