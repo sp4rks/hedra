@@ -156,12 +156,13 @@ export class SqliteBackend implements Backend {
   }
 
   /** Maps database-enforced uniqueness without exposing backend-specific errors. */
-  private failure(error: unknown): never {
+  private failure(error: unknown, constraint?: { table: string; fields: string[] }): never {
     if (
       error instanceof Error &&
       'code' in error &&
       ['SQLITE_CONSTRAINT_UNIQUE', 'SQLITE_CONSTRAINT_PRIMARYKEY'].includes(String(error.code))
     ) {
+      if (constraint) throw new QueryError('Cannot prepare unique index', constraint)
       throw new UniqueViolationError()
     }
 
@@ -175,24 +176,43 @@ export class SqliteBackend implements Backend {
     if (!parsed.success) throw new QueryError('Invalid database indexes', parsed.error.issues)
     const name = this.table(table)
 
-    try {
-      this.db
-        .transaction(() => {
-          for (const index of parsed.data) {
-            const identifier = `hedra_${table.length}_${table}_${index.field}_${index.unique ? 'unique' : 'index'}`
+    this.db
+      .transaction(() => {
+        for (const index of parsed.data) {
+          const fields = 'field' in index ? [index.field] : index.fields
+          const identifier =
+            'field' in index
+              ? `hedra_${table.length}_${table}_${index.field}_${index.unique ? 'unique' : 'index'}`
+              : `hedra_compound_${table.length}_${table}_${fields.map((field) => `${field.length}_${field}`).join('_')}_unique`
+          // Keep the value first so scalar filters can use the index; numeric JSON types compare together.
+          const expressions = fields
+            .flatMap((field) => [
+              `json_extract(data, '$.${field}')`,
+              ...(index.unique
+                ? [
+                    `CASE json_type(data, '$.${field}') WHEN 'integer' THEN 'real' ELSE json_type(data, '$.${field}') END`,
+                  ]
+                : []),
+            ])
+            .join(', ')
 
+          try {
             this.db.run(
-              `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX IF NOT EXISTS "${identifier}" ON ${name} (json_extract(data, '$.${index.field}'))`,
+              `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX IF NOT EXISTS "${identifier}${index.unique ? '_typed' : ''}" ON ${name} (${expressions})`,
             )
+            // Replacing the legacy untyped constraint is part of the same installation transaction.
+            if ('field' in index && index.unique) this.db.run(`DROP INDEX IF EXISTS "${identifier}"`)
+          } catch (error) {
+            this.failure(error, { table, fields })
           }
-        })
-        .immediate()
-    } catch (error) {
-      this.failure(error)
-    }
+        }
+      })
+      .immediate()
     const fields = this.indexes.get(table) ?? new Set<string>()
 
-    for (const index of parsed.data) fields.add(index.field)
+    for (const index of parsed.data) {
+      if ('field' in index) fields.add(index.field)
+    }
 
     this.indexes.set(table, fields)
   }

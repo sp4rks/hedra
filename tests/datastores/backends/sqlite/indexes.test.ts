@@ -1,6 +1,10 @@
+import { Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-import { UniqueViolationError } from '#errors'
+import { QueryError, UniqueViolationError } from '#errors'
 import { SqliteBackend } from '#hedra.ts'
 
 test('SQLite indexes enforce unique fields while non-unique scope permits many resources', async () => {
@@ -18,6 +22,157 @@ test('SQLite indexes enforce unique fields while non-unique scope permits many r
     expect(await backend.select('widgets', { environmentDomain: 'dev.acme.hedra.local', value: true })).toHaveLength(1)
     expect(await backend.select('widgets', { environmentDomain: 'dev.acme.hedra.local', value: 1 })).toHaveLength(1)
     await backend.ensureIndexes('widgets', [{ field: 'environmentDomain', unique: false }])
+  } finally {
+    backend.close()
+  }
+})
+
+test('SQLite compound uniqueness permits repeated components but rejects a repeated complete key', async () => {
+  const backend = new SqliteBackend(':memory:')
+
+  try {
+    await backend.ensureIndexes('items', [{ fields: ['environmentDomain', 'sku'], unique: true }])
+    await backend.insert('items', { id: 'one', environmentDomain: 'dev', sku: 'private-sku' })
+    await backend.insert('items', { id: 'two', environmentDomain: 'prod', sku: 'private-sku' })
+    await backend.insert('items', { id: 'three', environmentDomain: 'dev', sku: 'other' })
+    await expect(
+      backend.insert('items', { id: 'four', environmentDomain: 'dev', sku: 'private-sku' }),
+    ).rejects.toBeInstanceOf(UniqueViolationError)
+    await expect(
+      backend.update('items', 'three', (record) => ({ ...record, sku: 'private-sku' })),
+    ).rejects.toBeInstanceOf(UniqueViolationError)
+    expect(await backend.select('items', { id: 'three' })).toMatchObject([{ sku: 'other' }])
+    expect(await backend.select('items')).toHaveLength(3)
+  } finally {
+    backend.close()
+  }
+})
+
+test.each(['single', 'compound'] as const)(
+  'SQLite %s unique keys retain scalar types and permit null or missing parts',
+  async (kind) => {
+    const backend = new SqliteBackend(':memory:')
+
+    try {
+      await backend.ensureIndexes('items', [
+        kind === 'single' ? { field: 'value', unique: true } : { fields: ['group', 'value'], unique: true },
+      ])
+
+      for (const [id, value] of [true, 1, '1', false, 0, '0', null, null].entries()) {
+        await backend.insert('items', { id: String(id), group: 'same', value })
+      }
+      await backend.insert('items', { id: 'missing-one', group: 'same' })
+      await backend.insert('items', { id: 'missing-two', group: 'same' })
+
+      for (const value of [true, 1, '1', false, 0, '0']) {
+        await expect(backend.insert('items', { id: 'duplicate', group: 'same', value })).rejects.toBeInstanceOf(
+          UniqueViolationError,
+        )
+        expect(await backend.select('items', { value })).toHaveLength(1)
+      }
+      expect(await backend.select('items', { value: null })).toHaveLength(2)
+      expect(await backend.select('items')).toHaveLength(10)
+    } finally {
+      backend.close()
+    }
+  },
+)
+
+test('failed unique preparation reports fields without values and rolls back the index batch', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const original = [
+    { id: 'one', existing: 'one', newField: 'one', group: 'same', secret: 'private-value' },
+    { id: 'two', existing: 'two', newField: 'two', group: 'same', secret: 'private-value' },
+  ]
+
+  try {
+    await backend.ensureIndexes('items', [{ field: 'existing', unique: true }])
+
+    for (const record of original) await backend.insert('items', record)
+    const error = await backend
+      .ensureIndexes('items', [
+        { field: 'newField', unique: true },
+        { fields: ['group', 'secret'], unique: true },
+      ])
+      .catch((cause: unknown) => cause)
+
+    expect(error).toBeInstanceOf(QueryError)
+    expect(error).toMatchObject({ detail: { table: 'items', fields: ['group', 'secret'] } })
+    expect(JSON.stringify(error)).not.toContain('private-value')
+    expect(await backend.select('items')).toEqual(original)
+    await expect(backend.insert('items', { id: 'three', existing: 'one' })).rejects.toBeInstanceOf(UniqueViolationError)
+    await backend.insert('items', { id: 'three', existing: 'three', newField: 'one' })
+    expect(await backend.select('items')).toHaveLength(3)
+  } finally {
+    backend.close()
+  }
+})
+
+test('SQLite upgrades legacy unique indexes atomically and preserves their enforcement after reopening', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'hedra-index-upgrade-'))
+  const path = join(directory, 'storage.sqlite')
+  const legacy = new Database(path)
+
+  legacy.run('CREATE TABLE items (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)')
+  legacy.run("CREATE UNIQUE INDEX hedra_5_items_value_unique ON items (json_extract(data, '$.value'))")
+  legacy.close()
+  let backend = new SqliteBackend(path)
+
+  try {
+    const rows = [
+      { id: 'one', value: true, group: 'same', sku: 'same' },
+      { id: 'two', value: 'other', group: 'same', sku: 'same' },
+    ]
+
+    for (const row of rows) await backend.insert('items', row)
+    await expect(
+      backend.ensureIndexes('items', [
+        { field: 'value', unique: true },
+        { fields: ['group', 'sku'], unique: true },
+      ]),
+    ).rejects.toBeInstanceOf(QueryError)
+    await expect(backend.insert('items', { id: 'three', value: 1 })).rejects.toBeInstanceOf(UniqueViolationError)
+    expect(await backend.select('items')).toEqual(rows)
+    await backend.ensureIndexes('items', [{ field: 'value', unique: true }])
+    await backend.insert('items', { id: 'three', value: 1 })
+    backend.close()
+    backend = new SqliteBackend(path)
+    await backend.ensureIndexes('items', [{ field: 'value', unique: true }])
+    await backend.ensureIndexes('items', [{ field: 'value', unique: true }])
+    await expect(backend.insert('items', { id: 'four', value: 1 })).rejects.toBeInstanceOf(UniqueViolationError)
+    expect(await backend.select('items', { value: true })).toMatchObject([{ id: 'one' }])
+    expect(await backend.select('items', { value: 1 })).toMatchObject([{ id: 'three' }])
+    expect(await backend.select('items')).toHaveLength(3)
+  } finally {
+    backend.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('distinct compound keys have independent constraints even when field names contain underscores', async () => {
+  const backend = new SqliteBackend(':memory:')
+  const indexes = [
+    { fields: ['a_b', 'c'], unique: true as const },
+    { fields: ['a', 'b_c'], unique: true as const },
+  ]
+
+  try {
+    await backend.ensureIndexes('items', indexes)
+    await backend.ensureIndexes('items', indexes)
+    await backend.insert('items', { id: 'one', a_b: 'one', c: 'one', a: 'one', b_c: 'one' })
+    await expect(
+      backend.insert('items', { id: 'two', a_b: 'two', c: 'two', a: 'one', b_c: 'one' }),
+    ).rejects.toBeInstanceOf(UniqueViolationError)
+    await expect(
+      backend.insert('items', { id: 'two', a_b: 'one', c: 'one', a: 'two', b_c: 'two' }),
+    ).rejects.toBeInstanceOf(UniqueViolationError)
+    await expect(
+      backend.transaction((transaction) => {
+        transaction.insert('items', { id: 'two', a_b: 'two', c: 'two', a: 'two', b_c: 'two' })
+        transaction.insert('items', { id: 'three', a_b: 'three', c: 'three', a: 'one', b_c: 'one' })
+      }),
+    ).rejects.toBeInstanceOf(UniqueViolationError)
+    expect(await backend.select('items')).toHaveLength(1)
   } finally {
     backend.close()
   }
