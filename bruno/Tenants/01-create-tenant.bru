@@ -13,8 +13,16 @@ post {
 body:json {
   {
     "name": "Acme",
-    "tenantDomain": "{{$randomCountry}}.{{baseDomain}}"
+    "tenantDomain": "{{tenantCountryLabel}}.{{baseDomain}}"
   }
+}
+
+script:pre-request {
+  const country = bru.interpolate('{{$randomCountry}}')
+  const label = country.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
+  bru.setVar('tenantCountryLabel', label)
 }
 
 assert {
