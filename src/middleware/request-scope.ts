@@ -5,7 +5,7 @@ import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
 import { OutputValidationError, PreconditionFailedError, RecordNotFoundError } from '#errors'
 import { Domain, isDirectDomain } from '#models/domain.ts'
 import { Environment } from '#models/environment.ts'
-import { RequestScope } from '#models/request-scope.ts'
+import { issueRequestScope, issueTenantScope, RequestScope } from '#models/request-scope.ts'
 import { Tenant } from '#models/tenant.ts'
 
 /** Parses the actual Host header without trusting forwarded headers or malformed ports. */
@@ -51,7 +51,7 @@ export function tenantMiddleware(config: Config, datastore: () => ConfigDatastor
     tenantHost(config, domain)
     const tenant = await findTenant(datastore(), domain)
 
-    context.set('hedraTenantScope' as never, tenant as never)
+    issueTenantScope(context, tenant)
     await next()
   }
 }
@@ -75,7 +75,7 @@ export function environmentMiddleware(config: Config, datastore: () => ConfigDat
     if (values.length !== 1 || !environment.success || environment.data.environmentDomain !== domain || !scope.success)
       throw new OutputValidationError('Invalid environment resolution')
 
-    context.set('hedraRequestScope' as never, scope.data as never)
+    issueRequestScope(context, scope.data)
     await next()
   }
 }
