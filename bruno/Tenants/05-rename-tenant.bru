@@ -1,0 +1,21 @@
+meta {
+  name: Rename tenant
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/tenants/{{tenantDomain}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "{{$randomCompanyName}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}

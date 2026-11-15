@@ -1,0 +1,22 @@
+meta {
+  name: Create environment
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/environments
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "Development",
+    "environmentDomain": "{{environmentDomain}}"
+  }
+}
+
+assert {
+  res.status: eq 201
+}

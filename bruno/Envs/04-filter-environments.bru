@@ -1,0 +1,19 @@
+meta {
+  name: Filter environments
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/environments?filter={"environmentDomain":"{{environmentDomain}}"}
+  body: none
+  auth: none
+}
+
+params:query {
+  filter: {"environmentDomain":"{{environmentDomain}}"}
+}
+
+assert {
+  res.status: eq 200
+}

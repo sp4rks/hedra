@@ -1,0 +1,19 @@
+meta {
+  name: Filter tenants
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/tenants?filter={"tenantDomain":"{{tenantDomain}}"}
+  body: none
+  auth: none
+}
+
+params:query {
+  filter: {"tenantDomain":"{{tenantDomain}}"}
+}
+
+assert {
+  res.status: eq 200
+}

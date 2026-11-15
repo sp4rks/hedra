@@ -1,0 +1,15 @@
+meta {
+  name: List environments
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/environments
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}

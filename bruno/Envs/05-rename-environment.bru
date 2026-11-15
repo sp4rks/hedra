@@ -1,0 +1,21 @@
+meta {
+  name: Rename environment
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/environments/{{environmentDomain}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "{{$randomCompanyName}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}

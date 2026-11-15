@@ -1,0 +1,22 @@
+meta {
+  name: Create tenant
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/tenants
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "Acme",
+    "tenantDomain": "{{tenantDomain}}"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
