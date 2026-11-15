@@ -45,8 +45,18 @@ export function assertRouteValidators(validators: RouteValidators): void {
   if (!parsed.success) throw new ConfigurationError('configuration error', parsed.error.issues)
 }
 
-/** Checks only exposed managed identity claims, retaining native output omission, filtering and transforms. */
-function assertChildOutput(model: z.ZodObject, before: ResourceInput, after: ResourceInput): void {
+/** Checks exposed identity claims against possible original parents at the same schema placement. */
+function assertChildOutput(model: z.ZodObject, before: ResourceInput, after: ResourceInput): Set<ResourceInput> {
+  const claims = new Set<ResourceInput>()
+
+  /** Keeps each exposed original address unique throughout this projected subtree. */
+  const retain = (values: Set<ResourceInput>): void => {
+    for (const value of values) {
+      if (claims.has(value)) throw new OutputValidationError('Duplicate child identity')
+      claims.add(value)
+    }
+  }
+
   for (const field of childFields(model)) {
     const visible = after[field.name]
     const original = before[field.name]
@@ -54,10 +64,12 @@ function assertChildOutput(model: z.ZodObject, before: ResourceInput, after: Res
     if (!visible || typeof visible !== 'object') continue
     if (field.kind === 'object') {
       if (!Array.isArray(visible))
-        assertChildOutput(
-          field.model,
-          original && typeof original === 'object' && !Array.isArray(original) ? (original as ResourceInput) : {},
-          visible as ResourceInput,
+        retain(
+          assertChildOutput(
+            field.model,
+            original && typeof original === 'object' && !Array.isArray(original) ? (original as ResourceInput) : {},
+            visible as ResourceInput,
+          ),
         )
       continue
     }
@@ -69,36 +81,53 @@ function assertChildOutput(model: z.ZodObject, before: ResourceInput, after: Res
           : field.kind === 'single' && !Array.isArray(visible)
             ? [[undefined, visible] as const]
             : []
-    const ids = new Set<string>()
 
     for (const [key, value] of entries) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue
       const child = value as ResourceInput
-      const previous =
+      const originals =
         field.kind === 'array'
           ? Array.isArray(original)
-            ? original.find((item) => item && typeof item === 'object' && !Array.isArray(item) && item.id === child.id)
-            : undefined
+            ? original
+            : []
           : field.kind === 'dictionary'
             ? original &&
               typeof original === 'object' &&
               !Array.isArray(original) &&
               key !== undefined &&
               Object.hasOwn(original, key)
-              ? original[key]
-              : undefined
-            : original
-      const stored =
-        previous && typeof previous === 'object' && !Array.isArray(previous) ? (previous as ResourceInput) : {}
+              ? [original[key]]
+              : []
+            : [original]
+      const candidates = originals.filter(
+        (item): item is ResourceInput => !!item && typeof item === 'object' && !Array.isArray(item),
+      )
+      const matches: Set<ResourceInput>[] = []
 
-      if (Object.hasOwn(child, 'id')) {
-        if (typeof child.id !== 'string' || child.id !== stored.id || ids.has(child.id))
-          throw new OutputValidationError('Output changed child identity')
-        ids.add(child.id)
+      // Hidden array-parent IDs carry no claim; descendants may still identify exactly one original parent.
+      for (const candidate of candidates.length ? candidates : [{}]) {
+        try {
+          const exposesId = Object.hasOwn(child, 'id')
+
+          if (exposesId && (typeof child.id !== 'string' || child.id !== candidate.id))
+            throw new OutputValidationError('Output changed child identity')
+          const descendants = assertChildOutput(field.model, candidate, child)
+
+          if (exposesId) descendants.add(candidate)
+          matches.push(descendants)
+        } catch (error) {
+          if (!(error instanceof OutputValidationError)) throw error
+        }
       }
-      assertChildOutput(field.model, stored, child)
+      const match = matches[0]
+
+      if (!match || (matches.length > 1 && matches.some((candidate) => candidate.size > 0)))
+        throw new OutputValidationError('Missing or ambiguous child identity')
+      retain(match)
     }
   }
+
+  return claims
 }
 
 /** Validates a controller envelope and its web output before transport. */
@@ -184,7 +213,10 @@ function response(
         const originalChild = childObject(before)
         const visibleChild = childObject(after)
 
-        if (typeof originalChild.id !== 'string' || visibleChild.id !== originalChild.id)
+        if (
+          typeof originalChild.id !== 'string' ||
+          (Object.hasOwn(visibleChild, 'id') && visibleChild.id !== originalChild.id)
+        )
           throw new OutputValidationError('Output changed child identity')
         const parsed = ResourceSchema.safeParse(visibleChild)
 
@@ -203,17 +235,13 @@ function response(
 
       if (last.selector.kind === 'array' && last.selector.id === undefined) {
         if (!Array.isArray(raw) || !Array.isArray(exposed)) throw new OutputValidationError()
-        const ids = new Set<string>()
+        // The complete parent projection already validated every exposed ID; anonymous DTOs need no positional match.
         const data = exposed.map((item) => {
-          const id = childObject(item).id
+          const parsed = ResourceSchema.safeParse(item)
 
-          if (typeof id !== 'string' || ids.has(id)) throw new OutputValidationError('Duplicate child identity')
-          ids.add(id)
+          if (!parsed.success) throw new OutputValidationError()
 
-          return selected(
-            raw.find((entry) => childObject(entry).id === id),
-            item,
-          )
+          return { ...parsed.data, ...childObject(item) } as ResourceInput
         })
 
         return { data, links: envelope.links }
