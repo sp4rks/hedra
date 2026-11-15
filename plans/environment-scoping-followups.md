@@ -19,3 +19,6 @@ Implement these items after the walkthrough is complete. All items are pending.
   for environment operations. Update catalogue interfaces, lookups, controllers, middleware, built-in
   REST item paths, self links and callers consistently. Retain UUIDs as internal row identifiers;
   preserve domain immutability, permanent reservations and atomic ownership checks.
+- [ ] **Rename the shared record parser.** Rename `catalogueRecord()` to `parseRecord()` in
+  `src/datastores/categories/config/records.ts`, updating imports and callers without changing
+  behaviour.
