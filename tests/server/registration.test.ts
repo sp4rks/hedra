@@ -86,6 +86,34 @@ test('registration requires every core field on roots and managed children befor
   }
 })
 
+test.each(['root', 'child'] as const)(
+  'registration rejects coercing ownership on a managed %s before construction',
+  (placement) => {
+    const app = new Hedra({ config: new Config(quiet) })
+    let constructed = 0
+
+    class Observed extends BaseController {
+      /** Records whether invalid ownership reached a controller constructor. */
+      constructor(backend: Backend) {
+        super(backend)
+        constructed++
+      }
+    }
+    const model = Resource.extend({ environmentDomain: z.coerce.string() })
+    const root =
+      placement === 'root'
+        ? model.meta({ name: 'invalid' })
+        : Resource.extend({ child: model.meta({ child: true }) }).meta({ name: 'invalid' })
+
+    try {
+      expect(() => app.register(root, { controller: Observed })).toThrow()
+      expect(constructed).toBe(0)
+    } finally {
+      app.close()
+    }
+  },
+)
+
 test('registration constructs the default independent controller', async () => {
   const app = new Hedra({ config: new Config(quiet) })
   const cars = Car.meta({ name: 'cars' })

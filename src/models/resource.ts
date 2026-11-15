@@ -46,7 +46,8 @@ export function assertResourceModel(model: z.ZodObject): void {
   }
 
   for (const key of ['createdAt', 'updatedAt', 'environmentDomain'] as const) {
-    let field = model.shape[key] as z.ZodType | undefined
+    const original = model.shape[key] as z.ZodType | undefined
+    let field = original
 
     while (field instanceof z.ZodPipe) field = field.in as z.ZodType
     const valid =
@@ -54,7 +55,8 @@ export function assertResourceModel(model: z.ZodObject): void {
         ? field instanceof z.ZodString
         : field instanceof z.ZodISODateTime || (field instanceof z.ZodString && field.format === 'datetime')
 
-    if (!valid) throw new ConfigurationError(`Resource model must require ${key}`)
+    if (!valid || original?.isOptional() || original?.isNullable())
+      throw new ConfigurationError(`Resource model must require ${key}`)
   }
 }
 
