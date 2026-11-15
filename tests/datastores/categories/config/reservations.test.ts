@@ -27,13 +27,13 @@ test('independent connections enforce canonical environment uniqueness and reser
     const environment = (await first.environments.list(tenant.tenantDomain))[0]
 
     if (!environment) throw new Error('Environment was not created')
-    await first.environments.delete(tenant.tenantDomain, environment.id)
-    await first.tenants.delete(tenant.id)
+    await first.environments.delete(tenant.tenantDomain, environment.environmentDomain)
+    await first.tenants.delete(tenant.tenantDomain)
     firstBackend.close()
     secondBackend.close()
     reopened = new ConfigStore({ config: new Config({ HEDRA_SQLITE_PATH: path, HEDRA_SERVER_SILENT_STARTUP: 'true' }) })
     expect(await reopened.tenants.list()).toEqual([])
-    expect(await reopened.tenants.get(tenant.id)).toBeNull()
+    expect(await reopened.tenants.get(tenant.tenantDomain)).toBeNull()
     await expect(
       reopened.tenants.create({ name: 'New party', tenantDomain: tenant.tenantDomain }),
     ).rejects.toMatchObject({ status: 409 })

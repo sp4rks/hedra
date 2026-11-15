@@ -17,6 +17,7 @@ import {
   UnsupportedMediaTypeError,
 } from '#errors'
 import { assertChildOwnership, childFields, childInput, safeChildKey } from '#models/children.ts'
+import { Domain } from '#models/domain.ts'
 import { ResourceId, resourceName } from '#models/resource.ts'
 import { ErrorResponse, JsonApiListResponse, JsonApiResponse, ResourceInput as ResourceSchema } from '#models/rest.ts'
 import { setResourceScope } from '#models/scope.ts'
@@ -138,6 +139,7 @@ function response(
     list?: boolean
     writeSucceeded?: boolean
     id?: string
+    domain?: { field: 'tenantDomain' | 'environmentDomain'; value: string }
     model?: z.ZodObject
     child?: { model: z.ZodObject; target: ChildTarget; create?: boolean; url: string }
   } = {},
@@ -171,6 +173,12 @@ function response(
       if (Object.hasOwn(resource.data, 'id') && resource.data.id !== id)
         throw new OutputValidationError('Output changed resource identity')
 
+      if (
+        options.domain &&
+        Object.hasOwn(resource.data, options.domain.field) &&
+        resource.data[options.domain.field] !== record[options.domain.field]
+      )
+        throw new OutputValidationError('Output changed catalogue identity')
       if (model) assertChildOutput(model, record, jsonOutput as ResourceInput)
 
       // Preserve literal JSON property names that the resource parser may omit.
@@ -264,6 +272,9 @@ function response(
 
     if (options.id !== undefined && !Array.isArray(envelope.data) && envelope.data.id !== options.id)
       throw new OutputValidationError()
+
+    if (options.domain && !Array.isArray(envelope.data) && envelope.data[options.domain.field] !== options.domain.value)
+      throw new OutputValidationError('Output changed catalogue identity')
 
     return { data, links: envelope.links }
   } catch {
@@ -396,6 +407,7 @@ export function registerRoutes(
   validators: RouteValidators = {},
   before?: MiddlewareHandler,
   ownership: 'environmentDomain' | 'tenantDomain' | null = 'environmentDomain',
+  identity: 'id' | 'tenantDomain' | 'environmentDomain' = 'id',
 ): void {
   const name = resourceName(model)
   const path = `/${name}`
@@ -423,7 +435,7 @@ export function registerRoutes(
     path,
     middleware,
     routeHandler(async (context) => {
-      setResourceScope(context, { collection: name, target: { kind: 'collection' } })
+      if (identity === 'id') setResourceScope(context, { collection: name, target: { kind: 'collection' } })
 
       const result = await controller.list(context, model, context.req.url, query(context, model, output, ownership))
 
@@ -434,7 +446,7 @@ export function registerRoutes(
     path,
     middleware,
     routeHandler(async (context) => {
-      setResourceScope(context, { collection: name, target: { kind: 'collection' } })
+      if (identity === 'id') setResourceScope(context, { collection: name, target: { kind: 'collection' } })
       const value = await body(context, createInput, false, ownership, model)
       const result = await controller.create(context, model, value as never)
       const validated = response(output, result, { writeSucceeded: true, model })
@@ -445,39 +457,50 @@ export function registerRoutes(
     }),
   )
   app.get(
-    `${path}/:id`,
+    `${path}/:${identity}`,
     middleware,
     routeHandler(async (context) => {
-      const id = input(ResourceId, context.req.param('id'))
+      const id = input(identity === 'id' ? ResourceId : Domain, context.req.param(identity))
 
-      setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
+      if (identity === 'id') setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
 
       const result = await controller.id(context, model, id)
 
-      return context.json(response(output, result, { id, model }))
+      return context.json(
+        response(output, result, {
+          ...(identity === 'id' ? { id } : { domain: { field: identity, value: id } }),
+          model,
+        }),
+      )
     }),
   )
   app.patch(
-    `${path}/:id`,
+    `${path}/:${identity}`,
     middleware,
     routeHandler(async (context) => {
-      const id = input(ResourceId, context.req.param('id'))
+      const id = input(identity === 'id' ? ResourceId : Domain, context.req.param(identity))
 
-      setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
+      if (identity === 'id') setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
       const value = await body(context, updateInput, updateSubmittedOnly, ownership, model)
 
       const result = await controller.update(context, model, value as never, id)
 
-      return context.json(response(output, result, { writeSucceeded: true, id, model }))
+      return context.json(
+        response(output, result, {
+          writeSucceeded: true,
+          ...(identity === 'id' ? { id } : { domain: { field: identity, value: id } }),
+          model,
+        }),
+      )
     }),
   )
   app.delete(
-    `${path}/:id`,
+    `${path}/:${identity}`,
     middleware,
     routeHandler(async (context) => {
-      const id = input(ResourceId, context.req.param('id'))
+      const id = input(identity === 'id' ? ResourceId : Domain, context.req.param(identity))
 
-      setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
+      if (identity === 'id') setResourceScope(context, { collection: name, target: { kind: 'resource', id } })
 
       await controller.delete(context, model, id)
 

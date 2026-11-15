@@ -112,6 +112,7 @@ export class Hedra extends Hono {
         await next()
       },
       null,
+      'tenantDomain',
     )
 
     const environments = Environment.meta({ name: 'environments' })
@@ -123,6 +124,7 @@ export class Hedra extends Hono {
       { create: EnvironmentInput, update: EnvironmentChanges, output: Environment },
       tenantMiddleware(this.config, () => this.configDatastore),
       'tenantDomain',
+      'environmentDomain',
     )
 
     this.associations = new AssociationOperations(

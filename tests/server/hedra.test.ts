@@ -298,7 +298,7 @@ test('Hedra.close invalidates saved controller references without closing a borr
     expect(errors[0]).toHaveProperty('detail', undefined)
     expect(() => first.register(model.meta({ name: 'bikes' }))).toThrow()
     expect(JsonApiResponse.parse(await (await request(second, `/test/cars/${id}`)).json()).data).toEqual(car)
-    expect(await config.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await config.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     first.close()
     second.close()

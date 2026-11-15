@@ -321,7 +321,7 @@ test('tenant controller operations propagate injected datastore failures by iden
     }),
   )
   const collection = Tenant.meta({ name: 'tenants' })
-  const id = crypto.randomUUID()
+  const id = 'acme.hedra.local'
   const fields = { name: 'Acme', tenantDomain: 'acme.hedra.local' }
 
   for (const cause of [new Error('datastore unavailable'), new QueryError('existing error')]) {
@@ -354,7 +354,7 @@ test('tenant controller operations propagate injected datastore failures by iden
 })
 
 test('tenant datastore reads and writes propagate backend failures by identity', async () => {
-  const id = crypto.randomUUID()
+  const id = 'acme.hedra.local'
   const fields = { name: 'Acme', tenantDomain: 'acme.hedra.local' }
 
   for (const cause of [new Error('backend unavailable'), new QueryError('existing error')]) {

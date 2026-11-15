@@ -51,18 +51,20 @@ test('catalogue deletions reject missing or invalid backend results and roll bac
 
     for (const failure of failures) {
       result = failure
-      await expect(store.environments.delete(tenant.tenantDomain, environment.id)).rejects.toMatchObject({
-        status: 500,
-      })
-      expect(await store.environments.get(tenant.tenantDomain, environment.id)).toEqual(environment)
+      await expect(store.environments.delete(tenant.tenantDomain, environment.environmentDomain)).rejects.toMatchObject(
+        {
+          status: 500,
+        },
+      )
+      expect(await store.environments.get(tenant.tenantDomain, environment.environmentDomain)).toEqual(environment)
     }
     result = (record) => record
-    expect(await store.environments.delete(tenant.tenantDomain, environment.id)).toBe(true)
+    expect(await store.environments.delete(tenant.tenantDomain, environment.environmentDomain)).toBe(true)
 
     for (const failure of failures) {
       result = failure
-      await expect(store.tenants.delete(tenant.id)).rejects.toMatchObject({ status: 500 })
-      expect(await store.tenants.get(tenant.id)).toEqual(tenant)
+      await expect(store.tenants.delete(tenant.tenantDomain)).rejects.toMatchObject({ status: 500 })
+      expect(await store.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     }
   } finally {
     store.close()

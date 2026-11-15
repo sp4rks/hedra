@@ -7,10 +7,9 @@ import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput }
 import { resourceLink } from '#controllers/controller.ts'
 import { EnvironmentCreate, EnvironmentUpdate } from '#datastores/categories/config/environments.ts'
 import { InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
-import { isDirectDomain } from '#models/domain.ts'
+import { Domain, isDirectDomain } from '#models/domain.ts'
 import { Environment } from '#models/environment.ts'
 import { requireTenantScope } from '#models/request-scope.ts'
-import { ResourceId } from '#models/resource.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
 
 export class EnvironmentController implements ControllerInterface {
@@ -31,7 +30,7 @@ export class EnvironmentController implements ControllerInterface {
   }
 
   /** Validates complete environment output and its resolved tenant relationship. */
-  private output(context: Context, input: unknown, id?: string): Environment {
+  private output(context: Context, input: unknown, domain?: string): Environment {
     const tenant = requireTenantScope(context)
     const parsed = Environment.safeParse(input)
 
@@ -39,7 +38,7 @@ export class EnvironmentController implements ControllerInterface {
     const environment = parsed.data
 
     if (
-      (id !== undefined && environment.id !== id) ||
+      (domain !== undefined && environment.environmentDomain !== domain) ||
       environment.tenantDomain !== tenant.tenantDomain ||
       !isDirectDomain(environment.environmentDomain, tenant.tenantDomain)
     )
@@ -61,18 +60,18 @@ export class EnvironmentController implements ControllerInterface {
     if (data.environmentDomain !== parseInput(Environment.shape.environmentDomain, fields.environmentDomain))
       throw new OutputValidationError('Environment domain cannot change')
 
-    return { data, links: { self: resourceLink(context, data.id) } }
+    return { data, links: { self: resourceLink(context, data.environmentDomain, 'environmentDomain') } }
   }
 
   /** Returns an environment in the request tenant. */
-  async id(context: Context, _model: z.ZodObject, id: string): Promise<JsonApiResponse> {
+  async id(context: Context, _model: z.ZodObject, environmentDomain: string): Promise<JsonApiResponse> {
     const tenant = requireTenantScope(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, environmentDomain)
     const value = await this.datastore().environments.get(tenant.tenantDomain, key)
 
     if (value === null) throw new RecordNotFoundError()
 
-    return { data: this.output(context, value, key), links: { self: resourceLink(context, key) } }
+    return { data: this.output(context, value, key), links: { self: resourceLink(context, key, 'environmentDomain') } }
   }
 
   /** Lists environments with compulsory tenant ownership. */
@@ -94,9 +93,14 @@ export class EnvironmentController implements ControllerInterface {
   }
 
   /** Changes an environment name through tenant-scoped configuration operations. */
-  async update(context: Context, _model: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+  async update(
+    context: Context,
+    _model: z.ZodObject,
+    input: ResourceInput,
+    environmentDomain: string,
+  ): Promise<JsonApiResponse> {
     const tenant = requireTenantScope(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, environmentDomain)
     const value = await this.datastore().environments.update(
       tenant.tenantDomain,
       key,
@@ -105,13 +109,13 @@ export class EnvironmentController implements ControllerInterface {
 
     if (value === null) throw new RecordNotFoundError()
 
-    return { data: this.output(context, value, key), links: { self: resourceLink(context, key) } }
+    return { data: this.output(context, value, key), links: { self: resourceLink(context, key, 'environmentDomain') } }
   }
 
   /** Hides an environment while retaining its permanent domain reservation. */
-  async delete(context: Context, _model: z.ZodObject, id: string): Promise<void> {
+  async delete(context: Context, _model: z.ZodObject, environmentDomain: string): Promise<void> {
     const tenant = requireTenantScope(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, environmentDomain)
 
     if (!(await this.datastore().environments.delete(tenant.tenantDomain, key))) throw new RecordNotFoundError()
   }

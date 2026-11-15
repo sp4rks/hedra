@@ -33,7 +33,7 @@ test('Hedra accepts a structural configuration datastore and retains its identit
     expect(app.configDatastore).toBe(configDatastore)
     const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
-    expect(await app.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await app.configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     expect(existsSync(path)).toBe(false)
   } finally {
     app.close()
@@ -64,8 +64,8 @@ test('Hedra borrows a configuration datastore shared by apps', async () => {
 
     first.close()
     expect(closed).toBe(false)
-    expect(await second.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
-    expect(await configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await second.configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
+    expect(await configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     first.close()
     second.close()
@@ -91,7 +91,7 @@ test('Hedra creates configuration storage only when requested', async () => {
     expect(existsSync(path)).toBe(true)
     const tenant = await store.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
-    expect(await store.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await store.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     unused.close()
     app.close()
@@ -114,9 +114,9 @@ test('Hedra closes its default configuration datastore and retains persisted ten
 
     app.close()
     app.close()
-    await expect(operations.get(tenant.id)).rejects.toThrow()
+    await expect(operations.get(tenant.tenantDomain)).rejects.toThrow()
     expect(() => app.configDatastore).toThrow('Hedra is closed')
-    expect(await reopened.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await reopened.configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     unused.close()
     expect(() => unused.configDatastore).toThrow('Hedra is closed')
     expect(existsSync(unusedPath)).toBe(false)
@@ -139,7 +139,7 @@ test('a failed default configuration datastore open can be retried', async () =>
     rmSync(path, { recursive: true })
     const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
-    expect(await app.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await app.configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     app.close()
     rmSync(dir, { recursive: true, force: true })
@@ -185,7 +185,7 @@ test('configuration and application data use their own supplied datastores', asy
       { collection: 'labels', id: labelId },
     )
     expect(await app.associations.list(await provision(app), { collection: 'projects', id: projectId })).toHaveLength(1)
-    expect(await configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     expect(await otherConfigDatastore.tenants.list()).toEqual([])
     expect(((await (await request(observer, '/projects')).json()) as { data: unknown[] }).data).toEqual([])
   } finally {

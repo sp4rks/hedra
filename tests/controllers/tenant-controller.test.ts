@@ -98,14 +98,14 @@ test('direct tenant controller calls validate domains and protect server-owned m
     const tenant = Tenant.parse(((await created.json()) as { data: unknown }).data)
 
     expect(tenant.id).not.toBe('spoofed')
-    const changed = await app.request(`http://deployment.hedra.local/tenants/${tenant.id}`, {
+    const changed = await app.request(`http://deployment.hedra.local/tenants/${tenant.tenantDomain}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ tenantDomain: tenant.tenantDomain }),
     })
 
     expect(await changed.json()).toEqual({ status: 422 })
-    expect(await store.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await store.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     store.close()
     backend.close()

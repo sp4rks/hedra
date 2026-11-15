@@ -5,8 +5,8 @@ import type { TenantOperationsInterface } from '#datastores/categories/config/co
 import { catalogueRecord } from '#datastores/categories/config/records.ts'
 import { ResourceOperations } from '#datastores/resource-operations.ts'
 import { ConflictError, InputValidationError, OutputValidationError, parseInput, UniqueViolationError } from '#errors'
+import { Domain } from '#models/domain.ts'
 import { Environment } from '#models/environment.ts'
-import { ResourceId } from '#models/resource.ts'
 import { Tenant } from '#models/tenant.ts'
 
 export const TenantCreate = Tenant.omit({ id: true, createdAt: true, updatedAt: true })
@@ -29,15 +29,15 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
   }
 
   /** Returns an active validated tenant, or null when absent or deleted. */
-  override async get(id: string): Promise<Tenant | null> {
+  override async get(tenantDomain: string): Promise<Tenant | null> {
     await this.ready
-    const key = parseInput(ResourceId, id)
-    const record = (await this.backend.select(this.name, { id: key }))[0]
+    const key = parseInput(Domain, tenantDomain)
+    const record = (await this.backend.select(this.name, { tenantDomain: key }))[0]
 
     if (!record) return null
     const current = catalogueRecord(Tenant, record)
 
-    if (current.value.id !== key) throw new OutputValidationError('Resource ID cannot change')
+    if (current.value.tenantDomain !== key) throw new OutputValidationError('Tenant identity cannot change')
 
     return current.deleted ? null : current.value
   }
@@ -72,25 +72,32 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
   }
 
   /** Applies a validated mutation to the current active tenant atomically. */
-  private async change(id: string, modify: (current: Tenant) => Tenant): Promise<Tenant | null> {
+  private async change(tenantDomain: string, modify: (current: Tenant) => Tenant): Promise<Tenant | null> {
     await this.ready
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, tenantDomain)
 
     return await this.backend.transaction((transaction) => {
-      const record = transaction.select(this.name, { id: key })[0]
+      const record = transaction.select(this.name, { tenantDomain: key })[0]
 
       if (!record) return null
       const current = catalogueRecord(Tenant, record)
 
       if (current.deleted) return null
-      if (current.value.id !== key) throw new OutputValidationError('Resource ID cannot change')
+      if (current.value.tenantDomain !== key) throw new OutputValidationError('Tenant identity cannot change')
       const updated = parseInput(Tenant, modify(current.value))
-      const result = transaction.update(this.name, key, () => updated)
+
+      if (updated.id !== current.value.id || updated.tenantDomain !== key)
+        throw new InputValidationError('Tenant identity cannot change')
+      const result = transaction.update(this.name, current.value.id, () => updated)
 
       if (!result) throw new OutputValidationError('Backend did not apply the tenant update')
       const output = catalogueRecord(Tenant, result)
 
-      if (output.deleted || output.value.id !== key || output.value.tenantDomain !== current.value.tenantDomain)
+      if (
+        output.deleted ||
+        output.value.id !== current.value.id ||
+        output.value.tenantDomain !== current.value.tenantDomain
+      )
         throw new OutputValidationError('Tenant identity cannot change')
 
       return output.value
@@ -98,17 +105,17 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
   }
 
   /** Changes the tenant name while retaining its domain and metadata. */
-  override async update(id: string, changes: TenantUpdate): Promise<Tenant | null> {
+  override async update(tenantDomain: string, changes: TenantUpdate): Promise<Tenant | null> {
     const fields = parseInput(TenantUpdate, changes)
 
-    return this.change(id, (current) => ({ ...current, ...fields, updatedAt: new Date().toISOString() }))
+    return this.change(tenantDomain, (current) => ({ ...current, ...fields, updatedAt: new Date().toISOString() }))
   }
 
   /** Replaces public attributes without changing ownership or identity. */
-  override async replace(id: string, input: TenantCreate): Promise<Tenant | null> {
+  override async replace(tenantDomain: string, input: TenantCreate): Promise<Tenant | null> {
     const fields = parseInput(TenantCreate, input)
 
-    return this.change(id, (current) => {
+    return this.change(tenantDomain, (current) => {
       if (fields.tenantDomain !== current.tenantDomain) throw new InputValidationError('Tenant domain cannot change')
 
       return { ...current, ...fields, updatedAt: new Date().toISOString() }
@@ -116,16 +123,17 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
   }
 
   /** Reserves a deleted tenant domain after all active environments have been removed. */
-  override async delete(id: string): Promise<boolean> {
+  override async delete(tenantDomain: string): Promise<boolean> {
     await this.ready
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, tenantDomain)
 
     return await this.backend.transaction((transaction) => {
-      const record = transaction.select(this.name, { id: key })[0]
+      const record = transaction.select(this.name, { tenantDomain: key })[0]
 
       if (!record) return false
       const current = catalogueRecord(Tenant, record)
 
+      if (current.value.tenantDomain !== key) throw new OutputValidationError('Tenant identity cannot change')
       if (current.deleted) return false
       const environments = transaction.select(this.environmentTable, { tenantDomain: current.value.tenantDomain })
 
@@ -133,7 +141,7 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
         throw new ConflictError('tenant has active environments')
       const timestamp = new Date().toISOString()
 
-      const result = transaction.update(this.name, key, () => ({
+      const result = transaction.update(this.name, current.value.id, () => ({
         ...current.value,
         updatedAt: timestamp,
         deletedAt: timestamp,
@@ -142,7 +150,11 @@ export class TenantOperations extends ResourceOperations<Tenant> implements Tena
       if (!result) throw new OutputValidationError('Backend did not apply the tenant deletion')
       const deleted = catalogueRecord(Tenant, result)
 
-      if (!deleted.deleted || deleted.value.id !== key || deleted.value.tenantDomain !== current.value.tenantDomain)
+      if (
+        !deleted.deleted ||
+        deleted.value.id !== current.value.id ||
+        deleted.value.tenantDomain !== current.value.tenantDomain
+      )
         throw new OutputValidationError('Backend did not preserve the deleted tenant identity')
 
       return true

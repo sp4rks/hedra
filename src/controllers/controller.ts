@@ -55,14 +55,19 @@ function attributes(input: ResourceInput): ResourceInput {
 }
 
 /** Builds a resource link without carrying query parameters into the path. */
-export function resourceLink(context: Context, id: string): string {
+export function resourceLink(context: Context, id: string, identity = 'id'): string {
   const url = new URL(context.req.url)
 
   url.search = ''
   url.hash = ''
   const path = url.pathname.replace(/\/+$/, '')
 
-  url.pathname = path.endsWith(`/${id}`) ? path : `${path}/${id}`
+  url.pathname =
+    identity !== 'id' && context.req.param(identity) !== undefined
+      ? `${path.slice(0, path.lastIndexOf('/'))}/${id}`
+      : path.endsWith(`/${id}`)
+        ? path
+        : `${path}/${id}`
 
   return url.toString()
 }

@@ -23,10 +23,11 @@ test('tenant HTTP reads redact invalid data from the default configuration store
       id,
       createdAt: timestamp,
       updatedAt: timestamp,
-      name: 'private invalid tenant',
+      name: 42,
+      tenantDomain: 'acme.hedra.local',
     })
 
-    for (const target of ['/tenants', `/tenants/${id}`]) {
+    for (const target of ['/tenants', '/tenants/acme.hedra.local']) {
       const response = await app.request(`http://deployment.hedra.local${target}`, { headers })
 
       expect(response.status).toBe(500)
@@ -56,9 +57,9 @@ test('tenant REST CRUD uses the configuration catalogue', async () => {
     expect(created.status).toBe(201)
     expect(tenant).toMatchObject({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
     expect(tenant.id).not.toBe('client-id')
-    expect(envelope.links.self).toBe(`http://deployment.hedra.local/tenants/${tenant.id}`)
+    expect(envelope.links.self).toBe(`http://deployment.hedra.local/tenants/${tenant.tenantDomain}`)
     expect(created.headers.get('location')).toBe(envelope.links.self)
-    expect(await store.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await store.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     const other = await store.tenants.create({ name: 'Other', tenantDomain: 'other.hedra.local' })
     const list = await app.request('http://deployment.hedra.local/tenants', { headers })
 
@@ -93,15 +94,14 @@ test('tenant hosts are checked before input validation or opening the configurat
   const dir = mkdtempSync(join(tmpdir(), 'hedra-tenant-host-'))
   const path = join(dir, 'db.sqlite')
   const app = new Hedra({ config: new Config({ ...quiet, HEDRA_SQLITE_PATH: path }) })
-  const id = crypto.randomUUID()
 
   try {
     for (const [method, target] of [
       ['GET', '/tenants'],
       ['POST', '/tenants'],
-      ['GET', `/tenants/${id}`],
-      ['PATCH', `/tenants/${id}`],
-      ['DELETE', `/tenants/${id}`],
+      ['GET', '/tenants/acme.hedra.local'],
+      ['PATCH', '/tenants/acme.hedra.local'],
+      ['DELETE', '/tenants/acme.hedra.local'],
     ]) {
       for (const host of [undefined, 'tenant.hedra.local', 'deployment.hedra.local:65536']) {
         const requestHeaders: Record<string, string> = { 'x-forwarded-host': 'deployment.hedra.local' }
@@ -177,14 +177,14 @@ test('tenant API rejects invalid mutations and duplicate domains without changin
 
   try {
     const original = await store.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
-    const path = `http://deployment.hedra.local/tenants/${original.id}`
+    const path = `http://deployment.hedra.local/tenants/${original.tenantDomain}`
     const change = (body: unknown) => app.request(path, { method: 'PATCH', headers, body: JSON.stringify(body) })
 
     expect((await change({ tenantDomain: original.tenantDomain })).status).toBe(422)
     expect((await change({ tenantDomain: 'other.hedra.local' })).status).toBe(422)
     expect((await change({ name: '' })).status).toBe(422)
     expect((await change({ unknown: 'field' })).status).toBe(422)
-    expect(await store.tenants.get(original.id)).toEqual(original)
+    expect(await store.tenants.get(original.tenantDomain)).toEqual(original)
     const duplicate = await app.request('http://deployment.hedra.local/tenants', {
       method: 'POST',
       headers,
@@ -247,7 +247,7 @@ test('HTTP routes use a structural borrowed datastore and reject use after close
     expect(existsSync(path)).toBe(false)
     app.close()
     expect((await app.request('http://deployment.hedra.local/tenants', { headers })).status).toBe(500)
-    expect(await configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     app.close()
     store.close()
@@ -293,7 +293,7 @@ test('tenant routes validate requests and redact invalid or failed datastore res
         })
       ).status,
     ).toBe(422)
-    const invalid = await app.request(`http://deployment.hedra.local/tenants/${id}`, { headers })
+    const invalid = await app.request('http://deployment.hedra.local/tenants/acme.hedra.local', { headers })
     const failed = await app.request('http://deployment.hedra.local/tenants', { headers })
 
     expect(invalid.status).toBe(500)

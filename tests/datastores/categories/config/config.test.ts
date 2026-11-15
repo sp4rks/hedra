@@ -20,7 +20,7 @@ test('ConfigStore uses supplied configuration to persist tenants', async () => {
 
     first.close()
     second = new ConfigStore({ config })
-    expect(await second.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await second.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     first.close()
     second?.close()
@@ -41,8 +41,8 @@ test('ConfigStore borrows its supplied backend even when the configured path is 
 
     first.close()
     first.close()
-    expect(await first.tenants.get(tenant.id)).toEqual(tenant)
-    expect(await second.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await first.tenants.get(tenant.tenantDomain)).toEqual(tenant)
+    expect(await second.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     app.register(Resource.extend({ make: z.string() }).meta({ name: 'cars' }))
     expect((await request(app, '/cars')).status).toBe(200)
   } finally {
@@ -66,7 +66,7 @@ test('ConfigStore accepts and borrows a directly supplied backend', async () => 
     const tenant = await store.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
     store.close()
-    expect(await observer.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await observer.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     if (previousPath === undefined) delete process.env.HEDRA_SQLITE_PATH
     else process.env.HEDRA_SQLITE_PATH = previousPath
@@ -92,15 +92,17 @@ test('ConfigStore exposes validated tenant resource operations', async () => {
       name: 'Acme',
       tenantDomain: 'acme.hedra.local',
     })
-    expect(await config.tenants.get(tenant.id)).toEqual(tenant)
-    expect(await config.tenants.update(tenant.id, { name: ' New name ' })).toEqual({
+    expect(await config.tenants.get(tenant.tenantDomain)).toEqual(tenant)
+    expect(await config.tenants.update(tenant.tenantDomain, { name: ' New name ' })).toEqual({
       id: tenant.id,
       createdAt: tenant.createdAt,
       updatedAt: expect.any(String),
       name: 'New name',
       tenantDomain: 'acme.hedra.local',
     })
-    expect(await config.tenants.replace(tenant.id, { name: 'Replacement', tenantDomain: 'acme.hedra.local' })).toEqual({
+    expect(
+      await config.tenants.replace(tenant.tenantDomain, { name: 'Replacement', tenantDomain: 'acme.hedra.local' }),
+    ).toEqual({
       id: tenant.id,
       createdAt: tenant.createdAt,
       updatedAt: expect.any(String),
@@ -119,8 +121,8 @@ test('ConfigStore exposes validated tenant resource operations', async () => {
         tenantDomain: 'acme.hedra.local',
       },
     ])
-    expect(await config.tenants.delete(tenant.id)).toBe(true)
-    expect(await config.tenants.get(tenant.id)).toBeNull()
+    expect(await config.tenants.delete(tenant.tenantDomain)).toBe(true)
+    expect(await config.tenants.get(tenant.tenantDomain)).toBeNull()
   } finally {
     backend.close()
   }

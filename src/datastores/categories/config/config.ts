@@ -18,21 +18,21 @@ export const environmentTable = 'hedra_config_environments'
 /** Describes the configuration catalogue's tenant operations. */
 export interface TenantOperationsInterface {
   create(input: TenantCreate): Promise<Tenant>
-  get(id: string): Promise<Tenant | null>
+  get(tenantDomain: string): Promise<Tenant | null>
   list(filter?: Partial<Tenant>): Promise<Tenant[]>
-  update(id: string, changes: TenantUpdate): Promise<Tenant | null>
-  replace(id: string, input: TenantCreate): Promise<Tenant | null>
-  delete(id: string): Promise<boolean>
+  update(tenantDomain: string, changes: TenantUpdate): Promise<Tenant | null>
+  replace(tenantDomain: string, input: TenantCreate): Promise<Tenant | null>
+  delete(tenantDomain: string): Promise<boolean>
 }
 
 /** Describes tenant-scoped environment catalogue operations. */
 export interface EnvironmentOperationsInterface {
   create(tenantDomain: string, input: EnvironmentCreate): Promise<Environment>
-  get(tenantDomain: string, id: string): Promise<Environment | null>
+  get(tenantDomain: string, environmentDomain: string): Promise<Environment | null>
   list(tenantDomain: string, filter?: Partial<Environment>): Promise<Environment[]>
-  update(tenantDomain: string, id: string, changes: EnvironmentUpdate): Promise<Environment | null>
-  replace(tenantDomain: string, id: string, input: EnvironmentCreate): Promise<Environment | null>
-  delete(tenantDomain: string, id: string): Promise<boolean>
+  update(tenantDomain: string, environmentDomain: string, changes: EnvironmentUpdate): Promise<Environment | null>
+  replace(tenantDomain: string, environmentDomain: string, input: EnvironmentCreate): Promise<Environment | null>
+  delete(tenantDomain: string, environmentDomain: string): Promise<boolean>
 }
 
 /** Stores tenants with valid, immutable domains and atomic domain uniqueness. */

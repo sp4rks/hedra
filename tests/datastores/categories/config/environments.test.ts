@@ -21,26 +21,28 @@ test('catalogue operations provision environments and permanently reserve delete
 
     expect(environment).toMatchObject({ name: 'Dev', tenantDomain, environmentDomain })
     expect(await store.environments.list(tenantDomain)).toEqual([environment])
-    await expect(store.tenants.delete(tenant.id)).rejects.toBeInstanceOf(ConflictError)
+    await expect(store.tenants.delete(tenant.tenantDomain)).rejects.toBeInstanceOf(ConflictError)
     await expect(
-      store.environments.update(tenantDomain, environment.id, { environmentDomain } as never),
+      store.environments.update(tenantDomain, environment.environmentDomain, { environmentDomain } as never),
     ).rejects.toBeInstanceOf(InputValidationError)
-    expect(await store.environments.update(tenantDomain, environment.id, { name: 'Development' })).toMatchObject({
+    expect(
+      await store.environments.update(tenantDomain, environment.environmentDomain, { name: 'Development' }),
+    ).toMatchObject({
       name: 'Development',
     })
-    expect(await store.environments.delete(tenantDomain, environment.id)).toBe(true)
-    expect(await store.environments.get(tenantDomain, environment.id)).toBeNull()
+    expect(await store.environments.delete(tenantDomain, environment.environmentDomain)).toBe(true)
+    expect(await store.environments.get(tenantDomain, environment.environmentDomain)).toBeNull()
     expect(await store.environments.list(tenantDomain)).toEqual([])
     await expect(
       store.environments.create(tenantDomain, { name: 'Replacement', environmentDomain }),
     ).rejects.toBeInstanceOf(UniqueViolationError)
-    expect(await store.tenants.delete(tenant.id)).toBe(true)
-    expect(await store.tenants.get(tenant.id)).toBeNull()
+    expect(await store.tenants.delete(tenant.tenantDomain)).toBe(true)
+    expect(await store.tenants.get(tenant.tenantDomain)).toBeNull()
     expect(await store.tenants.list()).toEqual([])
     await expect(store.tenants.create({ name: 'Replacement', tenantDomain })).rejects.toBeInstanceOf(
       UniqueViolationError,
     )
-    expect(await store.tenants.delete(tenant.id)).toBe(false)
+    expect(await store.tenants.delete(tenant.tenantDomain)).toBe(false)
   } finally {
     store.close()
     backend.close()
@@ -58,7 +60,7 @@ test('environment operations validate stored relationships and preserve immutabl
       name: 'Dev',
       environmentDomain: `dev.${tenantDomain}`,
     })
-    const replaced = await store.environments.replace(tenantDomain, original.id, {
+    const replaced = await store.environments.replace(tenantDomain, original.environmentDomain, {
       name: 'Development',
       environmentDomain: original.environmentDomain,
     })
@@ -71,16 +73,18 @@ test('environment operations validate stored relationships and preserve immutabl
       environmentDomain: original.environmentDomain,
     })
     await expect(
-      store.environments.replace(tenantDomain, original.id, {
+      store.environments.replace(tenantDomain, original.environmentDomain, {
         name: 'Moved',
         environmentDomain: `prod.${tenantDomain}`,
       }),
     ).rejects.toMatchObject({ status: 422 })
-    expect(await store.environments.get(tenantDomain, original.id)).toEqual(replaced)
+    expect(await store.environments.get(tenantDomain, original.environmentDomain)).toEqual(replaced)
     const malformed = { ...original, id: crypto.randomUUID(), environmentDomain: 'dev.other.hedra.local' }
 
     await backend.insert('hedra_config_environments', malformed)
-    await expect(store.environments.get(tenantDomain, malformed.id)).rejects.toMatchObject({ status: 500 })
+    await expect(store.environments.get(tenantDomain, malformed.environmentDomain)).rejects.toMatchObject({
+      status: 500,
+    })
     await expect(store.environments.list(tenantDomain)).rejects.toMatchObject({ status: 500 })
     expect(await store.environments.list(tenantDomain, { environmentDomain: original.environmentDomain })).toEqual([
       replaced,

@@ -15,7 +15,7 @@ import {
   RecordNotFoundError,
 } from '#errors'
 import { requestHostname } from '#middleware/request-scope.ts'
-import { ResourceId } from '#models/resource.ts'
+import { Domain } from '#models/domain.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
 import { Tenant } from '#models/tenant.ts'
 
@@ -38,14 +38,15 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Validates a tenant returned by a configuration datastore. */
-  private tenantOutput(input: unknown, id?: string): Tenant {
+  private tenantOutput(input: unknown, domain?: string): Tenant {
     const parsed = Tenant.safeParse(input)
 
     if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)
 
     const tenant = parsed.data
 
-    if (id !== undefined && tenant.id !== id) throw new OutputValidationError('Resource ID cannot change')
+    if (domain !== undefined && tenant.tenantDomain !== domain)
+      throw new OutputValidationError('Tenant domain cannot change')
 
     return tenant
   }
@@ -81,19 +82,19 @@ export class TenantController implements ControllerInterface {
 
     if (tenant.tenantDomain !== tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
 
-    return { data: tenant, links: { self: resourceLink(context, tenant.id) } }
+    return { data: tenant, links: { self: resourceLink(context, tenant.tenantDomain, 'tenantDomain') } }
   }
 
   /** Returns one tenant. */
-  async id(context: Context, _model: z.ZodObject, id: string): Promise<JsonApiResponse> {
+  async id(context: Context, _model: z.ZodObject, tenantDomain: string): Promise<JsonApiResponse> {
     this.assertHost(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, tenantDomain)
     const value = await this.datastore().tenants.get(key)
 
     if (value === null) throw new RecordNotFoundError()
     const tenant = this.tenantOutput(value, key)
 
-    return { data: tenant, links: { self: resourceLink(context, key) } }
+    return { data: tenant, links: { self: resourceLink(context, key, 'tenantDomain') } }
   }
 
   /** Returns tenants matching domain scalar fields. */
@@ -126,9 +127,14 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Changes a tenant name without allowing its domain to change. */
-  async update(context: Context, _model: z.ZodObject, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+  async update(
+    context: Context,
+    _model: z.ZodObject,
+    input: ResourceInput,
+    tenantDomain: string,
+  ): Promise<JsonApiResponse> {
     this.assertHost(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, tenantDomain)
     const fields = this.attributes(input)
 
     if (Object.hasOwn(fields, 'tenantDomain')) throw new InputValidationError('Tenant domain cannot change')
@@ -137,13 +143,13 @@ export class TenantController implements ControllerInterface {
     if (value === null) throw new RecordNotFoundError()
     const tenant = this.tenantOutput(value, key)
 
-    return { data: tenant, links: { self: resourceLink(context, key) } }
+    return { data: tenant, links: { self: resourceLink(context, key, 'tenantDomain') } }
   }
 
   /** Deletes one tenant. */
-  async delete(context: Context, _model: z.ZodObject, id: string): Promise<void> {
+  async delete(context: Context, _model: z.ZodObject, tenantDomain: string): Promise<void> {
     this.assertHost(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, tenantDomain)
 
     if (!(await this.datastore().tenants.delete(key))) throw new RecordNotFoundError()
   }

@@ -12,7 +12,6 @@ import {
 } from '#errors'
 import { Domain, isDirectDomain } from '#models/domain.ts'
 import { Environment } from '#models/environment.ts'
-import { ResourceId } from '#models/resource.ts'
 import { Tenant } from '#models/tenant.ts'
 
 export const EnvironmentCreate = Environment.pick({ name: true, environmentDomain: true })
@@ -44,12 +43,12 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
   }
 
   /** Validates the complete stored value and its immutable tenant relationship. */
-  private record(input: unknown, owner: string, id?: string) {
+  private record(input: unknown, owner: string, domain?: string) {
     const current = catalogueRecord(Environment, input)
 
     if (
       current.value.tenantDomain !== owner ||
-      (id !== undefined && current.value.id !== id) ||
+      (domain !== undefined && current.value.environmentDomain !== domain) ||
       !isDirectDomain(current.value.environmentDomain, owner)
     )
       throw new OutputValidationError('Environment identity cannot change')
@@ -85,19 +84,19 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
   }
 
   /** Returns an active environment only within the selected tenant. */
-  async get(tenantDomain: string, id: string): Promise<Environment | null> {
+  async get(tenantDomain: string, environmentDomain: string): Promise<Environment | null> {
     await this.ready
     const owner = parseInput(Domain, tenantDomain)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, environmentDomain)
 
     return await this.backend.transaction((transaction) => {
       this.assertTenant(transaction, owner)
-      const record = transaction.select(this.name, { id: key, tenantDomain: owner })[0]
+      const record = transaction.select(this.name, { environmentDomain: key, tenantDomain: owner })[0]
 
       if (!record) return null
       const current = this.record(record, owner, key)
 
-      if (current.value.id !== key || current.value.tenantDomain !== owner)
+      if (current.value.environmentDomain !== key || current.value.tenantDomain !== owner)
         throw new OutputValidationError('Environment identity cannot change')
 
       return current.deleted ? null : current.value
@@ -126,39 +125,39 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
   /** Changes one active environment while preserving its tenant and domain. */
   private async change(
     tenantDomain: string,
-    id: string,
+    environmentDomain: string,
     modify: (current: Environment) => Environment,
   ): Promise<Environment | null> {
     await this.ready
     const owner = parseInput(Domain, tenantDomain)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, environmentDomain)
 
     return await this.backend.transaction((transaction) => {
       this.assertTenant(transaction, owner)
-      const record = transaction.select(this.name, { id: key, tenantDomain: owner })[0]
+      const record = transaction.select(this.name, { environmentDomain: key, tenantDomain: owner })[0]
 
       if (!record) return null
       const current = this.record(record, owner, key)
 
-      if (current.value.id !== key || current.value.tenantDomain !== owner)
+      if (current.value.environmentDomain !== key || current.value.tenantDomain !== owner)
         throw new OutputValidationError('Environment identity cannot change')
       if (current.deleted) return null
       const updated = parseInput(Environment, modify(current.value))
 
       if (
-        updated.id !== key ||
+        updated.id !== current.value.id ||
         updated.tenantDomain !== owner ||
         updated.environmentDomain !== current.value.environmentDomain
       )
         throw new InputValidationError('Environment ownership cannot change')
-      const result = transaction.update(this.name, key, () => updated)
+      const result = transaction.update(this.name, current.value.id, () => updated)
 
       if (!result) throw new OutputValidationError('Backend did not apply the environment update')
       const output = this.record(result, owner, key)
 
       if (
         output.deleted ||
-        output.value.id !== key ||
+        output.value.id !== current.value.id ||
         output.value.tenantDomain !== owner ||
         output.value.environmentDomain !== current.value.environmentDomain
       )
@@ -169,38 +168,54 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
   }
 
   /** Changes only the environment name. */
-  async update(tenantDomain: string, id: string, changes: EnvironmentUpdate): Promise<Environment | null> {
+  async update(
+    tenantDomain: string,
+    environmentDomain: string,
+    changes: EnvironmentUpdate,
+  ): Promise<Environment | null> {
     const fields = parseInput(EnvironmentUpdate, changes)
 
-    return this.change(tenantDomain, id, (current) => ({ ...current, ...fields, updatedAt: new Date().toISOString() }))
+    return this.change(tenantDomain, environmentDomain, (current) => ({
+      ...current,
+      ...fields,
+      updatedAt: new Date().toISOString(),
+    }))
   }
 
   /** Replaces attributes while retaining the immutable environment domain. */
-  async replace(tenantDomain: string, id: string, input: EnvironmentCreate): Promise<Environment | null> {
+  async replace(
+    tenantDomain: string,
+    environmentDomain: string,
+    input: EnvironmentCreate,
+  ): Promise<Environment | null> {
     const fields = parseInput(EnvironmentCreate, input)
 
-    return this.change(tenantDomain, id, (current) => ({ ...current, ...fields, updatedAt: new Date().toISOString() }))
+    return this.change(tenantDomain, environmentDomain, (current) => ({
+      ...current,
+      ...fields,
+      updatedAt: new Date().toISOString(),
+    }))
   }
 
   /** Hides an environment while retaining its domain reservation and application data. */
-  async delete(tenantDomain: string, id: string): Promise<boolean> {
+  async delete(tenantDomain: string, environmentDomain: string): Promise<boolean> {
     await this.ready
     const owner = parseInput(Domain, tenantDomain)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, environmentDomain)
 
     return await this.backend.transaction((transaction) => {
       this.assertTenant(transaction, owner)
-      const record = transaction.select(this.name, { id: key, tenantDomain: owner })[0]
+      const record = transaction.select(this.name, { environmentDomain: key, tenantDomain: owner })[0]
 
       if (!record) return false
       const current = this.record(record, owner, key)
 
-      if (current.value.id !== key || current.value.tenantDomain !== owner)
+      if (current.value.environmentDomain !== key || current.value.tenantDomain !== owner)
         throw new OutputValidationError('Environment identity cannot change')
       if (current.deleted) return false
       const timestamp = new Date().toISOString()
 
-      const result = transaction.update(this.name, key, () => ({
+      const result = transaction.update(this.name, current.value.id, () => ({
         ...current.value,
         updatedAt: timestamp,
         deletedAt: timestamp,
@@ -209,7 +224,7 @@ export class EnvironmentOperations implements EnvironmentOperationsInterface {
       if (!result) throw new OutputValidationError('Backend did not apply the environment deletion')
       const deleted = this.record(result, owner, key)
 
-      if (!deleted.deleted || deleted.value.environmentDomain !== current.value.environmentDomain)
+      if (!deleted.deleted || deleted.value.id !== current.value.id || deleted.value.environmentDomain !== key)
         throw new OutputValidationError('Backend did not preserve the deleted environment identity')
 
       return true

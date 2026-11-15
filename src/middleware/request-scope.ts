@@ -32,12 +32,12 @@ function tenantHost(config: Config, domain: string): void {
 
 /** Loads exactly one valid active tenant for its canonical domain. */
 async function findTenant(store: ConfigDatastore, domain: string): Promise<Tenant> {
-  const values = await store.tenants.list({ tenantDomain: domain })
+  const value = await store.tenants.get(domain)
 
-  if (values.length === 0) throw new RecordNotFoundError()
-  const parsed = Tenant.safeParse(values[0])
+  if (value === null) throw new RecordNotFoundError()
+  const parsed = Tenant.safeParse(value)
 
-  if (values.length !== 1 || !parsed.success || parsed.data.tenantDomain !== domain)
+  if (!parsed.success || parsed.data.tenantDomain !== domain)
     throw new OutputValidationError('Invalid tenant resolution')
 
   return parsed.data
@@ -66,13 +66,13 @@ export function environmentMiddleware(config: Config, datastore: () => ConfigDat
     if (!isDirectDomain(domain, parent)) throw new PreconditionFailedError('An environment host is required')
     const store = datastore()
     const tenant = await findTenant(store, parent)
-    const values = await store.environments.list(parent, { environmentDomain: domain })
+    const value = await store.environments.get(parent, domain)
 
-    if (values.length === 0) throw new RecordNotFoundError()
-    const environment = Environment.safeParse(values[0])
+    if (value === null) throw new RecordNotFoundError()
+    const environment = Environment.safeParse(value)
     const scope = RequestScope.safeParse({ tenant, environment: environment.success ? environment.data : undefined })
 
-    if (values.length !== 1 || !environment.success || environment.data.environmentDomain !== domain || !scope.success)
+    if (!environment.success || environment.data.environmentDomain !== domain || !scope.success)
       throw new OutputValidationError('Invalid environment resolution')
 
     issueRequestScope(context, scope.data)

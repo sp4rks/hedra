@@ -111,7 +111,7 @@ test('application CRUD and scoped handlers require provisioned scope and isolate
         )
       ).status,
     ).toBe(422)
-    await store.environments.delete(tenant.tenantDomain, dev.id)
+    await store.environments.delete(tenant.tenantDomain, dev.environmentDomain)
     expect((await request('/widgets', dev.environmentDomain)).status).toBe(404)
     expect((await request('/context', dev.environmentDomain)).status).toBe(404)
     expect(await backend.select('widgets')).toHaveLength(3)
@@ -142,7 +142,7 @@ test('tenant hosts manage environment CRUD while deleted domains stay reserved',
       environmentDomain: ' DEV.ACME.HEDRA.LOCAL ',
     })
     const environment = JsonApiResponse.parse(await create.json()).data
-    const path = `/environments/${environment.id}`
+    const path = `/environments/${environment.environmentDomain}`
 
     expect(create.status).toBe(201)
     expect(environment).toMatchObject({
@@ -180,7 +180,7 @@ test('tenant hosts manage environment CRUD while deleted domains stay reserved',
       (await call(path, tenant.tenantDomain, 'PATCH', { environmentDomain: 'different.acme.hedra.local' })).status,
     ).toBe(422)
     expect((await call(path, tenant.tenantDomain, 'PATCH', { name: 'Production' })).status).toBe(200)
-    expect((await call(`/tenants/${tenant.id}`, 'deployment.hedra.local', 'DELETE')).status).toBe(409)
+    expect((await call(`/tenants/${tenant.tenantDomain}`, 'deployment.hedra.local', 'DELETE')).status).toBe(409)
     expect((await call(path, tenant.tenantDomain, 'DELETE')).status).toBe(204)
     expect((await call(path, tenant.tenantDomain)).status).toBe(404)
     expect((await call(path, tenant.tenantDomain, 'DELETE')).status).toBe(404)
@@ -192,7 +192,7 @@ test('tenant hosts manage environment CRUD while deleted domains stay reserved',
         })
       ).status,
     ).toBe(409)
-    expect((await call(`/tenants/${tenant.id}`, 'deployment.hedra.local', 'DELETE')).status).toBe(204)
+    expect((await call(`/tenants/${tenant.tenantDomain}`, 'deployment.hedra.local', 'DELETE')).status).toBe(204)
     expect((await call('/environments', tenant.tenantDomain)).status).toBe(404)
 
     for (const host of [
