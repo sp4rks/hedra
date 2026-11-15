@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
 import type { ControllerInterface } from '#hedra.ts'
-import { Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource } from '#hedra.ts'
+import { Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource } from '#hedra.ts'
+import { request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 const id = '65779c82-9ae6-4146-8a82-14a9aad6728d'
@@ -42,10 +43,11 @@ test('generated routes preserve web schema output and isolate custom controller 
   }
   const app = new Hedra({ config: new Config(quiet) })
   const Account = Resource.extend({ name: z.string(), password: z.string(), token: z.string() })
-  const accounts = new Collection('accounts', Account, { controller: CustomController })
+  const accounts = Account.meta({ name: 'accounts' })
 
   try {
     app.register(accounts, {
+      controller: CustomController,
       output: Account.pick({ id: true, name: true })
         .extend({
           profile: z.unknown().transform((value) => {
@@ -71,7 +73,7 @@ test('generated routes preserve web schema output and isolate custom controller 
       [`/accounts/${id}`, undefined],
       [`/accounts/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{}' }],
     ] as const) {
-      const response = await app.request(path, init)
+      const response = await request(app, path, init)
 
       expect(response.status).toBe(init?.method === 'POST' ? 201 : 200)
       expect(JsonApiResponse.parse(await response.json()).data).toEqual({
@@ -81,7 +83,7 @@ test('generated routes preserve web schema output and isolate custom controller 
         label: 'Public account',
       })
     }
-    const listed = await app.request('/accounts')
+    const listed = await request(app, '/accounts')
 
     expect(listed.status).toBe(200)
     expect(JsonApiListResponse.parse(await listed.json()).data).toEqual([
@@ -121,7 +123,8 @@ test('malformed custom output never bypasses web validation or exposes private d
   const Account = Resource.extend({ name: z.string() })
 
   try {
-    app.register(new Collection('accounts', Account, { controller: CustomController }), {
+    app.register(Account.meta({ name: 'accounts' }), {
+      controller: CustomController,
       output: Account.pick({ name: true }),
     })
 
@@ -133,20 +136,20 @@ test('malformed custom output never bypasses web validation or exposes private d
       { data: { ...resource, hidden: undefined }, links },
     ]) {
       result = invalid
-      const response = await app.request(`/accounts/${id}`)
+      const response = await request(app, `/accounts/${id}`)
 
       expect(response.status).toBe(500)
       expect(await response.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
     }
     result = { data: resource, links }
-    const invalidList = await app.request('/accounts')
+    const invalidList = await request(app, '/accounts')
 
     expect(invalidList.status).toBe(500)
     expect(await invalidList.json()).toEqual({ errors: [{ status: 500, title: 'internal server error' }] })
     result = { data: [{ ...resource, name: 123 }], links }
-    expect((await app.request('/accounts')).status).toBe(500)
+    expect((await request(app, '/accounts')).status).toBe(500)
     result = { data: resource, links: {} }
-    const invalidCreate = await app.request('/accounts', {
+    const invalidCreate = await request(app, '/accounts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Alice' }),

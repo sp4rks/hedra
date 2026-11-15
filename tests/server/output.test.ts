@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
+import { Config, Hedra, JsonApiListResponse, JsonApiResponse, Resource, SqliteBackend } from '#hedra.ts'
+import { fixtureDomain, insert, request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -10,9 +11,9 @@ test('default and ordinary web output schemas strip private fields without chang
   const Account = Resource.extend({ username: z.string(), password: z.string(), token: z.string() })
     .loose()
     .refine((value) => value.password.length > 0)
-  const accounts = new Collection('accounts', Account)
-  const restricted = new Collection('restricted', Account)
-  const explicit = new Collection('explicit', Account)
+  const accounts = Account.meta({ name: 'accounts' })
+  const restricted = Account.meta({ name: 'restricted' })
+  const explicit = Account.meta({ name: 'explicit' })
   const app = new Hedra({ config: new Config(quiet), backend })
 
   app.register(accounts)
@@ -23,7 +24,7 @@ test('default and ordinary web output schemas strip private fields without chang
     const input = { username: 'alice', password: 'secret', token: 'token', extra: 'private' }
     const created = JsonApiResponse.parse(
       await (
-        await app.request('http://localhost/accounts', {
+        await request(app, 'http://localhost/accounts', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(input),
@@ -35,12 +36,12 @@ test('default and ordinary web output schemas strip private fields without chang
     const expected = { ...metadata, username: 'alice', token: 'token' }
 
     expect(created.data).toEqual(expected)
-    expect(JsonApiResponse.parse(await (await app.request(`http://localhost/accounts/${id}`)).json()).data).toEqual(
+    expect(JsonApiResponse.parse(await (await request(app, `http://localhost/accounts/${id}`)).json()).data).toEqual(
       expected,
     )
     const updated = JsonApiResponse.parse(
       await (
-        await app.request(`http://localhost/accounts/${id}`, {
+        await request(app, `http://localhost/accounts/${id}`, {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ username: 'bob' }),
@@ -50,13 +51,13 @@ test('default and ordinary web output schemas strip private fields without chang
     const updatedExpected = { ...expected, username: 'bob', updatedAt: z.iso.datetime().parse(updated.data.updatedAt) }
 
     expect(updated.data).toEqual(updatedExpected)
-    expect(JsonApiListResponse.parse(await (await app.request('http://localhost/accounts')).json()).data).toEqual([
+    expect(JsonApiListResponse.parse(await (await request(app, 'http://localhost/accounts')).json()).data).toEqual([
       updatedExpected,
     ])
     expect(await backend.select('accounts')).toEqual([{ ...updatedExpected, password: 'secret', extra: 'private' }])
     const hidden = JsonApiResponse.parse(
       await (
-        await app.request('http://localhost/restricted', {
+        await request(app, 'http://localhost/restricted', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(input),
@@ -67,11 +68,17 @@ test('default and ordinary web output schemas strip private fields without chang
 
     expect(hidden.data).toEqual({ id: hiddenId, username: 'alice' })
     expect(await backend.select('restricted')).toEqual([
-      { id: hiddenId, ...input, createdAt: expect.any(String), updatedAt: expect.any(String) },
+      {
+        id: hiddenId,
+        ...input,
+        environmentDomain: fixtureDomain,
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      },
     ])
     const selected = JsonApiResponse.parse(
       await (
-        await app.request('http://localhost/explicit', {
+        await request(app, 'http://localhost/explicit', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(input),
@@ -91,7 +98,7 @@ test('web validates update output once after its atomic mutation', async () => {
   const Model = Resource.extend({ name: z.string() })
   let validations = 0
   const outputValidator = z.object({ id: z.uuid(), name: z.string() }).refine(() => ++validations === 1)
-  const users = new Collection('users', Model)
+  const users = Model.meta({ name: 'users' })
   const app = new Hedra({ config: new Config(quiet), backend })
   const id = crypto.randomUUID()
   const timestamp = '2026-01-02T03:04:05.000Z'
@@ -99,8 +106,8 @@ test('web validates update output once after its atomic mutation', async () => {
   app.register(users, { output: outputValidator })
 
   try {
-    await backend.insert('users', { id, name: 'Alice', createdAt: timestamp, updatedAt: timestamp })
-    const response = await app.request(`http://localhost/users/${id}`, {
+    await insert(backend, 'users', { id, name: 'Alice', createdAt: timestamp, updatedAt: timestamp })
+    const response = await request(app, `http://localhost/users/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Bob' }),
@@ -121,7 +128,7 @@ test('output validator failures never return unfiltered resources', async () => 
   const backend = new SqliteBackend(':memory:')
   const Model = Resource.extend({ name: z.string(), password: z.string() })
   const outputValidator = z.object({ id: z.uuid(), name: z.string().refine(() => false) })
-  const users = new Collection('users', Model)
+  const users = Model.meta({ name: 'users' })
   const app = new Hedra({ config: new Config(quiet), backend })
   const id = crypto.randomUUID()
   const timestamp = '2026-01-02T03:04:05.000Z'
@@ -129,7 +136,7 @@ test('output validator failures never return unfiltered resources', async () => 
   app.register(users, { output: outputValidator })
 
   try {
-    await backend.insert('users', {
+    await insert(backend, 'users', {
       id,
       name: 'Alice',
       password: 'private',
@@ -149,7 +156,7 @@ test('output validator failures never return unfiltered resources', async () => 
         },
       ],
     ] as const) {
-      const response = await app.request(path, init)
+      const response = await request(app, path, init)
 
       expect(response.status).toBe(500)
       expect(await response.json()).toEqual({
@@ -163,7 +170,7 @@ test('output validator failures never return unfiltered resources', async () => 
       })
     }
 
-    const update = await app.request(`http://localhost/users/${id}`, {
+    const update = await request(app, `http://localhost/users/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Bob' }),
@@ -205,14 +212,14 @@ test('output transforms cannot mutate nested attributes persisted by create or u
       return profile
     }),
   })
-  const users = new Collection('users', Model)
+  const users = Model.meta({ name: 'users' })
   const app = new Hedra({ config: new Config(quiet), backend })
 
   app.register(users, { output: outputValidator })
 
   try {
     const initial = { visible: 'Alice', secret: 'create secret' }
-    const response = await app.request('http://localhost/users', {
+    const response = await request(app, 'http://localhost/users', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ profile: initial }),
@@ -223,7 +230,7 @@ test('output transforms cannot mutate nested attributes persisted by create or u
     expect(created.data.profile).toEqual({ visible: 'Alice' })
     expect((await backend.select('users', { id }))[0]?.profile).toEqual(initial)
     const changed = { visible: 'Bob', secret: 'update secret' }
-    const update = await app.request(`http://localhost/users/${id}`, {
+    const update = await request(app, `http://localhost/users/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ profile: changed }),
@@ -251,7 +258,7 @@ test('output transforms cannot mutate an existing nested attribute during update
       return profile
     }),
   })
-  const users = new Collection('users', Model)
+  const users = Model.meta({ name: 'users' })
   const app = new Hedra({ config: new Config(quiet), backend })
   const id = crypto.randomUUID()
   const timestamp = '2026-01-02T03:04:05.000Z'
@@ -260,8 +267,8 @@ test('output transforms cannot mutate an existing nested attribute during update
   app.register(users, { output: outputValidator })
 
   try {
-    await backend.insert('users', { id, name: 'Alice', profile, createdAt: timestamp, updatedAt: timestamp })
-    const response = await app.request(`http://localhost/users/${id}`, {
+    await insert(backend, 'users', { id, name: 'Alice', profile, createdAt: timestamp, updatedAt: timestamp })
+    const response = await request(app, `http://localhost/users/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Bob' }),

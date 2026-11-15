@@ -5,7 +5,7 @@ import type { HedraError } from '#errors'
 import { InputValidationError } from '#errors'
 
 type ObjectValue = Record<string, unknown>
-const metadata = ['id', 'createdAt', 'updatedAt'] as const
+const metadata = ['id', 'createdAt', 'updatedAt', 'environmentDomain'] as const
 
 /** Serializes a value only when JSON preserves it without loss. */
 export function jsonString(value: unknown, ErrorClass: typeof HedraError = InputValidationError): string {
@@ -33,39 +33,20 @@ function isObject(value: unknown): value is ObjectValue {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-/** Removes only generated metadata not declared by the relevant stored model. */
-function declared(model: z.ZodObject, record: ObjectValue): ObjectValue {
-  const entries = Object.entries(record).filter(
-    ([key]) => !metadata.includes(key as (typeof metadata)[number]) || Object.hasOwn(model.shape, key),
-  )
-  const result = Object.fromEntries(entries)
-
-  return result
-}
-
-/** Rejects model changes to managed metadata and restores undeclared audit fields. */
-function restore(model: z.ZodObject, original: ObjectValue, validated: ObjectValue): ObjectValue {
-  const result = { ...validated }
-
-  for (const key of metadata) {
-    if (Object.hasOwn(model.shape, key) && (!Object.hasOwn(validated, key) || validated[key] !== original[key])) {
-      throw new InputValidationError('model changed managed metadata')
-    }
-    if (Object.hasOwn(original, key))
-      Object.defineProperty(result, key, { value: original[key], enumerable: true, writable: true, configurable: true })
-  }
-
-  return result
-}
-
 /** Validates a complete mutation candidate without allowing model code to replace managed metadata. */
 export function validateCandidate(model: z.ZodObject, candidate: DatabaseRecord): DatabaseRecord {
   assertSafeKeys(candidate)
-  const input = declared(model, structuredClone(candidate))
-  const parsed = model.safeParse(input)
+  const parsed = model.safeParse(structuredClone(candidate))
 
   if (!parsed.success) throw new InputValidationError('input validation error', parsed.error.issues)
   if (!isObject(parsed.data)) throw new InputValidationError()
 
-  return restore(model, candidate, parsed.data) as DatabaseRecord
+  const validated = { ...parsed.data }
+
+  for (const key of metadata) {
+    if (!Object.hasOwn(validated, key) || validated[key] !== candidate[key])
+      throw new InputValidationError('model changed managed metadata')
+  }
+
+  return validated as DatabaseRecord
 }

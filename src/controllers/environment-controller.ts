@@ -1,0 +1,122 @@
+import type { Context } from 'hono'
+import { z } from 'zod'
+
+import type { ControllerInterface } from '#controllers/controller.ts'
+import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
+import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
+import { resourceLink } from '#controllers/controller.ts'
+import { EnvironmentCreate, EnvironmentUpdate } from '#datastores/categories/config/environments.ts'
+import { InputValidationError, OutputValidationError, parseInput, RecordNotFoundError } from '#errors'
+import { Domain, isDirectDomain } from '#models/domain.ts'
+import { Environment } from '#models/environment.ts'
+import { requireTenantScope } from '#models/request-scope.ts'
+import { QueryParams as QuerySchema } from '#models/rest.ts'
+
+export class EnvironmentController implements ControllerInterface {
+  /** Obtains configuration operations only after request middleware resolved a tenant. */
+  constructor(private readonly datastore: () => ConfigDatastore) {}
+
+  /** Removes generated identity fields while refusing externally supplied tenant ownership. */
+  private attributes(input: ResourceInput): Record<string, unknown> {
+    const fields = parseInput(z.record(z.string(), z.unknown()), input)
+
+    if (Object.hasOwn(fields, 'tenantDomain'))
+      throw new InputValidationError('Tenant ownership is managed by the server')
+    delete fields.id
+    delete fields.createdAt
+    delete fields.updatedAt
+
+    return fields
+  }
+
+  /** Validates complete environment output and its resolved tenant relationship. */
+  private output(context: Context, input: unknown, domain?: string): Environment {
+    const tenant = requireTenantScope(context)
+    const parsed = Environment.safeParse(input)
+
+    if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)
+    const environment = parsed.data
+
+    if (
+      (domain !== undefined && environment.environmentDomain !== domain) ||
+      environment.tenantDomain !== tenant.tenantDomain ||
+      !isDirectDomain(environment.environmentDomain, tenant.tenantDomain)
+    )
+      throw new OutputValidationError('Environment ownership cannot change')
+
+    return environment
+  }
+
+  /** Creates an environment beneath the request tenant. */
+  async create(context: Context, _model: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse> {
+    const tenant = requireTenantScope(context)
+    const fields = parseInput(EnvironmentCreate, this.attributes(input))
+
+    if (!isDirectDomain(fields.environmentDomain, tenant.tenantDomain))
+      throw new InputValidationError('Environment domain must be a direct subdomain of its tenant')
+    const value = await this.datastore().environments.create(tenant.tenantDomain, fields as EnvironmentCreate)
+    const data = this.output(context, value)
+
+    if (data.environmentDomain !== parseInput(Environment.shape.environmentDomain, fields.environmentDomain))
+      throw new OutputValidationError('Environment domain cannot change')
+
+    return { data, links: { self: resourceLink(context, data.environmentDomain, 'environmentDomain') } }
+  }
+
+  /** Returns an environment in the request tenant. */
+  async id(context: Context, _model: z.ZodObject, environmentDomain: string): Promise<JsonApiResponse> {
+    const tenant = requireTenantScope(context)
+    const key = parseInput(Domain, environmentDomain)
+    const value = await this.datastore().environments.get(tenant.tenantDomain, key)
+
+    if (value === null) throw new RecordNotFoundError()
+
+    return { data: this.output(context, value, key), links: { self: resourceLink(context, key, 'environmentDomain') } }
+  }
+
+  /** Lists environments with compulsory tenant ownership. */
+  async list(
+    context: Context,
+    _model: z.ZodObject,
+    baseUrl: string,
+    queryParams?: QueryParams,
+  ): Promise<JsonApiListResponse> {
+    const tenant = requireTenantScope(context)
+    const query = parseInput(QuerySchema, queryParams ?? {})
+    const filter = parseInput(Environment.omit({ tenantDomain: true }).partial(), query.filter ?? {})
+    const values = await this.datastore().environments.list(tenant.tenantDomain, filter)
+    const url = z.url().safeParse(baseUrl)
+
+    if (!url.success) throw new OutputValidationError('output validation error', url.error.issues)
+
+    return { data: values.map((value) => this.output(context, value)), links: { self: url.data } }
+  }
+
+  /** Changes an environment name through tenant-scoped configuration operations. */
+  async update(
+    context: Context,
+    _model: z.ZodObject,
+    input: ResourceInput,
+    environmentDomain: string,
+  ): Promise<JsonApiResponse> {
+    const tenant = requireTenantScope(context)
+    const key = parseInput(Domain, environmentDomain)
+    const value = await this.datastore().environments.update(
+      tenant.tenantDomain,
+      key,
+      parseInput(EnvironmentUpdate, this.attributes(input)),
+    )
+
+    if (value === null) throw new RecordNotFoundError()
+
+    return { data: this.output(context, value, key), links: { self: resourceLink(context, key, 'environmentDomain') } }
+  }
+
+  /** Hides an environment while retaining its permanent domain reservation. */
+  async delete(context: Context, _model: z.ZodObject, environmentDomain: string): Promise<void> {
+    const tenant = requireTenantScope(context)
+    const key = parseInput(Domain, environmentDomain)
+
+    if (!(await this.datastore().environments.delete(tenant.tenantDomain, key))) throw new RecordNotFoundError()
+  }
+}

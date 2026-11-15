@@ -4,10 +4,9 @@ import { z } from 'zod'
 import type { Config } from '#config'
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
-import type { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
-import type { Collection } from '#models/collection.ts'
 import type { JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { resourceLink } from '#controllers/controller.ts'
+import { TenantCreate, TenantUpdate } from '#datastores/categories/config/tenants.ts'
 import {
   InputValidationError,
   OutputValidationError,
@@ -15,7 +14,8 @@ import {
   parseInput,
   RecordNotFoundError,
 } from '#errors'
-import { ResourceId } from '#models/resource.ts'
+import { requestHostname } from '#middleware/request-scope.ts'
+import { Domain } from '#models/domain.ts'
 import { QueryParams as QuerySchema } from '#models/rest.ts'
 import { Tenant } from '#models/tenant.ts'
 
@@ -38,34 +38,28 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Validates a tenant returned by a configuration datastore. */
-  private tenantOutput(input: unknown, id?: string): Tenant {
+  private tenantOutput(input: unknown, domain?: string): Tenant {
     const parsed = Tenant.safeParse(input)
 
     if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)
 
     const tenant = parsed.data
 
-    if (id !== undefined && tenant.id !== id) throw new OutputValidationError('Resource ID cannot change')
+    if (domain !== undefined && tenant.tenantDomain !== domain)
+      throw new OutputValidationError('Tenant domain cannot change')
 
     return tenant
   }
 
   /** Requires requests to use the deployment API host. */
   assertHost(context: Context): void {
-    const host = context.req.header('host')
-    const match = host?.match(/^([a-z0-9.-]+)(?::([0-9]{1,5}))?$/i)
-
-    if (
-      !match ||
-      match[1]?.toLowerCase() !== this.config.deploymentApiDomain.toLowerCase() ||
-      (match[2] !== undefined && Number(match[2]) > 65535)
-    ) {
+    if (requestHostname(context) !== this.config.deploymentApiDomain.toLowerCase()) {
       throw new PreconditionFailedError('precondition failed', 'Tenant operations require the deployment API host.')
     }
   }
 
   /** Creates a tenant in the configuration catalogue. */
-  async create(context: Context, _collection: Collection, input: ResourceInput): Promise<JsonApiResponse> {
+  async create(context: Context, _model: z.ZodObject, input: ResourceInput): Promise<JsonApiResponse> {
     this.assertHost(context)
     const fields = this.attributes(input)
     const tenantDomain = parseInput(Tenant.shape.tenantDomain, fields.tenantDomain)
@@ -84,29 +78,29 @@ export class TenantController implements ControllerInterface {
     ) {
       throw new InputValidationError('Tenant domain must be a direct subdomain of the deployment domain')
     }
-    const tenant = this.tenantOutput(await this.datastore().tenants.create(fields as TenantCreate))
+    const tenant = this.tenantOutput(await this.datastore().tenants.create(parseInput(TenantCreate, fields)))
 
     if (tenant.tenantDomain !== tenantDomain) throw new OutputValidationError('Tenant domain cannot change')
 
-    return { data: tenant, links: { self: resourceLink(context, tenant.id) } }
+    return { data: tenant, links: { self: resourceLink(context, tenant.tenantDomain, 'tenantDomain') } }
   }
 
   /** Returns one tenant. */
-  async id(context: Context, _collection: Collection, id: string): Promise<JsonApiResponse> {
+  async id(context: Context, _model: z.ZodObject, tenantDomain: string): Promise<JsonApiResponse> {
     this.assertHost(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, tenantDomain)
     const value = await this.datastore().tenants.get(key)
 
     if (value === null) throw new RecordNotFoundError()
     const tenant = this.tenantOutput(value, key)
 
-    return { data: tenant, links: { self: resourceLink(context, key) } }
+    return { data: tenant, links: { self: resourceLink(context, key, 'tenantDomain') } }
   }
 
   /** Returns tenants matching domain scalar fields. */
   async list(
     context: Context,
-    _collection: Collection,
+    _model: z.ZodObject,
     baseUrl: string,
     queryParams?: QueryParams,
   ): Promise<JsonApiListResponse> {
@@ -133,24 +127,29 @@ export class TenantController implements ControllerInterface {
   }
 
   /** Changes a tenant name without allowing its domain to change. */
-  async update(context: Context, _collection: Collection, input: ResourceInput, id: string): Promise<JsonApiResponse> {
+  async update(
+    context: Context,
+    _model: z.ZodObject,
+    input: ResourceInput,
+    tenantDomain: string,
+  ): Promise<JsonApiResponse> {
     this.assertHost(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, tenantDomain)
     const fields = this.attributes(input)
 
     if (Object.hasOwn(fields, 'tenantDomain')) throw new InputValidationError('Tenant domain cannot change')
-    const value = await this.datastore().tenants.update(key, fields as TenantUpdate)
+    const value = await this.datastore().tenants.update(key, parseInput(TenantUpdate, fields))
 
     if (value === null) throw new RecordNotFoundError()
     const tenant = this.tenantOutput(value, key)
 
-    return { data: tenant, links: { self: resourceLink(context, key) } }
+    return { data: tenant, links: { self: resourceLink(context, key, 'tenantDomain') } }
   }
 
   /** Deletes one tenant. */
-  async delete(context: Context, _collection: Collection, id: string): Promise<void> {
+  async delete(context: Context, _model: z.ZodObject, tenantDomain: string): Promise<void> {
     this.assertHost(context)
-    const key = parseInput(ResourceId, id)
+    const key = parseInput(Domain, tenantDomain)
 
     if (!(await this.datastore().tenants.delete(key))) throw new RecordNotFoundError()
   }

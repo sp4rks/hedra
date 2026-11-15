@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { z } from 'zod'
 
 import type { ConfigDatastore } from '#hedra.ts'
-import { Collection, Config, ConfigStore, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { Config, ConfigStore, Hedra, Resource, SqliteBackend } from '#hedra.ts'
+import { provision, request } from '../fixtures/scope.ts'
 
 const quiet = { HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }
 
@@ -16,6 +17,7 @@ test('Hedra accepts a structural configuration datastore and retains its identit
   const store = new ConfigStore({ backend })
   const operations = store.tenants
   const configDatastore = {
+    environments: store.environments,
     tenants: {
       create: operations.create.bind(operations),
       get: operations.get.bind(operations),
@@ -31,7 +33,7 @@ test('Hedra accepts a structural configuration datastore and retains its identit
     expect(app.configDatastore).toBe(configDatastore)
     const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
-    expect(await app.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await app.configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     expect(existsSync(path)).toBe(false)
   } finally {
     app.close()
@@ -47,6 +49,7 @@ test('Hedra borrows a configuration datastore shared by apps', async () => {
   const operations = store.tenants
   let closed = false
   const configDatastore = {
+    environments: store.environments,
     tenants: operations,
     close: () => {
       closed = true
@@ -61,8 +64,8 @@ test('Hedra borrows a configuration datastore shared by apps', async () => {
 
     first.close()
     expect(closed).toBe(false)
-    expect(await second.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
-    expect(await configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await second.configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
+    expect(await configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     first.close()
     second.close()
@@ -88,7 +91,7 @@ test('Hedra creates configuration storage only when requested', async () => {
     expect(existsSync(path)).toBe(true)
     const tenant = await store.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
-    expect(await store.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await store.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     unused.close()
     app.close()
@@ -111,9 +114,9 @@ test('Hedra closes its default configuration datastore and retains persisted ten
 
     app.close()
     app.close()
-    await expect(operations.get(tenant.id)).rejects.toThrow()
+    await expect(operations.get(tenant.tenantDomain)).rejects.toThrow()
     expect(() => app.configDatastore).toThrow('Hedra is closed')
-    expect(await reopened.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await reopened.configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     unused.close()
     expect(() => unused.configDatastore).toThrow('Hedra is closed')
     expect(existsSync(unusedPath)).toBe(false)
@@ -136,7 +139,7 @@ test('a failed default configuration datastore open can be retried', async () =>
     rmSync(path, { recursive: true })
     const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
 
-    expect(await app.configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await app.configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     app.close()
     rmSync(dir, { recursive: true, force: true })
@@ -151,15 +154,15 @@ test('configuration and application data use their own supplied datastores', asy
   const config = new Config(quiet)
   const app = new Hedra({ config, backend: appBackend, configDatastore })
   const observer = new Hedra({ config, backend: configBackend })
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
+  const labels = Resource.extend({ name: z.string() }).meta({ name: 'labels' })
+  const projects = Resource.extend({ title: z.string() }).meta({ name: 'projects' })
   const headers = { 'content-type': 'application/json' }
 
   try {
-    app.register(projects)
-    observer.register(new Collection('projects', Resource.extend({ title: z.string() })))
+    app.register(projects, { associations: [labels] })
+    observer.register(Resource.extend({ title: z.string() }).meta({ name: 'projects' }))
     const tenant = await app.configDatastore.tenants.create({ name: 'Acme', tenantDomain: 'acme.hedra.local' })
-    const project = await app.request('/projects', {
+    const project = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ title: 'First' }),
@@ -167,7 +170,7 @@ test('configuration and application data use their own supplied datastores', asy
 
     expect(project.status).toBe(201)
     const projectId = ((await project.json()) as { data: { id: string } }).data.id
-    const label = await app.request('/labels', {
+    const label = await request(app, '/labels', {
       method: 'POST',
       headers,
       body: JSON.stringify({ name: 'Urgent' }),
@@ -176,11 +179,15 @@ test('configuration and application data use their own supplied datastores', asy
     expect(label.status).toBe(201)
     const labelId = ((await label.json()) as { data: { id: string } }).data.id
 
-    await app.associations.link({ collection: 'projects', id: projectId }, { collection: 'labels', id: labelId })
-    expect(await app.associations.list({ collection: 'projects', id: projectId })).toHaveLength(1)
-    expect(await configDatastore.tenants.get(tenant.id)).toEqual(tenant)
+    await app.associations.link(
+      await provision(app),
+      { collection: 'projects', id: projectId },
+      { collection: 'labels', id: labelId },
+    )
+    expect(await app.associations.list(await provision(app), { collection: 'projects', id: projectId })).toHaveLength(1)
+    expect(await configDatastore.tenants.get(tenant.tenantDomain)).toEqual(tenant)
     expect(await otherConfigDatastore.tenants.list()).toEqual([])
-    expect(((await (await observer.request('/projects')).json()) as { data: unknown[] }).data).toEqual([])
+    expect(((await (await request(observer, '/projects')).json()) as { data: unknown[] }).data).toEqual([])
   } finally {
     app.close()
     observer.close()

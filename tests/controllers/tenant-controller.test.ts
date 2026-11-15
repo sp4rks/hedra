@@ -3,7 +3,7 @@ import { Context, Hono } from 'hono'
 
 import type { ConfigDatastore } from '#hedra.ts'
 import { InputValidationError } from '#errors'
-import { Collection, Config, ConfigStore, SqliteBackend, Tenant, TenantController } from '#hedra.ts'
+import { Config, ConfigStore, SqliteBackend, Tenant, TenantController } from '#hedra.ts'
 
 test('all TenantController operations reject missing, malformed or different deployment hosts', async () => {
   const backend = new SqliteBackend(':memory:')
@@ -15,7 +15,7 @@ test('all TenantController operations reject missing, malformed or different dep
 
     return store
   })
-  const collection = new Collection('tenants', Tenant)
+  const collection = Tenant.meta({ name: 'tenants' })
   const app = new Hono()
   const id = crypto.randomUUID()
 
@@ -70,7 +70,7 @@ test('direct tenant controller calls validate domains and protect server-owned m
     new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }),
     () => store,
   )
-  const collection = new Collection('tenants', Tenant)
+  const collection = Tenant.meta({ name: 'tenants' })
   const app = new Hono()
 
   app.post('/tenants', async (context) =>
@@ -98,14 +98,14 @@ test('direct tenant controller calls validate domains and protect server-owned m
     const tenant = Tenant.parse(((await created.json()) as { data: unknown }).data)
 
     expect(tenant.id).not.toBe('spoofed')
-    const changed = await app.request(`http://deployment.hedra.local/tenants/${tenant.id}`, {
+    const changed = await app.request(`http://deployment.hedra.local/tenants/${tenant.tenantDomain}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ tenantDomain: tenant.tenantDomain }),
     })
 
     expect(await changed.json()).toEqual({ status: 422 })
-    expect(await store.tenants.get(tenant.id)).toEqual(tenant)
+    expect(await store.tenants.get(tenant.tenantDomain)).toEqual(tenant)
   } finally {
     store.close()
     backend.close()
@@ -119,7 +119,7 @@ test('direct tenant list filters reject inherited keys and accept declared domai
     new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true', HEDRA_SERVER_LOG_LEVEL: 'silent' }),
     () => store,
   )
-  const collection = new Collection('tenants', Tenant)
+  const collection = Tenant.meta({ name: 'tenants' })
   const url = 'http://deployment.hedra.local/tenants'
   const context = new Context(new Request(url, { headers: { host: 'deployment.hedra.local' } }))
 

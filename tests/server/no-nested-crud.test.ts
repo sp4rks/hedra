@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 
-import { Collection, Config, Hedra, JsonApiListResponse, Resource, ResourceScope, SqliteBackend } from '#hedra.ts'
+import { Config, Hedra, JsonApiListResponse, Resource, ResourceScope, SqliteBackend } from '#hedra.ts'
+import { fixtureDomain, insert, request } from '../fixtures/scope.ts'
 
 const headers = { 'content-type': 'application/json' }
 
@@ -9,8 +10,9 @@ test('nested values use their model data and are replaced through the parent', a
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const Note = Resource.extend({ text: z.string() })
-  const projects = new Collection('projects', Resource.extend({ notes: z.array(Note) }))
+  const projects = Resource.extend({ notes: z.array(Note) }).meta({ name: 'projects' })
   const note = {
+    environmentDomain: fixtureDomain,
     id: crypto.randomUUID(),
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -19,13 +21,17 @@ test('nested values use their model data and are replaced through the parent', a
 
   try {
     app.register(projects)
-    const created = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ notes: [note] }) })
+    const created = await request(app, '/projects', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ notes: [note] }),
+    })
     const data = ((await created.json()) as { data: { id: string; notes: unknown[] } }).data
 
     expect(created.status).toBe(201)
     expect(data.notes).toEqual([note])
     const changed = { ...note, text: 'B', updatedAt: '2026-02-01T00:00:00.000Z' }
-    const patched = await app.request(`/projects/${data.id}`, {
+    const patched = await request(app, `/projects/${data.id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ notes: [changed] }),
@@ -37,13 +43,13 @@ test('nested values use their model data and are replaced through the parent', a
     for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) {
       const body = method === 'POST' || method === 'PATCH' ? '{}' : undefined
 
-      expect((await app.request(`/projects/${data.id}/notes`, { method, headers, body })).status).toBe(404)
-      expect((await app.request(`/projects/${data.id}/notes/${note.id}`, { method, headers, body })).status).toBe(404)
+      expect((await request(app, `/projects/${data.id}/notes`, { method, headers, body })).status).toBe(404)
+      expect((await request(app, `/projects/${data.id}/notes/${note.id}`, { method, headers, body })).status).toBe(404)
     }
-    const loaded = await app.request(`/projects/${data.id}`)
+    const loaded = await request(app, `/projects/${data.id}`)
 
     expect(((await loaded.json()) as { data: { notes: unknown[] } }).data.notes).toEqual([changed])
-    const duplicates = await app.request(`/projects/${data.id}`, {
+    const duplicates = await request(app, `/projects/${data.id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ notes: [changed, changed] }),
@@ -51,7 +57,7 @@ test('nested values use their model data and are replaced through the parent', a
 
     expect(duplicates.status).toBe(200)
     expect(((await duplicates.json()) as { data: { notes: unknown[] } }).data.notes).toEqual([changed, changed])
-    const missing = await app.request('/projects', {
+    const missing = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ notes: [{ text: 'C' }] }),
@@ -73,14 +79,14 @@ test('parent writes validate cross-field rules involving nested data atomically'
   }).refine((value) => value.values.reduce((sum, item) => sum + item, 0) <= value.limit)
 
   try {
-    app.register(new Collection('projects', model))
-    const created = await app.request('/projects', {
+    app.register(model.meta({ name: 'projects' }))
+    const created = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ limit: 5, values: [1, 2] }),
     })
     const data = ((await created.json()) as { data: { id: string } }).data
-    const invalid = await app.request(`/projects/${data.id}`, {
+    const invalid = await request(app, `/projects/${data.id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ values: [3, 4] }),
@@ -88,7 +94,7 @@ test('parent writes validate cross-field rules involving nested data atomically'
 
     expect(created.status).toBe(201)
     expect(invalid.status).toBe(422)
-    expect(((await (await app.request(`/projects/${data.id}`)).json()) as { data: unknown }).data).toEqual(data)
+    expect(((await (await request(app, `/projects/${data.id}`)).json()) as { data: unknown }).data).toEqual(data)
   } finally {
     app.close()
     backend.close()
@@ -100,12 +106,12 @@ test('default controller preserves nested fields allowed by their schemas', asyn
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const Note = z.looseObject({ text: z.string(), password: z.string() })
   const model = Resource.extend({ password: z.string(), notes: z.array(Note) }).loose()
-  const projects = new Collection('projects', model)
+  const projects = model.meta({ name: 'projects' })
   const note = { text: 'visible', password: 'nested-password', secret: 'nested-extra' }
 
   try {
     app.register(projects)
-    const created = await app.request('/projects', {
+    const created = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ password: 'root-password', secret: 'root-extra', notes: [note] }),
@@ -116,15 +122,15 @@ test('default controller preserves nested fields allowed by their schemas', asyn
     expect(data.notes).toEqual([note])
     expect(data).not.toHaveProperty('password')
     expect(data).not.toHaveProperty('secret')
-    const loaded = await app.request(`/projects/${data.id}`)
-    const listed = await app.request('/projects')
+    const loaded = await request(app, `/projects/${data.id}`)
+    const listed = await request(app, '/projects')
 
     expect(loaded.status).toBe(200)
     expect(((await loaded.json()) as { data: unknown }).data).toEqual(data)
     expect(listed.status).toBe(200)
     expect(((await listed.json()) as { data: unknown[] }).data).toEqual([data])
     const changed = { ...note, text: 'updated', password: 'changed-password', secret: 'changed-extra' }
-    const patched = await app.request(`/projects/${data.id}`, {
+    const patched = await request(app, `/projects/${data.id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ notes: [changed] }),
@@ -155,6 +161,7 @@ test('tuple and intersection outputs preserve fields allowed by their schemas', 
     selected: z.intersection(Note, z.object({ extra: z.string() })),
   })
   const fixed = {
+    environmentDomain: fixtureDomain,
     id: crypto.randomUUID(),
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -166,8 +173,8 @@ test('tuple and intersection outputs preserve fields allowed by their schemas', 
   const selected = { ...fixed, extra: 'declared' }
 
   try {
-    app.register(new Collection('projects', model))
-    const response = await app.request('/projects', {
+    app.register(model.meta({ name: 'projects' }))
+    const response = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ notes: [fixed, rest], selected }),
@@ -196,22 +203,26 @@ test('explicit output schemas hide nested secrets on every resource response', a
   const note = { text: 'visible', password: 'private', secret: 'unknown' }
 
   try {
-    app.register(new Collection('projects', model), { output: outputValidator })
-    const created = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ notes: [note] }) })
+    app.register(model.meta({ name: 'projects' }), { output: outputValidator })
+    const created = await request(app, '/projects', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ notes: [note] }),
+    })
     const data = ((await created.json()) as { data: { id: string; notes: unknown[] } }).data
 
     expect(created.status).toBe(201)
     expect(data.notes).toEqual([{ text: 'visible' }])
     expect((await backend.select('projects', { id: data.id }))[0]?.notes).toEqual([note])
-    const loaded = await app.request(`/projects/${data.id}`)
-    const listed = await app.request('/projects')
+    const loaded = await request(app, `/projects/${data.id}`)
+    const listed = await request(app, '/projects')
 
     expect(loaded.status).toBe(200)
     expect(((await loaded.json()) as { data: unknown }).data).toEqual(data)
     expect(listed.status).toBe(200)
     expect(((await listed.json()) as { data: unknown[] }).data).toEqual([data])
     const changed = { ...note, text: 'updated', password: 'changed-private', secret: 'changed-unknown' }
-    const patched = await app.request(`/projects/${data.id}`, {
+    const patched = await request(app, `/projects/${data.id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ notes: [changed] }),
@@ -238,8 +249,8 @@ test('default output accepts ordinary nested unions and intersections', async ()
   const note = { text: 'visible', password: 'ordinary dictionary value', secret: 'unknown' }
 
   try {
-    app.register(new Collection('projects', model))
-    const response = await app.request('/projects', {
+    app.register(model.meta({ name: 'projects' }))
+    const response = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ choice: note, selected: note }),
@@ -249,7 +260,7 @@ test('default output accepts ordinary nested unions and intersections', async ()
     expect(response.status).toBe(201)
     expect(data.choice).toEqual(note)
     expect(data.selected).toEqual(note)
-    const loaded = await app.request(`/projects/${data.id}`)
+    const loaded = await request(app, `/projects/${data.id}`)
 
     expect(loaded.status).toBe(200)
     expect(((await loaded.json()) as { data: unknown }).data).toEqual(data)
@@ -265,6 +276,7 @@ test('shared schemas remain usable in multiple public union fields', async () =>
   const Note = Resource.extend({ text: z.string(), password: z.string() }).loose()
   const choice = z.union([z.object({ first: Note, second: Note }), z.object({ text: z.string() })])
   const note = {
+    environmentDomain: fixtureDomain,
     id: crypto.randomUUID(),
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -274,8 +286,8 @@ test('shared schemas remain usable in multiple public union fields', async () =>
   }
 
   try {
-    app.register(new Collection('projects', Resource.extend({ value: choice })))
-    const response = await app.request('/projects', {
+    app.register(Resource.extend({ value: choice }).meta({ name: 'projects' }))
+    const response = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ value: { first: note, second: note } }),
@@ -305,13 +317,13 @@ test('default output preserves finite recursive data', async () => {
   })
 
   try {
-    app.register(new Collection('projects', Resource.extend({ tree: z.union([Tree, z.string()]) })))
-    const leaf = await app.request('/projects', {
+    app.register(Resource.extend({ tree: z.union([Tree, z.string()]) }).meta({ name: 'projects' }))
+    const leaf = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ tree: { name: 'leaf', children: [] } }),
     })
-    const child = await app.request('/projects', {
+    const child = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ tree: { name: 'root', children: [{ name: 'child', children: [] }] } }),
@@ -336,16 +348,16 @@ test('dictionary keys are data while unsafe prototype keys cannot be silently lo
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
 
   try {
-    app.register(new Collection('projects', Resource.extend({ values: z.record(z.string(), z.string()) })))
-    const rejected = await app.request('/projects', {
+    app.register(Resource.extend({ values: z.record(z.string(), z.string()) }).meta({ name: 'projects' }))
+    const rejected = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: '{"values":{"__proto__":"must not disappear"}}',
     })
 
     expect(rejected.status).toBe(422)
-    expect(((await (await app.request('/projects')).json()) as { data: unknown[] }).data).toEqual([])
-    const created = await app.request('/projects', {
+    expect(((await (await request(app, '/projects')).json()) as { data: unknown[] }).data).toEqual([])
+    const created = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ values: { '.': 'one', '..': 'two' } }),
@@ -357,13 +369,13 @@ test('dictionary keys are data while unsafe prototype keys cannot be silently lo
     const timestamp = '2026-01-01T00:00:00.000Z'
     const unsafeValues = JSON.parse('{"__proto__":"retained"}') as Record<string, string>
 
-    await backend.insert('projects', {
+    await insert(backend, 'projects', {
       id: storedId,
       createdAt: timestamp,
       updatedAt: timestamp,
       values: unsafeValues,
     })
-    const patch = await app.request(`/projects/${storedId}`, { method: 'PATCH', headers, body: '{}' })
+    const patch = await request(app, `/projects/${storedId}`, { method: 'PATCH', headers, body: '{}' })
 
     expect(patch.status).toBe(422)
     expect((await backend.select('projects', { id: storedId }))[0]?.values).toEqual(unsafeValues)
@@ -388,9 +400,17 @@ test('public scope and list schemas describe root resources only', () => {
 })
 
 test('obsolete parent collection options reject', () => {
-  const project = new Collection('projects', Resource.extend({ name: z.string() }))
+  const project = Resource.extend({ name: z.string() }).meta({ name: 'projects' })
 
-  expect(() => new Collection('notes', Resource, { parent: project } as never)).toThrow('configuration error')
+  const app = new Hedra({ config: new Config({ HEDRA_SQLITE_PATH: ':memory:', HEDRA_SERVER_SILENT_STARTUP: 'true' }) })
+
+  try {
+    expect(() => app.register(Resource.meta({ name: 'notes' }), { parent: project } as never)).toThrow(
+      'configuration error',
+    )
+  } finally {
+    app.close()
+  }
 })
 
 test('ordinary nested schema wrappers accept Resource values', async () => {
@@ -403,6 +423,7 @@ test('ordinary nested schema wrappers accept Resource values', async () => {
     lazy: z.lazy(() => Note),
   })
   const note = {
+    environmentDomain: fixtureDomain,
     id: crypto.randomUUID(),
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -412,8 +433,8 @@ test('ordinary nested schema wrappers accept Resource values', async () => {
   }
 
   try {
-    app.register(new Collection('projects', model))
-    const created = await app.request('/projects', {
+    app.register(model.meta({ name: 'projects' }))
+    const created = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ payload: { note }, choice: note, lazy: note }),
@@ -436,6 +457,7 @@ test('default output preserves nested wrappers and their fallback values', async
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
   const Note = Resource.extend({ text: z.string(), password: z.string() }).loose()
   const note = {
+    environmentDomain: fixtureDomain,
     id: crypto.randomUUID(),
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -452,8 +474,8 @@ test('default output preserves nested wrappers and their fallback values', async
   })
 
   try {
-    app.register(new Collection('projects', model))
-    const created = await app.request('/projects', {
+    app.register(model.meta({ name: 'projects' }))
+    const created = await request(app, '/projects', {
       method: 'POST',
       headers,
       body: JSON.stringify({ note, transformedNote: note, preprocessedNote: note }),
@@ -468,7 +490,7 @@ test('default output preserves nested wrappers and their fallback values', async
     const storedId = crypto.randomUUID()
     const timestamp = '2026-01-01T00:00:00.000Z'
 
-    await backend.insert('projects', {
+    await insert(backend, 'projects', {
       id: storedId,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -477,7 +499,7 @@ test('default output preserves nested wrappers and their fallback values', async
       transformedNote: note,
       preprocessedNote: note,
     })
-    const loaded = await app.request(`/projects/${storedId}`)
+    const loaded = await request(app, `/projects/${storedId}`)
     const fallback = ((await loaded.json()) as { data: Record<string, Record<string, unknown>> }).data
 
     expect(loaded.status).toBe(200)
@@ -494,17 +516,21 @@ test('default output preserves nested wrappers and their fallback values', async
 test('association navigation and unlink routes are absent', async () => {
   const backend = new SqliteBackend(':memory:')
   const app = new Hedra({ config: new Config({ HEDRA_SERVER_SILENT_STARTUP: 'true' }), backend })
-  const labels = new Collection('labels', Resource.extend({ name: z.string() }))
-  const projects = new Collection('projects', Resource.extend({ title: z.string() }), { associations: [labels] })
+  const labels = Resource.extend({ name: z.string() }).meta({ name: 'labels' })
+  const projects = Resource.extend({ title: z.string() }).meta({ name: 'projects' })
 
   try {
-    app.register(projects)
-    const project = await app.request('/projects', { method: 'POST', headers, body: JSON.stringify({ title: 'A' }) })
-    const label = await app.request('/labels', { method: 'POST', headers, body: JSON.stringify({ name: 'B' }) })
+    app.register(projects, { associations: [labels] })
+    const project = await request(app, '/projects', { method: 'POST', headers, body: JSON.stringify({ title: 'A' }) })
+    const label = await request(app, '/labels', { method: 'POST', headers, body: JSON.stringify({ name: 'B' }) })
     const projectId = ((await project.json()) as { data: { id: string } }).data.id
     const labelId = ((await label.json()) as { data: { id: string } }).data.id
 
-    await app.associations.link({ collection: 'projects', id: projectId }, { collection: 'labels', id: labelId })
+    await app.associations.link(
+      fixtureDomain,
+      { collection: 'projects', id: projectId },
+      { collection: 'labels', id: labelId },
+    )
     const requests: Array<[string, string]> = [
       ['GET', `/projects/${projectId}/labels`],
       ['POST', `/projects/${projectId}/labels`],
@@ -516,11 +542,16 @@ test('association navigation and unlink routes are absent', async () => {
 
     for (const [method, path] of requests) {
       expect(
-        (await app.request(path, { method, headers, body: method === 'POST' || method === 'PATCH' ? '{}' : undefined }))
-          .status,
+        (
+          await request(app, path, {
+            method,
+            headers,
+            body: method === 'POST' || method === 'PATCH' ? '{}' : undefined,
+          })
+        ).status,
       ).toBe(404)
     }
-    expect(await app.associations.list({ collection: 'projects', id: projectId })).toHaveLength(1)
+    expect(await app.associations.list(fixtureDomain, { collection: 'projects', id: projectId })).toHaveLength(1)
   } finally {
     app.close()
     backend.close()

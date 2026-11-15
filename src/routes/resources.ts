@@ -1,270 +1,89 @@
-import type { Context, Hono } from 'hono'
-import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { z } from 'zod'
+import type { Hono, MiddlewareHandler } from 'hono'
+import type { z } from 'zod'
 
-import type { Collection } from '#models/collection.ts'
-import type { ResourceInput } from '#models/rest.ts'
-import { assertSafeKeys, jsonString } from '#controllers/validation.ts'
-import { DatabaseScalar } from '#datastores/backend.ts'
-import {
-  BadRequestError,
-  ConfigurationError,
-  HedraError,
-  InputValidationError,
-  OutputValidationError,
-  UnsupportedMediaTypeError,
-} from '#errors'
-import { ResourceId } from '#models/resource.ts'
-import { ErrorResponse, JsonApiListResponse, JsonApiResponse, ResourceInput as ResourceSchema } from '#models/rest.ts'
-import { setResourceScope } from '#models/scope.ts'
+import type { ControllerInterface } from '#controllers/controller.ts'
+import type { ChildAddress } from '#web/children.ts'
+import type { RouteValidators } from '#web/resources.ts'
+import { childFields } from '#models/children.ts'
+import { resourceName } from '#models/resource.ts'
+import { childHandler } from '#web/children.ts'
+import { resourceHandlers } from '#web/resources.ts'
+import { guardedMiddleware } from '#web/responses.ts'
 
-export type RouteValidators = {
-  create?: z.ZodObject
-  update?: z.ZodObject
-  output?: z.ZodObject
+/** Registers the actual web handlers behind one shared provisioning boundary. */
+export function registerHandlers(
+  app: Hono,
+  path: string,
+  handlers: ReturnType<typeof resourceHandlers>,
+  middleware: MiddlewareHandler,
+): void {
+  app.get(path, middleware, handlers.list)
+  app.post(path, middleware, handlers.create)
+  app.get(`${path}/:${handlers.identity}`, middleware, handlers.id)
+  app.patch(`${path}/:${handlers.identity}`, middleware, handlers.update)
+  app.delete(`${path}/:${handlers.identity}`, middleware, handlers.delete)
 }
 
-const writeResponseFailure = 'Transaction succeeded, but response validation failed.'
-
-/** Marks web response failures whose safe write-outcome detail may be returned. */
-class ResponseValidationError extends OutputValidationError {}
-
-/** Validates web configuration before registration can bind controllers or open a backend. */
-export function assertRouteValidators(validators: RouteValidators): void {
-  const parsed = z
-    .strictObject({
-      create: z.instanceof(z.ZodObject).optional(),
-      update: z.instanceof(z.ZodObject).optional(),
-      output: z.instanceof(z.ZodObject).optional(),
-    })
-    .safeParse(validators)
-
-  if (!parsed.success) throw new ConfigurationError('configuration error', parsed.error.issues)
-}
-
-/** Validates a controller envelope and its web output before transport. */
-function response(
-  output: z.ZodObject,
-  value: unknown,
-  options: { list?: boolean; writeSucceeded?: boolean; id?: string } = {},
-) {
-  try {
-    const json: unknown = JSON.parse(jsonString(value, OutputValidationError))
-    const parsed = (options.list ? JsonApiListResponse : JsonApiResponse).safeParse(json)
-
-    if (!parsed.success) throw new OutputValidationError()
-    const envelope = parsed.data
-
-    /** Applies the output schema while preserving JSON integrity and resource identity. */
-    function validateOutput(record: ResourceInput): ResourceInput {
-      const id = record.id
-      const result = output.safeParse(record)
-
-      if (!result.success) throw new OutputValidationError('output validation error', result.error.issues)
-      const jsonOutput: unknown = JSON.parse(jsonString(result.data, OutputValidationError))
-      const resource = ResourceSchema.safeParse(jsonOutput)
-
-      if (!resource.success) throw new OutputValidationError('output validation error', resource.error.issues)
-      if (Object.hasOwn(resource.data, 'id') && resource.data.id !== id)
-        throw new OutputValidationError('Output changed resource identity')
-
-      // Preserve literal JSON property names that the resource parser may omit.
-      return { ...resource.data, ...(jsonOutput as ResourceInput) }
-    }
-
-    const data = Array.isArray(envelope.data) ? envelope.data.map(validateOutput) : validateOutput(envelope.data)
-
-    if (options.id !== undefined && !Array.isArray(envelope.data) && envelope.data.id !== options.id)
-      throw new OutputValidationError()
-
-    return { data, links: envelope.links }
-  } catch {
-    throw new ResponseValidationError(
-      'output validation error',
-      options.writeSucceeded ? writeResponseFailure : undefined,
-    )
-  }
-}
-
-/** Converts an input validation failure into the public client error. */
-function input<T>(schema: z.ZodType<T>, value: unknown): T {
-  const result = schema.safeParse(value)
-
-  if (!result.success) throw new InputValidationError('input validation error', result.error.issues)
-
-  return result.data
-}
-
-/** Reads JSON and applies the operation-specific model validator. */
-async function body(context: Context, schema: z.ZodObject, submittedOnly: boolean): Promise<Record<string, unknown>> {
-  const contentType = context.req.header('content-type')?.split(';')[0]?.trim().toLowerCase()
-
-  if (!contentType || !/^application\/(?:json|[\w.+-]+\+json)$/.test(contentType)) {
-    throw new UnsupportedMediaTypeError('unsupported content type')
-  }
-  let value: unknown
-
-  try {
-    value = await context.req.json()
-  } catch {
-    throw new BadRequestError()
-  }
-  assertSafeKeys(value)
-  const object = input(z.record(z.string(), z.unknown()), value)
-  const attributes = Object.fromEntries(
-    Object.entries(object).filter(([key]) => !['id', 'createdAt', 'updatedAt'].includes(key)),
-  )
-
-  const parsed = input(schema, attributes)
-
-  return submittedOnly
-    ? Object.fromEntries(Object.entries(parsed).filter(([key]) => Object.hasOwn(attributes, key)))
-    : parsed
-}
-
-/** Validates the optional typed scalar equality filter. */
-function query(
-  context: Context,
-  model: z.ZodObject,
-  output: z.ZodObject,
-): { filter?: Record<string, z.infer<typeof DatabaseScalar>> } {
-  const params = new URL(context.req.url).searchParams
-
-  if ([...params.keys()].some((key) => key !== 'filter') || params.getAll('filter').length > 1) {
-    throw new InputValidationError()
-  }
-  const raw = params.get('filter')
-
-  if (raw === null) return {}
-  let parsed: unknown
-
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    throw new InputValidationError()
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new InputValidationError()
-  const entries = Object.entries(parsed).map(([key, value]) => {
-    const field = model.shape[key]
-
-    if (!Object.hasOwn(model.shape, key) || !field || !Object.hasOwn(output.shape, key))
-      throw new InputValidationError()
-
-    return [key, input(DatabaseScalar, input(field, input(DatabaseScalar, value)))] as const
-  })
-
-  return { filter: Object.fromEntries(entries) }
-}
-
-/** Shapes errors raised by generated routes without affecting custom Hono routes. */
-function handler(action: (context: Context) => Promise<Response>): (context: Context) => Promise<Response> {
-  return async (context) => {
-    try {
-      return await action(context)
-    } catch (error) {
-      const known = error instanceof HedraError && error.status >= 400 && error.status < 500
-      const status = known ? error.status : 500
-      const title = known ? error.title : 'internal server error'
-      const detail = known ? error.detail : error instanceof ResponseValidationError ? error.detail : undefined
-
-      const response = ErrorResponse.safeParse({
-        errors: [{ status, title, ...(detail === undefined ? {} : { detail }) }],
-      })
-
-      if (!response.success) return context.json({ errors: [{ status: 500, title: 'internal server error' }] }, 500)
-
-      return context.json(response.data, status as ContentfulStatusCode)
-    }
-  }
-}
-
-/** Registers generated REST routes for one collection. */
+/** Registers generated root and contained REST paths for an application resource. */
 export function registerRoutes(
   app: Hono,
-  collection: Collection,
+  model: z.ZodObject,
+  controller: ControllerInterface,
   validators: RouteValidators = {},
-  before?: (context: Context) => void,
+  before: MiddlewareHandler,
 ): void {
-  const path = collection.endpoint
-  const model = collection.model
-  const mask = Object.fromEntries(
-    ['id', 'createdAt', 'updatedAt'].filter((key) => Object.hasOwn(model.shape, key)).map((key) => [key, true]),
-  )
-  const attributes = model.clone({ ...model.def, checks: [] } as never).omit(mask as never)
-  const createInput = validators.create ?? attributes
-  const updateInput = validators.update ?? attributes.partial()
-  const updateSubmittedOnly = validators.update === undefined
-  const output =
-    validators.output ?? z.object(Object.fromEntries(Object.entries(model.shape).filter(([key]) => key !== 'password')))
+  const handlers = resourceHandlers(model, controller, validators)
+  const middleware = guardedMiddleware(before)
 
-  app.get(
-    path,
-    handler(async (context) => {
-      before?.(context)
-      setResourceScope(context, { collection: collection.name, target: { kind: 'collection' } })
+  registerHandlers(app, `/${resourceName(model)}`, handlers, middleware)
+  registerChildRoutes(app, model, controller, handlers.output, middleware)
+}
 
-      const result = await collection.controller.list(
-        context,
-        collection,
-        context.req.url,
-        query(context, model, output),
-      )
+/** Registers finite child paths whose controllers always return containing-root snapshots. */
+function registerChildRoutes(
+  app: Hono,
+  root: z.ZodObject,
+  controller: ControllerInterface,
+  output: z.ZodObject,
+  middleware: MiddlewareHandler,
+): void {
+  const name = resourceName(root)
+  /** Installs one nested operation using an explicit root UUID and ordered child selectors. */
+  const mount = (
+    method: 'get' | 'post' | 'patch' | 'delete',
+    path: string,
+    steps: ChildAddress[],
+    model: z.ZodObject,
+    list = false,
+  ): void => {
+    app[method](path, middleware, childHandler(root, controller, output, method, steps, model, list))
+  }
+  /** Walks only discovered managed placements; ordinary nested data gains no endpoints. */
+  const walk = (model: z.ZodObject, prefix: string, ancestors: ChildAddress[]): void => {
+    for (const field of childFields(model)) {
+      const path = `${prefix}/${field.name}`
 
-      return context.json(response(output, result, { list: true }))
-    }),
-  )
-  app.post(
-    path,
-    handler(async (context) => {
-      before?.(context)
-      setResourceScope(context, { collection: collection.name, target: { kind: 'collection' } })
-      const value = await body(context, createInput, false)
-      const result = await collection.controller.create(context, collection, value as never)
-      const validated = response(output, result, { writeSucceeded: true })
+      if (field.kind === 'object') {
+        walk(field.model, path, [...ancestors, { field: field.name, kind: 'object' }])
+        continue
+      }
+      const parameter = `child${ancestors.length}`
+      const collection = [...ancestors, { field: field.name, kind: field.kind }]
+      const item = [
+        ...ancestors,
+        { field: field.name, kind: field.kind, ...(field.kind === 'single' ? {} : { parameter }) },
+      ]
+      const itemPath = field.kind === 'single' ? path : `${path}/:${parameter}`
 
-      context.header('Location', validated.links.self)
+      if (field.kind !== 'single') mount('get', path, collection, field.model, true)
+      if (field.kind === 'array') mount('post', path, collection, field.model)
+      else mount('post', itemPath, item, field.model)
+      mount('get', itemPath, item, field.model)
+      mount('patch', itemPath, item, field.model)
+      mount('delete', itemPath, item, field.model)
+      walk(field.model, itemPath, item)
+    }
+  }
 
-      return context.json(validated, 201)
-    }),
-  )
-  app.get(
-    `${path}/:id`,
-    handler(async (context) => {
-      before?.(context)
-      const id = input(ResourceId, context.req.param('id'))
-
-      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
-
-      const result = await collection.controller.id(context, collection, id)
-
-      return context.json(response(output, result, { id }))
-    }),
-  )
-  app.patch(
-    `${path}/:id`,
-    handler(async (context) => {
-      before?.(context)
-      const id = input(ResourceId, context.req.param('id'))
-
-      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
-      const value = await body(context, updateInput, updateSubmittedOnly)
-
-      const result = await collection.controller.update(context, collection, value as never, id)
-
-      return context.json(response(output, result, { writeSucceeded: true, id }))
-    }),
-  )
-  app.delete(
-    `${path}/:id`,
-    handler(async (context) => {
-      before?.(context)
-      const id = input(ResourceId, context.req.param('id'))
-
-      setResourceScope(context, { collection: collection.name, target: { kind: 'resource', id } })
-
-      await collection.controller.delete(context, collection, id)
-
-      return context.body(null, 204)
-    }),
-  )
+  walk(root, `/${name}/:rootId`, [])
 }

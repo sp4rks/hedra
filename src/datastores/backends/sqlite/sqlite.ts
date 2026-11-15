@@ -7,15 +7,17 @@ import type {
   Backend,
   BackendTransaction,
   DatabaseFilter,
+  DatabaseIndex,
   DatabaseRecord,
   RecordModifier,
 } from '#datastores/backend.ts'
 import {
   DatabaseFilter as FilterSchema,
+  DatabaseIndex as IndexSchema,
   DatabaseRecord as RecordSchema,
   DatabaseScalar as ScalarSchema,
 } from '#datastores/backend.ts'
-import { QueryError, TransactionError } from '#errors'
+import { QueryError, TransactionError, UniqueViolationError } from '#errors'
 
 const matches = `NOT EXISTS (
   SELECT 1 FROM json_each(?) AS criterion WHERE NOT EXISTS (
@@ -52,6 +54,7 @@ function parseRecord(value: unknown): DatabaseRecord {
 export class SqliteBackend implements Backend {
   private readonly db: Database
   private inTransaction = false
+  private readonly indexes = new Map<string, Set<string>>()
 
   /** Opens the database for generic collection storage. */
   constructor(path: string) {
@@ -80,7 +83,11 @@ export class SqliteBackend implements Backend {
     const parsed = parseRecord(JSON.parse(data))
     const name = this.table(table)
 
-    this.db.run(`INSERT INTO ${name} (id, data) VALUES (?, ?)`, [parsed.id, data])
+    try {
+      this.db.run(`INSERT INTO ${name} (id, data) VALUES (?, ?)`, [parsed.id, data])
+    } catch (error) {
+      this.failure(error)
+    }
   }
 
   /** Reads matching JSON records in insertion order. */
@@ -98,9 +105,15 @@ export class SqliteBackend implements Backend {
     })
     const data = jsonString(Object.fromEntries(entries))
     const name = this.table(table)
+    const indexed = entries.filter(([key]) => this.indexes.get(table)?.has(key))
+    const conditions = indexed.map(([key]) => `json_extract(records.data, '$.${key}') IS ?`)
+    const values = indexed.map(([, value]) => (typeof value === 'boolean' ? Number(value) : value))
+    const where = [...conditions, matches].join(' AND ')
     const rows = this.db
-      .query<{ data: string }, [string]>(`SELECT data FROM ${name} AS records WHERE ${matches} ORDER BY rowid`)
-      .all(data)
+      .query<{ data: string }, (string | number | null)[]>(
+        `SELECT data FROM ${name} AS records WHERE ${where} ORDER BY rowid`,
+      )
+      .all(...values, data)
 
     return rows.map((row) => parseRecord(JSON.parse(row.data)))
   }
@@ -122,7 +135,11 @@ export class SqliteBackend implements Backend {
     const updatedRecord = parseRecord(JSON.parse(data))
 
     if (updatedRecord.id !== key) throw new QueryError('Record ID cannot change')
-    this.db.run(`UPDATE ${name} SET data = ? WHERE id = ?`, [data, key])
+    try {
+      this.db.run(`UPDATE ${name} SET data = ? WHERE id = ?`, [data, key])
+    } catch (error) {
+      this.failure(error)
+    }
 
     return updatedRecord
   }
@@ -136,6 +153,48 @@ export class SqliteBackend implements Backend {
     const name = this.table(table)
 
     return this.db.run(`DELETE FROM ${name} WHERE id = ?`, [key]).changes > 0
+  }
+
+  /** Maps database-enforced uniqueness without exposing backend-specific errors. */
+  private failure(error: unknown): never {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      ['SQLITE_CONSTRAINT_UNIQUE', 'SQLITE_CONSTRAINT_PRIMARYKEY'].includes(String(error.code))
+    ) {
+      throw new UniqueViolationError()
+    }
+
+    throw error
+  }
+
+  /** Creates validated JSON-expression indexes and enables the matching select path. */
+  async ensureIndexes(table: string, indexes: readonly DatabaseIndex[]): Promise<void> {
+    const parsed = z.array(IndexSchema).safeParse(indexes)
+
+    if (!parsed.success) throw new QueryError('Invalid database indexes', parsed.error.issues)
+    const name = this.table(table)
+
+    try {
+      this.db
+        .transaction(() => {
+          for (const index of parsed.data) {
+            const identifier = `hedra_${table.length}_${table}_${index.field}_${index.unique ? 'unique' : 'index'}`
+
+            this.db.run(
+              `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX IF NOT EXISTS "${identifier}" ON ${name} (json_extract(data, '$.${index.field}'))`,
+            )
+          }
+        })
+        .immediate()
+    } catch (error) {
+      this.failure(error)
+    }
+    const fields = this.indexes.get(table) ?? new Set<string>()
+
+    for (const index of parsed.data) fields.add(index.field)
+
+    this.indexes.set(table, fields)
   }
 
   /** Inserts a record without replacing an existing key. */

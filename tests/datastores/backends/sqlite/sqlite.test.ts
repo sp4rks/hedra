@@ -71,8 +71,8 @@ test('SqliteBackend rejects duplicate primary keys without replacing data', asyn
       error = caught
     }
     expect(error).toBeInstanceOf(Error)
-    expect(error).toMatchObject({ name: 'SQLiteError', code: 'SQLITE_CONSTRAINT_PRIMARYKEY' })
-    expect(error).not.toBeInstanceOf(HedraError)
+    expect(error).toMatchObject({ name: 'UniqueViolationError', status: 409 })
+    expect(error).toBeInstanceOf(HedraError)
     expect(await backend.select('items')).toEqual([{ id: 'one', name: 'Original' }])
   } finally {
     backend.close()
