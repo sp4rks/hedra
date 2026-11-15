@@ -1,7 +1,6 @@
 import type { z } from 'zod'
 
-import type { ChildTarget } from '#controllers/children.ts'
-import type { ControllerInterface } from '#controllers/controller.ts'
+import type { ChildTarget, ControllerInterface } from '#controllers'
 import { InputValidationError } from '#errors'
 import { childInput, ResourceId, resourceName, safeChildKey, setResourceScope } from '#models'
 import { body, input } from '#web/resources.ts'
