@@ -196,10 +196,19 @@ export class SqliteBackend implements Backend {
             ])
             .join(', ')
 
+          const indexName = `${identifier}${index.unique ? '_typed' : ''}`
+          const definition = `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX "${indexName}" ON ${name} (${expressions})`
+
           try {
-            this.db.run(
-              `CREATE ${index.unique ? 'UNIQUE ' : ''}INDEX IF NOT EXISTS "${identifier}${index.unique ? '_typed' : ''}" ON ${name} (${expressions})`,
-            )
+            const existing = this.db
+              .query<{ sql: string }, [string]>(
+                "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = ? COLLATE NOCASE",
+              )
+              .get(indexName)
+
+            if (existing && existing.sql !== definition)
+              throw new QueryError('Existing index definition does not match', { table, fields })
+            if (!existing) this.db.run(definition)
             // Replacing the legacy untyped constraint is part of the same installation transaction.
             if ('field' in index && index.unique) this.db.run(`DROP INDEX IF EXISTS "${identifier}"`)
           } catch (error) {

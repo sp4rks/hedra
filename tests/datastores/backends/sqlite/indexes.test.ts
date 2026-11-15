@@ -177,3 +177,71 @@ test('distinct compound keys have independent constraints even when field names 
     backend.close()
   }
 })
+
+test.each([
+  "CREATE INDEX hedra_compound_5_items_1_a_1_b_unique_typed ON items (json_extract(data, '$.a'), json_extract(data, '$.b'))",
+  "CREATE UNIQUE INDEX hedra_compound_5_items_1_a_1_b_unique_typed ON items (json_extract(data, '$.other'))",
+  "CREATE INDEX HEDRA_COMPOUND_5_ITEMS_1_A_1_B_UNIQUE_TYPED ON items (json_extract(data, '$.a'))",
+])('SQLite rejects an occupied compound index name with a different definition %#', async (definition) => {
+  const directory = mkdtempSync(join(tmpdir(), 'hedra-index-collision-'))
+  const path = join(directory, 'storage.sqlite')
+  const existing = new Database(path)
+
+  existing.run('CREATE TABLE items (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)')
+  existing.run(definition)
+  existing.close()
+  const backend = new SqliteBackend(path)
+
+  try {
+    const original = { id: 'one', a: 'private-value', b: 'same' }
+
+    await backend.insert('items', original)
+    const error = await backend
+      .ensureIndexes('items', [{ fields: ['a', 'b'], unique: true }])
+      .catch((cause: unknown) => cause)
+
+    expect(error).toBeInstanceOf(QueryError)
+    expect(error).toMatchObject({ detail: { table: 'items', fields: ['a', 'b'] } })
+    expect(JSON.stringify(error)).not.toContain('private-value')
+    expect(await backend.select('items')).toEqual([original])
+  } finally {
+    backend.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test.each([
+  "CREATE INDEX hedra_5_items_value_unique_typed ON items (json_extract(data, '$.value'))",
+  "CREATE UNIQUE INDEX hedra_5_items_value_unique_typed ON items (json_extract(data, '$.other'))",
+])(
+  'SQLite preserves the legacy constraint when its replacement name has a different definition %#',
+  async (definition) => {
+    const directory = mkdtempSync(join(tmpdir(), 'hedra-legacy-index-collision-'))
+    const path = join(directory, 'storage.sqlite')
+    const existing = new Database(path)
+
+    existing.run('CREATE TABLE items (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)')
+    existing.run("CREATE UNIQUE INDEX hedra_5_items_value_unique ON items (json_extract(data, '$.value'))")
+    existing.run(definition)
+    existing.close()
+    const backend = new SqliteBackend(path)
+
+    try {
+      await backend.insert('items', { id: 'one', value: 'private-value' })
+      const error = await backend
+        .ensureIndexes('items', [{ field: 'value', unique: true }])
+        .catch((cause: unknown) => cause)
+
+      expect(error).toBeInstanceOf(QueryError)
+      expect(error).toMatchObject({ detail: { table: 'items', fields: ['value'] } })
+      expect(JSON.stringify(error)).not.toContain('private-value')
+      await expect(backend.insert('items', { id: 'two', value: 'private-value' })).rejects.toBeInstanceOf(
+        UniqueViolationError,
+      )
+      expect(await backend.select('items')).toHaveLength(1)
+    } finally {
+      backend.close()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
