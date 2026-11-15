@@ -6,9 +6,9 @@ import type {
   EnvironmentOperationsInterface,
   TenantOperationsInterface,
 } from '#datastores/categories/config/config.ts'
-import type { RouteValidators } from '#routes/resources.ts'
 import type { LogFields, LoggerInterface } from '#server/logger.ts'
 import type { HedraOptions, RegistrationOptions, ScopedHandler } from '#server/server.ts'
+import type { RouteValidators } from '#web/resources.ts'
 import { Config } from '#config'
 import { BaseController } from '#controllers/controller.ts'
 import { EnvironmentController } from '#controllers/environment-controller.ts'
@@ -23,9 +23,10 @@ import { Association, Resource, ResourceReference } from '#models/resource.ts'
 import { ErrorResponse, JsonApiListResponse, JsonApiResponse, QueryParams, ResourceInput } from '#models/rest.ts'
 import { getResourceScope, ResourceScope } from '#models/scope.ts'
 import { Tenant } from '#models/tenant.ts'
-import { EnvironmentChanges, EnvironmentInput, TenantChanges, TenantInput } from '#routes/catalogue-inputs.ts'
 import { Logger } from '#server/logger.ts'
 import { Hedra } from '#server/server.ts'
+import { EnvironmentChanges, EnvironmentInput } from '#web/environments.ts'
+import { TenantChanges, TenantInput } from '#web/tenants.ts'
 
 export type {
   Backend,

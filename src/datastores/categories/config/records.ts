@@ -4,10 +4,7 @@ import { OutputValidationError } from '#errors'
 import { ResourceTimestamp } from '#models/resource.ts'
 
 /** Validates internal deletion metadata and returns a public catalogue value. */
-export function parseRecord<S extends z.ZodObject>(
-  model: S,
-  input: unknown,
-): { value: z.output<S>; deleted: boolean } {
+export function parseRecord<S extends z.ZodObject>(model: S, input: unknown): { value: z.output<S>; deleted: boolean } {
   const parsed = model.extend({ deletedAt: ResourceTimestamp.optional() }).safeParse(input)
 
   if (!parsed.success) throw new OutputValidationError('output validation error', parsed.error.issues)

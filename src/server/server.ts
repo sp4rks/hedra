@@ -6,8 +6,8 @@ import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
 import type { ConfigDatastore } from '#datastores/categories/config/config.ts'
 import type { RequestScope } from '#models/request-scope.ts'
-import type { RouteValidators } from '#routes/resources.ts'
 import type { LoggerInterface } from '#server/logger.ts'
+import type { RouteValidators } from '#web/resources.ts'
 import { Config } from '#config'
 import { BaseController } from '#controllers/controller.ts'
 import { EnvironmentController } from '#controllers/environment-controller.ts'
@@ -19,13 +19,14 @@ import { modelIndexes } from '#datastores/indexes.ts'
 import { ConfigurationError, ConnectionError } from '#errors'
 import { environmentMiddleware, tenantMiddleware } from '#middleware/request-scope.ts'
 import { assertChildren } from '#models/children.ts'
-import { Environment } from '#models/environment.ts'
 import { requireRequestScope } from '#models/request-scope.ts'
 import { assertResourceModel, resourceName } from '#models/resource.ts'
-import { Tenant } from '#models/tenant.ts'
-import { EnvironmentChanges, EnvironmentInput, TenantChanges, TenantInput } from '#routes/catalogue-inputs.ts'
-import { assertRouteValidators, guardedMiddleware, registerRoutes, routeHandler } from '#routes/resources.ts'
+import { registerHandlers, registerRoutes } from '#routes/resources.ts'
 import { Logger } from '#server/logger.ts'
+import { environmentHandlers } from '#web/environments.ts'
+import { assertRouteValidators } from '#web/resources.ts'
+import { guardedMiddleware, routeHandler } from '#web/responses.ts'
+import { tenantHandlers } from '#web/tenants.ts'
 
 export type HedraOptions = {
   config?: Config
@@ -95,36 +96,22 @@ export class Hedra extends Hono {
     this.datastore = options.configDatastore
     this.environmentMiddleware = environmentMiddleware(this.config, () => this.configDatastore)
 
-    const tenants = Tenant.meta({ name: 'tenants' })
     const tenantController = new TenantController(this.config, () => this.configDatastore)
 
-    registerRoutes(
+    registerHandlers(
       this,
-      tenants,
-      tenantController,
-      {
-        create: TenantInput,
-        update: TenantChanges,
-        output: Tenant,
-      },
-      async (context, next) => {
+      '/tenants',
+      tenantHandlers(tenantController),
+      guardedMiddleware(async (context, next) => {
         tenantController.assertHost(context)
         await next()
-      },
-      null,
-      'tenantDomain',
+      }),
     )
-
-    const environments = Environment.meta({ name: 'environments' })
-
-    registerRoutes(
+    registerHandlers(
       this,
-      environments,
-      new EnvironmentController(() => this.configDatastore),
-      { create: EnvironmentInput, update: EnvironmentChanges, output: Environment },
-      tenantMiddleware(this.config, () => this.configDatastore),
-      'tenantDomain',
-      'environmentDomain',
+      '/environments',
+      environmentHandlers(new EnvironmentController(() => this.configDatastore)),
+      guardedMiddleware(tenantMiddleware(this.config, () => this.configDatastore)),
     )
 
     this.associations = new AssociationOperations(
