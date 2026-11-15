@@ -22,3 +22,6 @@ Implement these items after the walkthrough is complete. All items are pending.
 - [ ] **Rename the shared record parser.** Rename `catalogueRecord()` to `parseRecord()` in
   `src/datastores/categories/config/records.ts`, updating imports and callers without changing
   behaviour.
+- [ ] **Web handlers with colocated validators.** Create actual handlers in `src/web` and define
+  their request validators in the same handler file, using M21's handler flow as a reference. Replace
+  the standalone `src/routes/catalogue-inputs.ts` arrangement; keep route registration in `src/routes`.
