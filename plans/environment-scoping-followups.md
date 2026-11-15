@@ -14,3 +14,8 @@ Implement these items after the walkthrough is complete. All items are pending.
 - [ ] **Remove the standalone associations controller.** Remove `src/controllers/associations.ts`
   and update its callers as part of the resource/reference follow-up. Preserve required reference
   checks and atomic deletion protection.
+- [ ] **Use domains as primary catalogue references.** Address tenants by `tenantDomain` and
+  environments by `environmentDomain`, with the verified `tenantDomain` retained as explicit scope
+  for environment operations. Update catalogue interfaces, lookups, controllers, middleware, built-in
+  REST item paths, self links and callers consistently. Retain UUIDs as internal row identifiers;
+  preserve domain immutability, permanent reservations and atomic ownership checks.
