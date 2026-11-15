@@ -1,6 +1,6 @@
 # Work after the environment-scoping walkthrough
 
-Implement these items after the walkthrough is complete. All three are pending.
+Implement these items after the walkthrough is complete. All items are pending.
 
 - [ ] **Reusable child resources and schema registration.** Implement `child: true` metadata for
   reusable contained resources with nested CRUD, and register schemas directly without a public
@@ -11,3 +11,6 @@ Implement these items after the walkthrough is complete. All three are pending.
 - [ ] **Remove compatibility for omitted core Resource fields.** Require all core fields during
   application registration, then remove filtering and restoration of undeclared metadata. Retain
   complete-record validation, server-owned field protection and JSON safety checks.
+- [ ] **Remove the standalone associations controller.** Remove `src/controllers/associations.ts`
+  and update its callers as part of the resource/reference follow-up. Preserve required reference
+  checks and atomic deletion protection.
