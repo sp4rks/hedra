@@ -5,11 +5,17 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/tenants
+  url: {{deploymentUrl}}/tenants
   body: none
   auth: none
 }
 
 assert {
   res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200 && Array.isArray(res.body?.data)) {
+    bru.setVar('tenantList', res.body.data)
+  }
 }

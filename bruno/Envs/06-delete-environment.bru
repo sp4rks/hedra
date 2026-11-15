@@ -13,3 +13,7 @@ delete {
 assert {
   res.status: eq 204
 }
+
+script:post-response {
+  bru.setVar('environmentDeleteStatus', res.status)
+}

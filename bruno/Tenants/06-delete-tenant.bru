@@ -5,11 +5,15 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/tenants/{{tenantDomain}}
+  url: {{deploymentUrl}}/tenants/{{tenantDomain}}
   body: none
   auth: none
 }
 
 assert {
   res.status: eq 204
+}
+
+script:post-response {
+  bru.setVar('tenantDeleteStatus', res.status)
 }

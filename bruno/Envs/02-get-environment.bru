@@ -13,3 +13,13 @@ get {
 assert {
   res.status: eq 200
 }
+
+script:post-response {
+  const data = res.body?.data
+
+  if (res.status === 200 && typeof data?.id === 'string' && typeof data?.environmentDomain === 'string') {
+    bru.setVar('environmentId', data.id)
+    bru.setVar('environmentDomain', data.environmentDomain)
+    bru.setVar('environmentObject', data)
+  }
+}

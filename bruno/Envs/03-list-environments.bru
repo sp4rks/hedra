@@ -13,3 +13,9 @@ get {
 assert {
   res.status: eq 200
 }
+
+script:post-response {
+  if (res.status === 200 && Array.isArray(res.body?.data)) {
+    bru.setVar('environmentList', res.body.data)
+  }
+}

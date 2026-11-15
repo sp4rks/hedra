@@ -5,7 +5,7 @@ meta {
 }
 
 post {
-  url: {{baseUrl}}/tenants
+  url: {{deploymentUrl}}/tenants
   body: json
   auth: none
 }
@@ -13,10 +13,20 @@ post {
 body:json {
   {
     "name": "Acme",
-    "tenantDomain": "{{tenantDomain}}"
+    "tenantDomain": "{{$randomDomainWord}}.{{baseDomain}}"
   }
 }
 
 assert {
   res.status: eq 201
+}
+
+script:post-response {
+  const data = res.body?.data
+
+  if (res.status === 201 && typeof data?.id === 'string' && typeof data?.tenantDomain === 'string') {
+    bru.setVar('tenantId', data.id)
+    bru.setVar('tenantDomain', data.tenantDomain)
+    bru.setVar('tenantObject', data)
+  }
 }

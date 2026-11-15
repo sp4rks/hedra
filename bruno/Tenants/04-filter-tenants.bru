@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/tenants?filter={"tenantDomain":"{{tenantDomain}}"}
+  url: {{deploymentUrl}}/tenants?filter={"tenantDomain":"{{tenantDomain}}"}
   body: none
   auth: none
 }
@@ -16,4 +16,10 @@ params:query {
 
 assert {
   res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200 && Array.isArray(res.body?.data)) {
+    bru.setVar('filteredTenantList', res.body.data)
+  }
 }
