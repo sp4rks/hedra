@@ -17,17 +17,17 @@ body:json {
   }
 }
 
-script:pre-request {
-  bru.setVar('environmentDomainLabel', bru.interpolate('{{$randomDomainWord}}'))
-}
-
 assert {
   res.status: eq 201
 }
 
+script:pre-request {
+  bru.setVar('environmentDomainLabel', bru.interpolate('{{$randomDomainWord}}'))
+}
+
 script:post-response {
   const data = res.body?.data
-
+  
   if (res.status === 201 && typeof data?.id === 'string' && typeof data?.environmentDomain === 'string') {
     bru.setVar('environmentId', data.id)
     bru.setVar('environmentDomain', data.environmentDomain)

@@ -17,24 +17,25 @@ body:json {
   }
 }
 
-script:pre-request {
-  const country = bru.interpolate('{{$randomCountry}}')
-  const label = country.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-
-  bru.setVar('tenantCountryLabel', label)
-}
-
 assert {
   res.status: eq 201
 }
 
+script:pre-request {
+  const country = bru.interpolate('{{$randomCountry}}')
+  const label = country.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  
+  bru.setVar('tenantCountryLabel', label)
+}
+
 script:post-response {
   const data = res.body?.data
-
+  
   if (res.status === 201 && typeof data?.id === 'string' && typeof data?.tenantDomain === 'string') {
     bru.setVar('tenantId', data.id)
     bru.setVar('tenantDomain', data.tenantDomain)
+    bru.setVar('tenantUrl', `https://${data.tenantDomain}`)
     bru.setVar('tenantObject', data)
   }
 }
