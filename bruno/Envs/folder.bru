@@ -8,18 +8,21 @@ auth {
 }
 
 script:pre-request {
-  const tenantDomain = bru.interpolate('{{tenantDomain}}')
   const tenantUrl = bru.getEnvVar('tenantUrl')
 
-  if (!tenantDomain || tenantDomain.includes('{{')) {
-    throw new Error('Select a tenantDomain or run Create tenant before calling Envs')
-  }
-
   if (tenantUrl) {
-    bru.setVar('tenantUrl', bru.interpolate(tenantUrl))
+    if (tenantUrl.includes('{{')) {
+      throw new Error('Resolve tenantUrl variables or select a tenantDomain before calling Envs')
+    }
+    bru.setVar('tenantUrl', tenantUrl)
   } else {
+    const tenantDomain = bru.interpolate('{{tenantDomain}}')
+
+    if (!/^[a-z0-9.-]+$/i.test(tenantDomain)) {
+      throw new Error('Select a valid tenantDomain or run Create tenant before calling Envs')
+    }
     const deploymentUrl = bru.interpolate('{{deploymentUrl}}')
-    const transport = deploymentUrl.match(/^(https?:\/\/)[^/:?#]+(:\d+)?\/?$/)
+    const transport = deploymentUrl.match(/^(https?:\/\/)[^/:?#]+(:\d+)?\/?$/i)
 
     if (!transport) {
       throw new Error('Set deploymentUrl to an HTTP(S) origin or configure tenantUrl in the selected environment')
