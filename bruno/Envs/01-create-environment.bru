@@ -5,7 +5,7 @@ meta {
 }
 
 post {
-  url: {{baseUrl}}/environments
+  url: {{tenantUrl}}/environments
   body: json
   auth: none
 }
@@ -13,8 +13,12 @@ post {
 body:json {
   {
     "name": "Development",
-    "environmentDomain": "{{$randomDomainWord}}.{{tenantDomain}}"
+    "environmentDomain": "{{environmentDomainLabel}}.{{tenantDomain}}"
   }
+}
+
+script:pre-request {
+  bru.setVar('environmentDomainLabel', bru.interpolate('{{$randomDomainWord}}'))
 }
 
 assert {

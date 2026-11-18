@@ -6,3 +6,24 @@ meta {
 auth {
   mode: inherit
 }
+
+script:pre-request {
+  const tenantDomain = bru.interpolate('{{tenantDomain}}')
+  const tenantUrl = bru.getEnvVar('tenantUrl')
+
+  if (!tenantDomain || tenantDomain.includes('{{')) {
+    throw new Error('Select a tenantDomain or run Create tenant before calling Envs')
+  }
+
+  if (tenantUrl) {
+    bru.setVar('tenantUrl', bru.interpolate(tenantUrl))
+  } else {
+    const deploymentUrl = bru.interpolate('{{deploymentUrl}}')
+    const transport = deploymentUrl.match(/^(https?:\/\/)[^/:?#]+(:\d+)?\/?$/)
+
+    if (!transport) {
+      throw new Error('Set deploymentUrl to an HTTP(S) origin or configure tenantUrl in the selected environment')
+    }
+    bru.setVar('tenantUrl', `${transport[1]}${tenantDomain}${transport[2] || ''}`)
+  }
+}
