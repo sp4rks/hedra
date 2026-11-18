@@ -225,3 +225,71 @@ test('Logger rejects structured fields that are not a string-keyed record', () =
   expect(() => new Logger(config, captured.destination, [] as never)).toThrow()
   expect(captured.text()).toBe('')
 })
+
+/** Requests a route over loopback and captures the default logger's stdout. */
+function defaultAccessLog(format?: 'pretty'): string {
+  const entry = join(import.meta.dir, '../../src/hedra.ts')
+  const script = `
+    import assert from 'node:assert/strict'
+    import { Hedra } from ${JSON.stringify(entry)}
+    const app = new Hedra()
+    app.get('/rooms/:id', (context) => context.text('Accepted', 202))
+    const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: app.fetch })
+    try {
+      const response = await fetch(new URL('/rooms/private-id?token=private-query', server.url), {
+        headers: { 'x-request-id': 'access-id' },
+        signal: AbortSignal.timeout(2000),
+      })
+      assert.equal(response.status, 202)
+      assert.equal(response.headers.get('x-request-id'), 'access-id')
+      assert.equal(await response.text(), 'Accepted')
+    } finally {
+      server.stop(true)
+      app.close()
+    }
+  `
+  const result = Bun.spawnSync([process.execPath, '--no-env-file', '-e', script], {
+    env: {
+      FORCE_COLOR: '0',
+      HEDRA_SERVER_SILENT_STARTUP: 'true',
+      ...(format === undefined ? {} : { HEDRA_SERVER_LOG_FORMAT: format }),
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  expect(result.stderr.toString()).toBe('')
+  expect(result.exitCode).toBe(0)
+
+  return result.stdout.toString()
+}
+
+test('default HTTP logging writes machine-readable JSON to stdout for a correlated response', () => {
+  const output = defaultAccessLog()
+
+  expect(JSON.parse(output)).toMatchObject({
+    level: 30,
+    msg: 'HTTP request completed',
+    instanceId: expect.any(String),
+    requestId: 'access-id',
+    method: 'GET',
+    path: '/rooms/:id',
+    status: 202,
+    durationMs: expect.any(Number),
+  })
+  expect(output).not.toContain('private-')
+})
+
+test('pretty HTTP logging writes a readable completion with ANSI colour to piped stdout', () => {
+  const output = defaultAccessLog('pretty')
+  const plain = Bun.stripANSI(output)
+
+  expect(output).toContain('\u001b[32mINFO')
+  expect(plain).toContain('HTTP request completed')
+  expect(plain).toContain('requestId: "access-id"')
+  expect(plain).toContain('method: "GET"')
+  expect(plain).toContain('path: "/rooms/:id"')
+  expect(plain).toContain('status: 202')
+  expect(plain).toMatch(/durationMs: \d/)
+  expect(plain).not.toContain('private-')
+})

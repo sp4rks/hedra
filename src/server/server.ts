@@ -1,5 +1,6 @@
 import type { z } from 'zod'
 import { Hono } from 'hono'
+import { requestId } from 'hono/request-id'
 
 import type { ControllerInterface } from '#controllers/controller.ts'
 import type { Backend } from '#datastores/backend.ts'
@@ -12,6 +13,7 @@ import { TenantController } from '#controllers/tenant-controller.ts'
 import { SqliteBackend } from '#datastores/backends/sqlite/sqlite.ts'
 import { ConfigStore, tenantTable } from '#datastores/categories/config/config.ts'
 import { ConfigurationError, ConnectionError } from '#errors'
+import { httpLoggingMiddleware } from '#middleware/http-logging.ts'
 import { Collection } from '#models/collection.ts'
 import { Tenant } from '#models/tenant.ts'
 import { assertRouteValidators, registerRoutes } from '#routes/resources.ts'
@@ -46,6 +48,8 @@ export class Hedra extends Hono {
 
     this.config = options.config ?? new Config()
     this.log = options.logger ?? new Logger(this.config, undefined, { instanceId: this.instanceId })
+
+    if (this.config.serverHttpLogEnabled) this.use('*', requestId(), httpLoggingMiddleware(this.log))
 
     this.port = this.config.serverListenPort
     this.hostname = this.config.serverListenIp
