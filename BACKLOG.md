@@ -89,16 +89,11 @@ M21 references: `src/server/openapi/`, `src/server/server.ts` and
 
 ## HTTP logging
 
-- [ ] Install request/response logging middleware and honour `serverHttpLogEnabled`.
+- [x] Install request/response logging middleware and honour `serverHttpLogEnabled`.
 
-Hedra provides an application logger, but installs no HTTP logging middleware; the enable setting has
-no consumer. M21 installs middleware that records request information, response status and elapsed
-time. Built-in access logging would provide useful default visibility across generated and custom routes.
-
-Use the app's existing `LoggerInterface` and configuration. Register middleware before built-in routes
-so tenant management is covered too. Include request correlation, method/path, status and duration.
-Honour the enable flag and avoid raw request bodies: M21 currently logs JSON bodies and does not check
-the flag in its middleware, so those implementation details need correction when adopting the approach.
+Hedra uses the app's `LoggerInterface` to record request ID, method, route pattern, response status and
+elapsed time across built-in, generated and custom routes. The response carries the same request ID.
+Access records omit raw request bodies and URLs.
 
 Hedra references: [app construction](src/server/server.ts), [logger contract](src/server/logger.ts),
 [HTTP logging setting](src/server/configs/server.ts).

@@ -1,5 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { Hono } from 'hono'
+import { requestId } from 'hono/request-id'
+import { routePath } from 'hono/route'
 import { z } from 'zod'
 
 import type { ControllerInterface } from '#controllers'
@@ -89,6 +91,27 @@ export class Hedra extends Hono {
 
     this.config = options.config ?? new Config()
     this.log = options.logger ?? new Logger(this.config, undefined, { instanceId: this.instanceId })
+
+    if (this.config.serverHttpLogEnabled) {
+      this.use('*', requestId(), async (context, next) => {
+        const id = context.get('requestId')
+        const start = performance.now()
+
+        await next()
+
+        const durationMs = performance.now() - start
+
+        // A raw Response can bypass Hono's prepared response headers.
+        if (context.res.headers.get('X-Request-Id') !== id) context.header('X-Request-Id', id)
+        this.log.info('HTTP request completed', {
+          requestId: id,
+          method: context.req.method,
+          path: routePath(context),
+          status: context.res.status,
+          durationMs,
+        })
+      })
+    }
 
     this.port = this.config.serverListenPort
     this.hostname = this.config.serverListenIp
