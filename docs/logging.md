@@ -16,6 +16,16 @@ app.log.error('Upstream request failed', { err: new Error('Connection refused') 
 
 The default adapter serializes errors under `err`, retaining useful details including the message and stack. Choose fields deliberately; never log secrets or tenant data.
 
+## HTTP access logs
+
+Hedra writes an `info` record through the app logger when an HTTP response is ready. The response
+header `X-Request-Id` matches the record's `requestId`. Records include `method`, the registered route
+pattern as `path`, the response `status` and elapsed time as `durationMs`. The logged route pattern
+keeps literal path values, query strings and request bodies out of access records.
+
+The default logger writes JSON to stdout. Set `HEDRA_SERVER_LOG_FORMAT=pretty` for readable output with
+ANSI colour, or set `HEDRA_SERVER_HTTP_LOGGING=false` to disable access logging.
+
 ## Logger interface
 
 Import the public `LoggerInterface` and `LogFields` types from the package entry point. Use `LoggerInterface` for dependencies that can accept any implementation. `LogFields` accepts string keys and values of unknown type. Every implementation provides these methods:

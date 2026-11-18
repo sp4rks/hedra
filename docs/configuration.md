@@ -69,7 +69,12 @@ Environment values are strings. Hedra trims them, applies defaults for unset or 
 | `HEDRA_SERVER_LISTEN_PORT` | `serverListenPort` | Integer from 1 through 65535 | `3000` |
 | `HEDRA_SERVER_REQUEST_TIMEOUT` | `serverRequestTimeout` | Integer from 1 through 300000, in milliseconds | `30000` |
 
-`serverHttpLogEnabled` retains its configuration meaning; this change does not add HTTP logging middleware. Connection ownership and persistent-volume requirements are described in [storage backends](backends.md).
+Hedra writes HTTP completion records at level `info`. Set `HEDRA_SERVER_HTTP_LOGGING=false` to turn off
+those records and their response correlation headers. The default logger writes JSON. Set
+`HEDRA_SERVER_LOG_FORMAT=pretty` for readable, ANSI-coloured HTTP and application logs. See
+[HTTP access logs](logging.md#http-access-logs).
+
+Connection ownership and persistent-volume requirements are described in [storage backends](backends.md).
 
 `HEDRA_SQLITE_PATH` selects the default path for both configuration storage and application collections. They open independent connections; using `:memory:` gives each independent storage. To share a connection explicitly, supply both dependencies as described under [sharing a backend](config-store.md#share-a-backend-with-application-resources).
 
