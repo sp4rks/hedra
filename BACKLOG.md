@@ -2,7 +2,7 @@
 
 Architectural follow-ups from the 2026-11-14 comparison of Hedra `7804a1b` and M21 `b16891a`
 ([archived M21 checkout](/home/sparks/projects/zArchive/round2/hailmary/multi21)). These are the five areas
-where M21's approach was preferred. Runtime differences are excluded. All items are proposed work.
+where M21's approach was preferred. Runtime differences are excluded.
 
 Preserve Hedra's [design goals](IDEA.md), generic storage contracts, explicit dependency ownership and
 atomic validation. The decisions on [root-only CRUD](docs/adr/0030-root-crud-and-ordinary-nested-data.md)
@@ -50,19 +50,17 @@ M21 references: `src/models/categories/query-params.ts`, `src/server/utils/jsona
 
 ## Indexes and constraints
 
-- [ ] Derive indexes and uniqueness constraints from resource-model metadata.
+- [x] Derive indexes and uniqueness constraints from resource-model metadata (merged in `caf507a`).
 
-Hedra has no general schema-derived index or constraint mechanism. Tenant-domain uniqueness is an
-explicit transactional check. M21 reads Zod field metadata for `unique` and `indexed`, and object
-metadata for compound uniqueness, then creates MongoDB indexes. This keeps reusable persistence
-constraints beside their models and allows the database to enforce uniqueness.
+Hedra reads `indexed` and `unique` from Zod fields and `compoundUnique` from the resource model.
+Every collection registration prepares its indexes through the backend before controllers can use
+the collection, including collections registered after startup.
 
-Adapt the approach to Hedra's generic backend and SQLite storage. Cover every registered collection,
-including collections added after construction: M21's startup index flow does not automatically cover
-later registrations. Define how existing duplicate data is reported before adding unique constraints;
-retain atomic tenant uniqueness during any transition.
+If existing rows violate a new constraint, SQLite rolls back that table's index changes and reports
+the table and field names. Duplicate writes return HTTP 409. Tenant creation also retains its
+transactional domain check.
 
-Hedra references: [backend contract](src/datastores/backend.ts),
+Hedra references: [model metadata](src/datastores/indexes.ts), [backend contract](src/datastores/backend.ts),
 [SQLite storage](src/datastores/backends/sqlite/sqlite.ts),
 [tenant operations](src/datastores/categories/config/tenants.ts).
 M21 references: `src/models/categories/record-constraints.ts`,
