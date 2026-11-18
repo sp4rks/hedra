@@ -109,6 +109,32 @@ test('custom errors log the status returned by the application error handler', a
   app.close()
 })
 
+test('an access log write failure preserves a successful tenant creation response', async () => {
+  const { app, info } = captureHttpLogs()
+  const failure = new Error('Log destination unavailable')
+  const tenant = { name: 'Fixture', tenantDomain: 'fixture.hedra.local' }
+  const headers = { host: app.config.deploymentApiDomain, 'x-request-id': 'create-tenant' }
+
+  info.mockImplementation(() => {
+    throw failure
+  })
+  try {
+    const response = await app.request('/tenants', {
+      method: 'POST',
+      body: JSON.stringify(tenant),
+      headers: { ...headers, 'content-type': 'application/json' },
+    })
+
+    expect(await app.configDatastore.tenants.get(tenant.tenantDomain)).toMatchObject(tenant)
+    expect(response.status).toBe(201)
+    expect(response.headers.get('x-request-id')).toBe('create-tenant')
+    expect(await response.json()).toMatchObject({ data: tenant })
+    expect(() => app.log.info('Application event')).toThrow(failure)
+  } finally {
+    app.close()
+  }
+})
+
 test('disabling HTTP logging skips access records and leaves application logging available', async () => {
   const { app, info } = captureHttpLogs({ HEDRA_SERVER_HTTP_LOGGING: 'false' })
 

@@ -99,17 +99,21 @@ export class Hedra extends Hono {
 
         await next()
 
-        const durationMs = performance.now() - start
-
-        // A raw Response can bypass Hono's prepared response headers.
-        if (context.res.headers.get('X-Request-Id') !== id) context.header('X-Request-Id', id)
-        this.log.info('HTTP request completed', {
+        const fields = {
           requestId: id,
           method: context.req.method,
           path: routePath(context),
           status: context.res.status,
-          durationMs,
-        })
+          durationMs: performance.now() - start,
+        }
+
+        // A raw Response can bypass Hono's prepared response headers.
+        if (context.res.headers.get('X-Request-Id') !== id) context.header('X-Request-Id', id)
+        try {
+          this.log.info('HTTP request completed', fields)
+        } catch {
+          // Preserve the completed HTTP response if the log write fails.
+        }
       })
     }
 
